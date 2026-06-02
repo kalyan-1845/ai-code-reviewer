@@ -65,6 +65,41 @@ export default function App() {
   const [isGssocLabelingEnabled, setIsGssocLabelingEnabled] = useState(true);
   const [creatingIssues, setCreatingIssues] = useState<Record<string, boolean>>({});
   const [createdIssues, setCreatedIssues] = useState<Record<string, string>>({});
+  const [readmeViewMode, setReadmeViewMode] = useState<'raw' | 'preview'>('preview');
+
+  // Simple markdown compiler for premium preview rendering
+  const renderMarkdown = (md: string) => {
+    const lines = md.split('\n');
+    return lines.map((line, idx) => {
+      if (line.startsWith('# ')) {
+        return <h1 key={idx} style={{ fontSize: '18px', fontWeight: 800, color: '#f3f4f6', margin: '14px 0 8px 0', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '4px' }}>{line.slice(2)}</h1>;
+      }
+      if (line.startsWith('## ')) {
+        return <h2 key={idx} style={{ fontSize: '14px', fontWeight: 700, color: '#e5e7eb', margin: '12px 0 6px 0' }}>{line.slice(3)}</h2>;
+      }
+      if (line.startsWith('### ')) {
+        return <h3 key={idx} style={{ fontSize: '12px', fontWeight: 600, color: '#d1d5db', margin: '10px 0 4px 0' }}>{line.slice(4)}</h3>;
+      }
+      if (line.trim().startsWith('- ')) {
+        const content = line.trim().slice(2);
+        const parts = content.split('**');
+        return (
+          <li key={idx} style={{ marginLeft: '12px', marginBottom: '4px', fontSize: '12px', color: '#d1d5db', listStyleType: 'disc' }}>
+            {parts.map((part, pIdx) => pIdx % 2 === 1 ? <strong key={pIdx} style={{ color: '#fff' }}>{part}</strong> : part)}
+          </li>
+        );
+      }
+      if (!line.trim()) {
+        return <div key={idx} style={{ height: '6px' }} />;
+      }
+      const parts = line.split('**');
+      return (
+        <p key={idx} style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.5 }}>
+          {parts.map((part, pIdx) => pIdx % 2 === 1 ? <strong key={pIdx} style={{ color: '#fff' }}>{part}</strong> : part)}
+        </p>
+      );
+    });
+  };
 
   const handleCreateGitHubIssue = async (file: string, item: ReviewItem, category: string, itemKey: string) => {
     if (!analysisResult) return;
@@ -887,17 +922,57 @@ export default function App() {
                           <span style={{ fontSize: '10px', background: '#a855f7', color: '#fae8ff', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, textTransform: 'uppercase' }}>Documentation</span>
                           <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '4px 0 0 0' }}>📄 GENERATED_README.md</h3>
                         </div>
-                        <button 
-                          onClick={downloadReadme}
-                          style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          <Download size={14} /> Download
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '2px' }}>
+                            <button
+                              onClick={() => setReadmeViewMode('preview')}
+                              style={{
+                                background: readmeViewMode === 'preview' ? 'rgba(168,85,247,0.15)' : 'transparent',
+                                border: 'none',
+                                color: readmeViewMode === 'preview' ? '#c084fc' : '#9ca3af',
+                                borderRadius: '4px',
+                                padding: '4px 10px',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Preview
+                            </button>
+                            <button
+                              onClick={() => setReadmeViewMode('raw')}
+                              style={{
+                                background: readmeViewMode === 'raw' ? 'rgba(168,85,247,0.15)' : 'transparent',
+                                border: 'none',
+                                color: readmeViewMode === 'raw' ? '#c084fc' : '#9ca3af',
+                                borderRadius: '4px',
+                                padding: '4px 10px',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Raw
+                            </button>
+                          </div>
+                          <button 
+                            onClick={downloadReadme}
+                            style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <Download size={14} /> Download
+                          </button>
+                        </div>
                       </div>
 
-                      <div style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '60vh', background: 'rgba(15,23,42,0.4)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '12px', lineHeight: 1.5, color: '#d1d5db', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-                        {analysisResult.analysis.generatedReadme}
-                      </div>
+                      {readmeViewMode === 'raw' ? (
+                        <div style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '60vh', background: 'rgba(15,23,42,0.4)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '12px', lineHeight: 1.5, color: '#d1d5db', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+                          {analysisResult.analysis.generatedReadme}
+                        </div>
+                      ) : (
+                        <div style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '60vh', background: 'rgba(15,23,42,0.4)', padding: '16px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column' }}>
+                          {renderMarkdown(analysisResult.analysis.generatedReadme)}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
