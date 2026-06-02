@@ -393,6 +393,54 @@ app.post('/api/webhook', async (req, res) => {
   return res.json({ success: true, message: 'Webhook received.' });
 });
 
+// 🟢 Route: Create GitHub Issue automatically for Code Reviews
+app.post('/api/issues/create', async (req, res) => {
+  const { repoUrl, title, body, labels = [] } = req.body;
+  const token = process.env.GITHUB_PAT;
+
+  if (!token) {
+    return res.status(400).json({ error: 'GITHUB_PAT is not configured in backend/.env.' });
+  }
+
+  if (!repoUrl || !title || !body) {
+    return res.status(400).json({ error: 'Repository URL, title, and body are required.' });
+  }
+
+  try {
+    // Extract owner and repo from URL (e.g., https://github.com/owner/repo)
+    const cleanUrl = repoUrl.replace('.git', '').replace(/\/$/, '');
+    const parts = cleanUrl.split('/');
+    const repo = parts.pop();
+    const owner = parts.pop();
+
+    if (!owner || !repo) {
+      return res.status(400).json({ error: 'Invalid GitHub repository URL structure.' });
+    }
+
+    const octokit = new Octokit({ auth: token });
+    
+    console.log(`🤖 Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
+    
+    const response = await octokit.rest.issues.create({
+      owner,
+      repo,
+      title,
+      body,
+      labels
+    });
+
+    return res.json({
+      success: true,
+      issueUrl: response.data.html_url,
+      number: response.data.number
+    });
+
+  } catch (err) {
+    console.error('❌ Create GitHub Issue Error:', err.message);
+    return res.status(500).json({ error: `Failed to create issue: ${err.message}` });
+  }
+});
+
 // 🟢 Helper to execute Webhook PR review logic
 async function runWebhookReview(owner, repo, pullNumber) {
   const token = process.env.GITHUB_PAT;
