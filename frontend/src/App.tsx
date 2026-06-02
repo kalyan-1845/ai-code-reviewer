@@ -11,7 +11,6 @@ import {
   AlertOctagon, 
   AlertTriangle,
   Download, 
-  Info,
   Layers,
   Code2,
   MessageSquare,
