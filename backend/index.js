@@ -333,9 +333,13 @@ ${files.map(f => `- 📄 **${f.name}**`).join('\n')}
 
 Generated automatically by **RepoSage AI Generator**.`;
 
+  // Mock generated Mermaid flowchart
+  const mockMermaid = `graph TD\n  Root["📦 ${files[0].name.split('/')[0] || 'Repository'}"]\n  ${files.slice(0, 5).map((f, i) => `  Root --> File_${i}["📄 ${f.name.split('/').pop()}"]`).join('\n')}`;
+
   return {
     fileReviews: reviews,
-    generatedReadme: mockReadme
+    generatedReadme: mockReadme,
+    mermaidDiagram: mockMermaid
   };
 }
 

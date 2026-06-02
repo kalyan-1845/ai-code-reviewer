@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Github, 
   Terminal, 
@@ -17,6 +17,26 @@ import {
   MessageSquare,
   Send
 } from 'lucide-react';
+import mermaid from 'mermaid';
+
+// Initialize Mermaid outside the component to avoid multiple initializations
+try {
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose',
+    themeVariables: {
+      background: '#0f172a',
+      primaryColor: '#3b82f6',
+      primaryTextColor: '#e5e7eb',
+      lineColor: '#c084fc',
+      nodeBorder: '#3b82f6',
+      mainBkg: '#1e293b'
+    }
+  });
+} catch (e) {
+  console.error("Failed to initialize Mermaid:", e);
+}
 
 // Define Types
 interface ReviewItem {
@@ -36,6 +56,7 @@ interface FileReview {
 interface AnalysisData {
   fileReviews: Record<string, FileReview>;
   generatedReadme: string;
+  mermaidDiagram?: string;
 }
 
 interface BackendResponse {
@@ -43,6 +64,86 @@ interface BackendResponse {
   repoName: string;
   filesReviewedCount: number;
   analysis: AnalysisData;
+}
+
+interface MermaidViewerProps {
+  chart: string;
+  repoName: string;
+}
+
+function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
+  const [svg, setSvg] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!chart) return;
+    
+    setError(null);
+    const uniqueId = `mermaid-${Math.floor(Math.random() * 100000)}`;
+    
+    const renderChart = async () => {
+      try {
+        setSvg('');
+        // Clean markdown wraps if present
+        let cleanChart = chart.replace(/```mermaid/g, '').replace(/```/g, '').trim();
+        if (!cleanChart.startsWith('graph') && !cleanChart.startsWith('flowchart')) {
+          cleanChart = `graph TD\n${cleanChart}`;
+        }
+        
+        const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
+        setSvg(renderedSvg);
+      } catch (err: any) {
+        console.error("Mermaid Render Error:", err);
+        setError("Could not render architecture diagram. The AI-generated flowchart has syntax errors.");
+      }
+    };
+
+    renderChart();
+  }, [chart]);
+
+  const downloadSVG = () => {
+    if (!svg) return;
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${repoName}_architecture.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  if (error) {
+    return (
+      <div style={{ padding: '20px', color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ fontWeight: 700, marginBottom: '6px' }}>⚠️ Mermaid Rendering Failed</div>
+        <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: '#fca5a5' }}>{error}</p>
+        <pre style={{ background: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '6px', fontSize: '10px', color: '#9ca3af', overflowX: 'auto', whiteSpace: 'pre-wrap' }}>{chart}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button 
+          onClick={downloadSVG}
+          disabled={!svg}
+          style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s ease' }}
+          className="hover:bg-blue-500/20"
+        >
+          <Download size={14} /> Download SVG Diagram
+        </button>
+      </div>
+      <div 
+        ref={containerRef}
+        style={{ display: 'flex', justifyContent: 'center', background: 'rgba(15,23,42,0.4)', padding: '24px', borderRadius: '8px', overflowX: 'auto', border: '1px solid rgba(255,255,255,0.05)', boxSizing: 'border-box', width: '100%' }}
+        dangerouslySetInnerHTML={{ __html: svg || '<span style="color:#9ca3af;font-size:12px;">Generating visual flowchart...</span>' }}
+      />
+    </div>
+  );
 }
 
 export default function App() {
@@ -63,7 +164,7 @@ export default function App() {
   const [apiError, setApiError] = useState<string | null>(null);
 
   // AI Chat with Repository States
-  const [activeDashboardView, setActiveDashboardView] = useState<'audit' | 'chat'>('audit');
+  const [activeDashboardView, setActiveDashboardView] = useState<'audit' | 'chat' | 'diagram'>('audit');
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -570,6 +671,19 @@ export default function App() {
                 >
                   <MessageSquare size={14} /> AI Code Chatbot
                 </button>
+                <button 
+                  onClick={() => setActiveDashboardView('diagram')}
+                  style={{
+                    background: activeDashboardView === 'diagram' ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.03)',
+                    border: '1px solid',
+                    borderColor: activeDashboardView === 'diagram' ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.08)',
+                    color: activeDashboardView === 'diagram' ? '#4ade80' : '#9ca3af',
+                    borderRadius: '6px', padding: '8px 16px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s ease-in-out'
+                  }}
+                >
+                  <Sparkles size={14} /> Architecture Diagram
+                </button>
               </div>
 
               <div style={{ 
@@ -906,6 +1020,25 @@ export default function App() {
                       </button>
                     </form>
 
+                  </div>
+                )}
+
+                {activeDashboardView === 'diagram' && (
+                  <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', minHeight: '68vh', width: '100%' }}>
+                    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px', marginBottom: '16px' }}>
+                      <span style={{ fontSize: '10px', background: '#22c55e', color: '#dcfce7', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, textTransform: 'uppercase' }}>Visualizer</span>
+                      <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '4px 0 0 0' }}>📊 Codebase Dependency Flow</h3>
+                    </div>
+                    {analysisResult.analysis.mermaidDiagram ? (
+                      <MermaidViewer 
+                        chart={analysisResult.analysis.mermaidDiagram} 
+                        repoName={analysisResult.repoName} 
+                      />
+                    ) : (
+                      <div style={{ color: '#9ca3af', fontSize: '12px', padding: '20px', textAlign: 'center' }}>
+                        No architecture diagram was generated for this repository. Try re-running the analysis.
+                      </div>
+                    )}
                   </div>
                 )}
 

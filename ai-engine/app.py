@@ -84,6 +84,8 @@ Response Language: {language}
 
 Review this repository codebase. Find logical bugs, security threats (API leaks, hardcoded credentials, SQL injection), naming/style issues, and performance optimization opportunities.
 
+Additionally, you MUST construct a valid Mermaid.js flowchart (graph TD) that outlines the file structure, architecture, and import/dependency flows of the codebase. Ensure it compiles cleanly (use simple alphanumeric identifiers for node IDs, and wrap node labels in double quotes, e.g. A["label"]).
+
 Here is the repository structure:
 {structure_text}
 
@@ -109,7 +111,8 @@ Format your JSON precisely as:
       ]
     }}
   }},
-  "generatedReadme": "Write a highly detailed, professional README.md markdown for the entire repository, outlining installation, folder structure, features, tech stack, and usage guidelines."
+  "generatedReadme": "Write a highly detailed, professional README.md markdown for the entire repository, outlining installation, folder structure, features, tech stack, and usage guidelines.",
+  "mermaidDiagram": "graph TD\\n  A[\\\"Entry Point\\\"] --> B[\\\"Module\\\"]"
 }}"""
 
     # Model mapping for Groq
