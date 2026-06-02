@@ -62,6 +62,67 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
 
+  // Automated Issue Generator States
+  const [isGssocLabelingEnabled, setIsGssocLabelingEnabled] = useState(true);
+  const [creatingIssues, setCreatingIssues] = useState<Record<string, boolean>>({});
+  const [createdIssues, setCreatedIssues] = useState<Record<string, string>>({});
+
+  const handleCreateGitHubIssue = async (file: string, item: ReviewItem, category: string, itemKey: string) => {
+    if (!analysisResult) return;
+    
+    setCreatingIssues(prev => ({ ...prev, [itemKey]: true }));
+    
+    const title = `[AI Finding] ${category.toUpperCase()}: ${item.type} in ${file} (Line ${item.line})`;
+    
+    const body = `## 🛡️ RepoSage AI Code Audit Finding\n\n` +
+      `An automated AI code audit detected a potential finding in the codebase.\n\n` +
+      `### 📄 Context\n` +
+      `- **File**: \`${file}\`\n` +
+      `- **Line**: ${item.line}\n` +
+      `- **Category**: \`${category.toUpperCase()}\`\n\n` +
+      `### 📝 Description\n` +
+      `${item.description}\n\n` +
+      `### 💡 Suggested Actionable Remediation\n` +
+      `\`\`\`\n${item.suggestion}\n\`\`\`\n\n` +
+      `---\n` +
+      `*Generated automatically by **RepoSage AI Copilot**.*`;
+      
+    const labels = isGssocLabelingEnabled 
+      ? ['gssoc26', 'good-first-issue', category] 
+      : [category];
+
+    try {
+      const response = await fetch('http://localhost:5000/api/issues/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoUrl,
+          title,
+          body,
+          labels
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create GitHub Issue');
+      }
+
+      const data = await response.json();
+      if (data.success && data.issueUrl) {
+        setCreatedIssues(prev => ({ ...prev, [itemKey]: data.issueUrl }));
+      } else {
+        throw new Error('Response did not contain issue URL');
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(`Error creating issue: ${err.message}`);
+    } finally {
+      setCreatingIssues(prev => ({ ...prev, [itemKey]: false }));
+    }
+  };
+
+
   // AI Chat with Repository States
   const [activeDashboardView, setActiveDashboardView] = useState<'audit' | 'chat'>('audit');
   const [chatInput, setChatInput] = useState('');
