@@ -70,32 +70,80 @@ export default function App() {
   // Simple markdown compiler for premium preview rendering
   const renderMarkdown = (md: string) => {
     const lines = md.split('\n');
+    let inCodeBlock = false;
+    let codeBlockLines: string[] = [];
+
     return lines.map((line, idx) => {
+      // Handle multi-line code blocks
+      if (line.trim().startsWith('```')) {
+        if (inCodeBlock) {
+          inCodeBlock = false;
+          const codeContent = codeBlockLines.join('\n');
+          codeBlockLines = [];
+          return (
+            <pre key={idx} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '10px', overflowX: 'auto', margin: '8px 0' }}>
+              <code style={{ fontFamily: 'monospace', fontSize: '11px', color: '#c084fc' }}>{codeContent}</code>
+            </pre>
+          );
+        } else {
+          inCodeBlock = true;
+          return null;
+        }
+      }
+
+      if (inCodeBlock) {
+        codeBlockLines.push(line);
+        return null;
+      }
+
+      // H1 Header
       if (line.startsWith('# ')) {
-        return <h1 key={idx} style={{ fontSize: '18px', fontWeight: 800, color: '#f3f4f6', margin: '14px 0 8px 0', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '4px' }}>{line.slice(2)}</h1>;
+        return <h1 key={idx} style={{ fontSize: '18px', fontWeight: 800, color: '#f3f4f6', margin: '14px 0 8px 0', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '4px', fontFamily: 'inherit' }}>{line.slice(2)}</h1>;
       }
+      // H2 Header
       if (line.startsWith('## ')) {
-        return <h2 key={idx} style={{ fontSize: '14px', fontWeight: 700, color: '#e5e7eb', margin: '12px 0 6px 0' }}>{line.slice(3)}</h2>;
+        return <h2 key={idx} style={{ fontSize: '14px', fontWeight: 700, color: '#e5e7eb', margin: '12px 0 6px 0', fontFamily: 'inherit' }}>{line.slice(3)}</h2>;
       }
+      // H3 Header
       if (line.startsWith('### ')) {
-        return <h3 key={idx} style={{ fontSize: '12px', fontWeight: 600, color: '#d1d5db', margin: '10px 0 4px 0' }}>{line.slice(4)}</h3>;
+        return <h3 key={idx} style={{ fontSize: '12px', fontWeight: 600, color: '#d1d5db', margin: '10px 0 4px 0', fontFamily: 'inherit' }}>{line.slice(4)}</h3>;
       }
+      
+      // Inline parser helper for bold and code ticks
+      const parseInlineStyles = (text: string) => {
+        const codeParts = text.split('`');
+        return codeParts.map((codePart, cIdx) => {
+          if (cIdx % 2 === 1) {
+            return <code key={cIdx} style={{ background: 'rgba(255,255,255,0.06)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '11px', color: '#a855f7' }}>{codePart}</code>;
+          }
+          const boldParts = codePart.split('**');
+          return boldParts.map((boldPart, bIdx) => {
+            if (bIdx % 2 === 1) {
+              return <strong key={bIdx} style={{ color: '#fff', fontWeight: 700 }}>{boldPart}</strong>;
+            }
+            return boldPart;
+          });
+        });
+      };
+
+      // Unordered List Items
       if (line.trim().startsWith('- ')) {
         const content = line.trim().slice(2);
-        const parts = content.split('**');
         return (
-          <li key={idx} style={{ marginLeft: '12px', marginBottom: '4px', fontSize: '12px', color: '#d1d5db', listStyleType: 'disc' }}>
-            {parts.map((part, pIdx) => pIdx % 2 === 1 ? <strong key={pIdx} style={{ color: '#fff' }}>{part}</strong> : part)}
+          <li key={idx} style={{ marginLeft: '16px', marginBottom: '4px', fontSize: '12px', color: '#d1d5db', listStyleType: 'disc', fontFamily: 'inherit', lineHeight: 1.6 }}>
+            {parseInlineStyles(content)}
           </li>
         );
       }
+      // Empty spacing line
       if (!line.trim()) {
         return <div key={idx} style={{ height: '6px' }} />;
       }
-      const parts = line.split('**');
+      
+      // Regular Paragraphs
       return (
-        <p key={idx} style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.5 }}>
-          {parts.map((part, pIdx) => pIdx % 2 === 1 ? <strong key={pIdx} style={{ color: '#fff' }}>{part}</strong> : part)}
+        <p key={idx} style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.6, fontFamily: 'inherit' }}>
+          {parseInlineStyles(line)}
         </p>
       );
     });
