@@ -678,8 +678,24 @@ export default function App() {
                     {/* Central Audit Hub */}
                     <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
                       <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px', marginBottom: '16px' }}>
-                        <span style={{ fontSize: '10px', background: '#3b82f6', color: '#eff6ff', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, textTransform: 'uppercase' }}>File Audit</span>
-                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '4px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '10px', background: '#3b82f6', color: '#eff6ff', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, textTransform: 'uppercase' }}>File Audit</span>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '11px', color: '#9ca3af' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isGssocLabelingEnabled} 
+                              onChange={(e) => setIsGssocLabelingEnabled(e.target.checked)}
+                              style={{
+                                cursor: 'pointer',
+                                accentColor: '#a855f7',
+                                width: '13px',
+                                height: '13px'
+                              }}
+                            />
+                            <span>GSSoC Labeling</span>
+                          </label>
+                        </div>
+                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '6px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           📄 {selectedFile || 'Select a file'}
                         </h3>
                       </div>
@@ -771,30 +787,87 @@ export default function App() {
                       {/* Audit Items Render */}
                       <div style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '54vh', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {selectedFile && analysisResult.analysis.fileReviews[selectedFile]?.[activeTab]?.length > 0 ? (
-                          analysisResult.analysis.fileReviews[selectedFile][activeTab].map((item, index) => (
-                            <div 
-                              key={index}
-                              style={{
-                                padding: '12px 14px',
-                                borderRadius: '8px',
-                                background: 'rgba(15,23,42,0.4)',
-                                borderLeft: '3px solid',
-                                borderColor: activeTab === 'bugs' ? '#f97316' : activeTab === 'security' ? '#ef4444' : activeTab === 'optimization' ? '#22c55e' : '#3b82f6'
-                              }}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 700, color: '#f3f4f6' }}>{item.type}</span>
-                                <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.08)', color: '#9ca3af', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                                  Line {item.line}
-                                </span>
+                          analysisResult.analysis.fileReviews[selectedFile][activeTab].map((item, index) => {
+                            const itemKey = `${selectedFile}-${activeTab}-${index}`;
+                            return (
+                              <div 
+                                key={index}
+                                style={{
+                                  padding: '12px 14px',
+                                  borderRadius: '8px',
+                                  background: 'rgba(15,23,42,0.4)',
+                                  borderLeft: '3px solid',
+                                  borderColor: activeTab === 'bugs' ? '#f97316' : activeTab === 'security' ? '#ef4444' : activeTab === 'optimization' ? '#22c55e' : '#3b82f6'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#f3f4f6' }}>{item.type}</span>
+                                  <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.08)', color: '#9ca3af', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                    Line {item.line}
+                                  </span>
+                                </div>
+                                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.4 }}>{item.description}</p>
+                                <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '8px 10px' }}>
+                                  <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px' }}>💡 AI Recommendation</span>
+                                  <code style={{ fontSize: '11px', color: '#a855f7', wordBreak: 'break-all' }}>{item.suggestion}</code>
+                                </div>
+                                <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                                  {createdIssues[itemKey] ? (
+                                    <a 
+                                      href={createdIssues[itemKey]} 
+                                      target="_blank" 
+                                      rel="noreferrer"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: 'rgba(34,197,94,0.1)',
+                                        border: '1px solid rgba(34,197,94,0.3)',
+                                        color: '#4ade80',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        fontSize: '11px',
+                                        fontWeight: 600,
+                                        textDecoration: 'none',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      🟢 View Issue on GitHub
+                                    </a>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleCreateGitHubIssue(selectedFile, item, activeTab, itemKey)}
+                                      disabled={creatingIssues[itemKey]}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: 'rgba(168,85,247,0.1)',
+                                        border: '1px solid rgba(168,85,247,0.3)',
+                                        color: '#c084fc',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        fontSize: '11px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        opacity: creatingIssues[itemKey] ? 0.6 : 1,
+                                        pointerEvents: creatingIssues[itemKey] ? 'none' : 'auto'
+                                      }}
+                                    >
+                                      {creatingIssues[itemKey] ? (
+                                        <>
+                                          <span className="spin-slow" style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #c084fc', borderTopColor: 'transparent', borderRadius: '50%' }}></span>
+                                          Creating...
+                                        </>
+                                      ) : (
+                                        <>🚨 Create GitHub Issue</>
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                              <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.4 }}>{item.description}</p>
-                              <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '8px 10px' }}>
-                                <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px' }}>💡 AI Recommendation</span>
-                                <code style={{ fontSize: '11px', color: '#a855f7', wordBreak: 'break-all' }}>{item.suggestion}</code>
-                              </div>
-                            </div>
-                          ))
+                            );
+                          })
                         ) : (
                           <div style={{ textAlign: 'center', padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                             <CheckCircle size={32} style={{ color: '#22c55e' }} />
