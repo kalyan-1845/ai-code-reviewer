@@ -660,6 +660,21 @@ Generated automatically by **RepoSage AI Generator**.`;
   };
 }
 
+// 🟢 Route: Export Review Report to HTML
+app.post('/api/reports/html', (req, res) => {
+  const { repoName, analysis } = req.body;
+  if (!repoName || !analysis) {
+    return res.status(400).json({ error: 'Repository name and analysis result are required.' });
+  }
+
+  // Placeholder for HTML template generation
+  const html = `<!DOCTYPE html><html><body><h1>Audit Report for ${repoName}</h1></body></html>`;
+  
+  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Content-Disposition', `attachment; filename="${repoName}_AUDIT_REPORT.html"`);
+  return res.send(html);
+});
+
 app.listen(PORT, () => {
   console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
 });
