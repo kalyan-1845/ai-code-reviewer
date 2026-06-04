@@ -645,8 +645,31 @@ export default function App() {
     document.body.removeChild(element);
   };
 
-  const downloadHTMLReport = () => {
-    console.log("HTML report exporter triggered");
+  const downloadHTMLReport = async () => {
+    if (!analysisResult) return;
+    try {
+      const response = await fetch('http://localhost:5000/api/reports/html', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoName: analysisResult.repoName,
+          analysis: analysisResult.analysis
+        })
+      });
+      if (response.ok) {
+        const htmlBlob = await response.blob();
+        const element = document.createElement("a");
+        element.href = URL.createObjectURL(htmlBlob);
+        element.download = `${analysisResult.repoName}_AUDIT_REPORT.html`;
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+      } else {
+        console.error("Failed to generate HTML report");
+      }
+    } catch (err) {
+      console.error("Error exporting HTML report:", err);
+    }
   };
 
   return (
