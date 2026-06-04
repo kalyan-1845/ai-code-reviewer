@@ -1057,7 +1057,9 @@ export default function App() {
                       outline: 'none'
                     }}
                   />
-                  {Object.keys(analysisResult.analysis.fileReviews).map((filePath) => (
+                  {Object.keys(analysisResult.analysis.fileReviews)
+                    .filter((filePath) => filePath.toLowerCase().includes(fileFilterQuery.toLowerCase()))
+                    .map((filePath) => (
                     <button
                       key={filePath}
                       onClick={() => setSelectedFile(filePath)}
