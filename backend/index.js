@@ -248,12 +248,69 @@ function scanSecretsInChanges(changes) {
 
 // 🟢 Helper to analyze static complexity of source files
 function analyzeComplexity(fileContent, filePath) {
+  const lines = fileContent.split('\n');
+  const totalLines = lines.length;
+  let commentLines = 0;
+  let functionCount = 0;
+
+  const ext = path.extname(filePath).toLowerCase();
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed === '') return;
+
+    // Comment Detection
+    if (['.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.h', '.cs', '.go', '.rs', '.php'].includes(ext)) {
+      if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+        commentLines++;
+      }
+    } else if (ext === '.py' || ext === '.rb') {
+      if (trimmed.startsWith('#')) {
+        commentLines++;
+      }
+    } else if (ext === '.sql') {
+      if (trimmed.startsWith('--') || trimmed.startsWith('/*')) {
+        commentLines++;
+      }
+    } else if (ext === '.html' || ext === '.css') {
+      if (trimmed.startsWith('<!--') || trimmed.startsWith('/*')) {
+        commentLines++;
+      }
+    }
+
+    // Function Detection
+    if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+      if (trimmed.includes('function ') || trimmed.includes('=>') || /^\s*(?:async\s+)?\w+\s*\([^)]*\)\s*\{/g.test(trimmed)) {
+        functionCount++;
+      }
+    } else if (ext === '.py') {
+      if (trimmed.startsWith('def ')) {
+        functionCount++;
+      }
+    } else if (ext === '.go') {
+      if (trimmed.startsWith('func ')) {
+        functionCount++;
+      }
+    } else if (['.java', '.cpp', '.cs'].includes(ext)) {
+      if (/(?:public|private|protected|static|\w+)\s+\w+\s*\([^)]*\)\s*(?:\{|const)?/g.test(trimmed)) {
+        functionCount++;
+      }
+    }
+  });
+
+  const complexityScore = Math.round((totalLines / 25) + (functionCount * 3));
+  let grade = 'A';
+  if (complexityScore > 40) grade = 'F';
+  else if (complexityScore > 25) grade = 'D';
+  else if (complexityScore > 15) grade = 'C';
+  else if (complexityScore > 8) grade = 'B';
+
   return {
-    totalLines: 0,
-    commentLines: 0,
-    functionCount: 0,
-    complexityScore: 0,
-    grade: 'A'
+    totalLines,
+    commentLines,
+    functionCount,
+    complexityScore,
+    grade
   };
 }
 
