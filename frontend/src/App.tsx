@@ -223,6 +223,7 @@ export default function App() {
   // Response & View State
   const [analysisResult, setAnalysisResult] = useState<BackendResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileFilterQuery, setFileFilterQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
 
