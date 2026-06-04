@@ -14,7 +14,9 @@ import {
   Layers,
   Code2,
   MessageSquare,
-  Send
+  Send,
+  Copy,
+  Check
 } from 'lucide-react';
 
 // Define Types
@@ -42,6 +44,55 @@ interface BackendResponse {
   repoName: string;
   filesReviewedCount: number;
   analysis: AnalysisData;
+}
+
+interface CopyButtonProps {
+  text: string;
+  style?: React.CSSProperties;
+  showText?: boolean;
+}
+
+function CopyButton({ text, style, showText = false }: CopyButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '4px 8px',
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        justifyContent: 'center',
+        color: copied ? '#22c55e' : '#9ca3af',
+        transition: 'all 0.2s ease',
+        ...style
+      }}
+      title={copied ? "Copied!" : "Copy Code"}
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+      {showText && (
+        <span style={{ fontSize: '11px', fontWeight: 600 }}>
+          {copied ? "Copied!" : "Copy"}
+        </span>
+      )}
+    </button>
+  );
 }
 
 export default function App() {
@@ -81,9 +132,22 @@ export default function App() {
           const codeContent = codeBlockLines.join('\n');
           codeBlockLines = [];
           return (
-            <pre key={idx} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '10px', overflowX: 'auto', margin: '8px 0' }}>
-              <code style={{ fontFamily: 'monospace', fontSize: '11px', color: '#c084fc' }}>{codeContent}</code>
-            </pre>
+            <div key={idx} style={{ position: 'relative', margin: '8px 0' }}>
+              <pre style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '10px', paddingRight: '40px', overflowX: 'auto', margin: 0 }}>
+                <code style={{ fontFamily: 'monospace', fontSize: '11px', color: '#c084fc' }}>{codeContent}</code>
+              </pre>
+              <CopyButton 
+                text={codeContent} 
+                style={{ 
+                  position: 'absolute', 
+                  top: '8px', 
+                  right: '8px', 
+                  background: 'rgba(15, 23, 42, 0.6)', 
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  padding: '4px'
+                }} 
+              />
+            </div>
           );
         } else {
           inCodeBlock = true;
@@ -249,20 +313,46 @@ export default function App() {
   };
 
   // GSSoC Issues State (Mentorship Panel)
-  const [assignedContributors, setAssignedContributors] = useState<Record<string, string>>({
-    'copy-code-button': 'Unassigned',
-    'secret-scanning-rules': 'Unassigned',
-    'api-documentation': 'Unassigned',
-    'persist-assignments': 'Unassigned'
+  const [assignedContributors, setAssignedContributors] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('reposage_contributor_assignments');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved assignments", e);
+      }
+    }
+    return {
+      'copy-code-button': 'Unassigned',
+      'secret-scanning-rules': 'Unassigned',
+      'api-documentation': 'Unassigned',
+      'persist-assignments': 'Unassigned'
+    };
   });
 
   const handleAssignContributor = (issueKey: string) => {
     const name = prompt("Enter the contributor's GitHub username to assign this issue:");
     if (name) {
-      setAssignedContributors(prev => ({
-        ...prev,
+      const updated = {
+        ...assignedContributors,
         [issueKey]: name
-      }));
+      };
+      setAssignedContributors(updated);
+      localStorage.setItem('reposage_contributor_assignments', JSON.stringify(updated));
+    }
+  };
+
+  const handleResetAssignments = () => {
+    const confirmReset = window.confirm("Are you sure you want to reset all contributor assignments?");
+    if (confirmReset) {
+      const initial = {
+        'copy-code-button': 'Unassigned',
+        'secret-scanning-rules': 'Unassigned',
+        'api-documentation': 'Unassigned',
+        'persist-assignments': 'Unassigned'
+      };
+      setAssignedContributors(initial);
+      localStorage.setItem('reposage_contributor_assignments', JSON.stringify(initial));
     }
   };
 
@@ -614,7 +704,24 @@ export default function App() {
                   {assignedContributors['persist-assignments']}
                 </button>
               </div>
-
+              <button
+                onClick={handleResetAssignments}
+                style={{
+                  marginTop: '14px',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: '#f87171',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease-in-out'
+                }}
+              >
+                Reset Assignments
+              </button>
             </div>
           </div>
 
@@ -890,7 +997,10 @@ export default function App() {
                                 </div>
                                 <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.4 }}>{item.description}</p>
                                 <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '8px 10px' }}>
-                                  <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px' }}>💡 AI Recommendation</span>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>💡 AI Recommendation</span>
+                                    <CopyButton text={item.suggestion} style={{ padding: '2px' }} />
+                                  </div>
                                   <code style={{ fontSize: '11px', color: '#a855f7', wordBreak: 'break-all' }}>{item.suggestion}</code>
                                 </div>
                                 <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
@@ -1003,6 +1113,18 @@ export default function App() {
                               Raw
                             </button>
                           </div>
+                           <CopyButton 
+                            text={analysisResult.analysis.generatedReadme} 
+                            showText={true}
+                            style={{ 
+                              background: 'rgba(168,85,247,0.1)', 
+                              border: '1px solid rgba(168,85,247,0.3)', 
+                              color: '#c084fc', 
+                              borderRadius: '6px', 
+                              padding: '6px 12px', 
+                              cursor: 'pointer' 
+                            }} 
+                          />
                           <button 
                             onClick={downloadReadme}
                             style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
