@@ -224,6 +224,7 @@ export default function App() {
   const [analysisResult, setAnalysisResult] = useState<BackendResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileFilterQuery, setFileFilterQuery] = useState('');
+  const [activeExtFilter, setActiveExtFilter] = useState('All');
   const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -1057,8 +1058,44 @@ export default function App() {
                       outline: 'none'
                     }}
                   />
+                  <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                    {['All', 'JS/TS', 'Python', 'CSS/HTML'].map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => setActiveExtFilter(tag)}
+                        style={{
+                          background: activeExtFilter === tag ? '#a855f7' : 'rgba(255,255,255,0.05)',
+                          border: activeExtFilter === tag ? '1px solid #a855f7' : '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                          color: activeExtFilter === tag ? 'white' : 'var(--text-color)',
+                          padding: '2px 6px',
+                          fontSize: '9px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s'
+                        }}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
                   {Object.keys(analysisResult.analysis.fileReviews)
-                    .filter((filePath) => filePath.toLowerCase().includes(fileFilterQuery.toLowerCase()))
+                    .filter((filePath) => {
+                      const matchesSearch = filePath.toLowerCase().includes(fileFilterQuery.toLowerCase());
+                      if (!matchesSearch) return false;
+                      
+                      const ext = filePath.split('.').pop()?.toLowerCase();
+                      if (activeExtFilter === 'JS/TS') {
+                        return ['js', 'jsx', 'ts', 'tsx'].includes(ext || '');
+                      }
+                      if (activeExtFilter === 'Python') {
+                        return ext === 'py';
+                      }
+                      if (activeExtFilter === 'CSS/HTML') {
+                        return ['css', 'html'].includes(ext || '');
+                      }
+                      return true; // All
+                    })
                     .map((filePath) => (
                     <button
                       key={filePath}
