@@ -197,6 +197,13 @@ function CopyButton({ text, style, showText = false }: CopyButtonProps) {
 }
 
 export default function App() {
+  // Theme State
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
   // Input State
   const [repoUrl, setRepoUrl] = useState('');
   const [company, setCompany] = useState('General');
