@@ -51,7 +51,36 @@ To claim an issue:
   - Update `handleAssignContributor` to save assignments into `localStorage` using `localStorage.setItem`.
   - Add a "Reset Assignments" button below the simulator grid to clear `localStorage` and reset assignments to "Unassigned".
 
+### 5. 🎨 Frontend: Implement Light/Dark Theme Toggle
+* **Description**: Implement a Theme Toggle switch (Light/Dark mode) in the dashboard navbar to improve visual accessibility and customize styling using CSS variables.
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `frontend`, `styling`
+* **Implementation Hints**:
+  - Add a toggle switch inside the header component in `frontend/src/App.tsx`.
+  - Define CSS variables for key colors (backgrounds, text, borders) in `frontend/src/index.css` and use them dynamically.
+  - Persist theme preference in `localStorage`.
+
+### 6. 🎨 Frontend: Interactive File Tree Filter & Search
+* **Description**: Add a search input box at the top of the File Navigator side panel to quickly filter files by name or extension in repositories with large directory structures.
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `frontend`
+* **Implementation Hints**:
+  - Open `frontend/src/App.tsx` and find the File Tree List rendering block.
+  - Add an input filter textbox with search/filter queries, and only render matching keys.
+
+### 7. ⚙️ Backend: Add Endpoint to Export Review Reports to HTML
+* **Description**: Extend the Express backend with a new endpoint to convert and download structured AI reviews as a nicely formatted HTML page.
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `backend`
+* **Implementation Hints**:
+  - Add `POST /api/reports/html` in `backend/index.js` taking the JSON report findings.
+  - Generate a styled HTML string with a table layout, and return it with correct attachment headers.
+
+### 8. ⚙️ Backend: Static Code Complexity Metrics Analyzer
+* **Description**: Add basic AST-based static metrics parsing (Total lines of code, comment lines, function declarations) for uploaded repository files.
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `backend`
+* **Implementation Hints**:
+  - Write a helper parsing files in `backend/index.js` to compute counts and return them under a new `metrics` property per analyzed file.
+
 ---
 
 Let's make RepoSage an amazing open-source experience together! 🚀🔥
+
 

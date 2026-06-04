@@ -326,7 +326,11 @@ export default function App() {
       'copy-code-button': 'Unassigned',
       'secret-scanning-rules': 'Unassigned',
       'api-documentation': 'Unassigned',
-      'persist-assignments': 'Unassigned'
+      'persist-assignments': 'Unassigned',
+      'theme-toggle': 'Unassigned',
+      'file-filter-search': 'Unassigned',
+      'html-report-exporter': 'Unassigned',
+      'complexity-metrics': 'Unassigned'
     };
   });
 
@@ -349,7 +353,11 @@ export default function App() {
         'copy-code-button': 'Unassigned',
         'secret-scanning-rules': 'Unassigned',
         'api-documentation': 'Unassigned',
-        'persist-assignments': 'Unassigned'
+        'persist-assignments': 'Unassigned',
+        'theme-toggle': 'Unassigned',
+        'file-filter-search': 'Unassigned',
+        'html-report-exporter': 'Unassigned',
+        'complexity-metrics': 'Unassigned'
       };
       setAssignedContributors(initial);
       localStorage.setItem('reposage_contributor_assignments', JSON.stringify(initial));
@@ -702,6 +710,58 @@ export default function App() {
                   style={{ background: assignedContributors['persist-assignments'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
                 >
                   {assignedContributors['persist-assignments']}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(168,85,247,0.05)', borderRadius: '6px', border: '1px solid rgba(168,85,247,0.1)' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f3f4f6', display: 'block' }}>Implement Theme Toggle</span>
+                  <span style={{ fontSize: '10px', color: '#a855f7' }}>🏷️ frontend / styling</span>
+                </div>
+                <button 
+                  onClick={() => handleAssignContributor('theme-toggle')}
+                  style={{ background: assignedContributors['theme-toggle'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {assignedContributors['theme-toggle']}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(59,130,246,0.05)', borderRadius: '6px', border: '1px solid rgba(59,130,246,0.1)' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f3f4f6', display: 'block' }}>File tree filter search</span>
+                  <span style={{ fontSize: '10px', color: '#3b82f6' }}>🏷️ frontend</span>
+                </div>
+                <button 
+                  onClick={() => handleAssignContributor('file-filter-search')}
+                  style={{ background: assignedContributors['file-filter-search'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {assignedContributors['file-filter-search']}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(168,85,247,0.05)', borderRadius: '6px', border: '1px solid rgba(168,85,247,0.1)' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f3f4f6', display: 'block' }}>Export Report to HTML</span>
+                  <span style={{ fontSize: '10px', color: '#a855f7' }}>🏷️ backend</span>
+                </div>
+                <button 
+                  onClick={() => handleAssignContributor('html-report-exporter')}
+                  style={{ background: assignedContributors['html-report-exporter'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {assignedContributors['html-report-exporter']}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(34,197,94,0.05)', borderRadius: '6px', border: '1px solid rgba(34,197,94,0.1)' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f3f4f6', display: 'block' }}>Complexity Metrics Analyzer</span>
+                  <span style={{ fontSize: '10px', color: '#22c55e' }}>🏷️ backend</span>
+                </div>
+                <button 
+                  onClick={() => handleAssignContributor('complexity-metrics')}
+                  style={{ background: assignedContributors['complexity-metrics'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {assignedContributors['complexity-metrics']}
                 </button>
               </div>
               <button
