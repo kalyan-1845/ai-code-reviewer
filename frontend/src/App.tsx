@@ -60,6 +60,7 @@ interface AnalysisData {
   fileReviews: Record<string, FileReview>;
   generatedReadme: string;
   mermaidDiagram?: string;
+  metrics?: Record<string, any>;
 }
 
 interface BackendResponse {
@@ -1387,8 +1388,8 @@ export default function App() {
                               </div>
                             );
                           })()
-                        ) : selectedFile && (analysisResult.analysis.fileReviews[selectedFile]?.[activeTab]?.length > 0) ? (
-                          analysisResult.analysis.fileReviews[selectedFile][activeTab].map((item, index) => {
+                        ) : selectedFile && activeTab !== 'metrics' && (analysisResult.analysis.fileReviews[selectedFile]?.[activeTab]?.length > 0) ? (
+                          (analysisResult.analysis.fileReviews[selectedFile][activeTab] as any[]).map((item: any, index: number) => {
                             const itemKey = `${selectedFile}-${activeTab}-${index}`;
                             return (
                               <div 
