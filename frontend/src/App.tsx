@@ -225,7 +225,7 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileFilterQuery, setFileFilterQuery] = useState('');
   const [activeExtFilter, setActiveExtFilter] = useState('All');
-  const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling'>('bugs');
+  const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling' | 'metrics'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
 
   // Automated Issue Generator States
@@ -1200,7 +1200,7 @@ export default function App() {
                       </div>
 
                       {/* Audit Tabs */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '16px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', marginBottom: '16px' }}>
                         <button
                           onClick={() => setActiveTab('bugs')}
                           style={{
@@ -1280,6 +1280,26 @@ export default function App() {
                           }}
                         >
                           <Terminal size={12} /> Style
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('metrics')}
+                          style={{
+                            padding: '6px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            border: '1px solid',
+                            background: activeTab === 'metrics' ? 'rgba(168,85,247,0.1)' : 'transparent',
+                            borderColor: activeTab === 'metrics' ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.05)',
+                            color: activeTab === 'metrics' ? '#a855f7' : '#9ca3af',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Layers size={12} /> Metrics
                         </button>
                       </div>
 
