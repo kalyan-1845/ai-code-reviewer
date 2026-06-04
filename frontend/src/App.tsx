@@ -198,10 +198,14 @@ function CopyButton({ text, style, showText = false }: CopyButtonProps) {
 
 export default function App() {
   // Theme State
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const savedTheme = localStorage.getItem('reposage_theme');
+    return (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : 'dark';
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('reposage_theme', theme);
   }, [theme]);
 
   // Input State
