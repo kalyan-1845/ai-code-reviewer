@@ -747,7 +747,10 @@ app.post('/api/reports/html', (req, res) => {
           font-weight: 600;
         }
         tr:hover {
-          background-color: rgba(255,255,255,0.01);
+          background-color: rgba(255,255,255,0.04);
+        }
+        tr:nth-child(even) {
+          background-color: rgba(255,255,255,0.015);
         }
         .badge {
           display: inline-block;
@@ -795,6 +798,9 @@ app.post('/api/reports/html', (req, res) => {
             ${fileRows || '<tr><td colspan="6" style="text-align:center;">🎉 No issues found! Your codebase is clean.</td></tr>'}
           </tbody>
         </table>
+        <div style="margin-top: 30px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
+          RepoSage AI © 2026. Made with 💜 for GirlScript Summer of Code (GSSoC).
+        </div>
       </div>
     </body>
     </html>
