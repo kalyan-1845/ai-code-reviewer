@@ -30,6 +30,7 @@ Please refer to the setup instructions in each module:
 - [Backend Setup](./backend/README.md)
 - [AI Engine Setup](./ai-engine/README.md)
 - [GitHub Action Setup](./github-action/README.md)
+- For full API specifications and `curl` examples, see [API.md](./API.md).
 
 ### 🤖 Quick Start: GitHub Action Integration
 

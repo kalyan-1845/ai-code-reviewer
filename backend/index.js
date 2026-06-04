@@ -5,6 +5,7 @@ import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { Octokit } from '@octokit/rest';
 
 dotenv.config();
 
@@ -95,6 +96,26 @@ function scanSecrets(fileContent) {
       type: "Slack Incoming Webhook",
       regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
       description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
+    },
+    {
+      type: "Generic Private Key",
+      regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/gi,
+      description: "Generic Private Key detected. Committing private keys to a repository exposes critical encryption keys, identity access, or infrastructure certificates."
+    },
+    {
+      type: "Common Environment Credential",
+      regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
+      description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
+    },
+    {
+      type: "Twilio Account SID",
+      regex: /\bAC[a-f0-9]{32}\b/gi,
+      description: "Potential Twilio Account SID detected. Exposing your Twilio SID allows unauthorized API access and billing charges."
+    },
+    {
+      type: "Twilio Auth Token",
+      regex: /(?:twilio_auth|twilio_token|auth_token)\s*[:=]\s*['"][a-f0-9]{32}['"]/gi,
+      description: "Potential Twilio Auth Token detected. Exposing this token allows attackers to authenticate and use your Twilio account."
     }
   ];
 
@@ -112,6 +133,115 @@ function scanSecrets(fileContent) {
       }
     });
   });
+
+  return findings;
+}
+
+// 🟢 Helper to parse git diff for webhook changes
+function parseDiff(diffStr) {
+  const files = [];
+  const lines = diffStr.split('\n');
+  let currentFile = null;
+  let currentLineInNewFile = 0;
+
+  for (const line of lines) {
+    if (line.startsWith('diff --git')) {
+      const match = line.match(/b\/(.+)$/);
+      if (match) {
+        currentFile = {
+          path: match[1],
+          changes: []
+        };
+        files.push(currentFile);
+      }
+    } else if (line.startsWith('@@ ')) {
+      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        currentLineInNewFile = parseInt(match[1], 10);
+      }
+    } else if (currentFile) {
+      if (line.startsWith('+') && !line.startsWith('+++')) {
+        currentFile.changes.push({
+          line: currentLineInNewFile,
+          content: line.slice(1)
+        });
+        currentLineInNewFile++;
+      } else if (line.startsWith(' ')) {
+        currentLineInNewFile++;
+      }
+    }
+  }
+  return files;
+}
+
+// 🟢 Helper to scan changes for hardcoded secrets
+function scanSecretsInChanges(changes) {
+  const findings = [];
+  const rules = [
+    {
+      type: "AWS Access Key Check",
+      regex: /AKIA[0-9A-Z]{16}/g,
+      description: "Potential AWS Access Key ID detected. If pushed to a public repository, malicious parties can hijack your AWS cloud infrastructure."
+    },
+    {
+      type: "GitHub Personal Access Token",
+      regex: /ghp_[a-zA-Z0-9]{36}/g,
+      description: "Hardcoded GitHub Personal Access Token detected. Unauthorized users can gain complete read/write access to your repositories."
+    },
+    {
+      type: "Stripe Secret API Key",
+      regex: /sk_live_[0-9a-zA-Z]{24}/g,
+      description: "Hardcoded live Stripe Secret Key detected. This can expose customer transaction history or result in financial exploitation."
+    },
+    {
+      type: "Google Cloud API Key",
+      regex: /AIzaSy[a-zA-Z0-9-_]{33}/g,
+      description: "Hardcoded Google Cloud API Key detected. Allows unauthorized usage of GCP billing services and resources."
+    },
+    {
+      type: "Database Connection Credentials",
+      regex: /(mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/|mysql:\/\/)[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
+      description: "Database connection credentials detected directly in code. Exposes the database tables to global read/write breaches."
+    },
+    {
+      type: "Slack Incoming Webhook",
+      regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
+      description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
+    },
+    {
+      type: "Generic Private Key",
+      regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/gi,
+      description: "Generic Private Key detected. Committing private keys to a repository exposes critical encryption keys, identity access, or infrastructure certificates."
+    },
+    {
+      type: "Common Environment Credential",
+      regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
+      description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
+    },
+    {
+      type: "Twilio Account SID",
+      regex: /\bAC[a-f0-9]{32}\b/gi,
+      description: "Potential Twilio Account SID detected. Exposing your Twilio SID allows unauthorized API access and billing charges."
+    },
+    {
+      type: "Twilio Auth Token",
+      regex: /(?:twilio_auth|twilio_token|auth_token)\s*[:=]\s*['"][a-f0-9]{32}['"]/gi,
+      description: "Potential Twilio Auth Token detected. Exposing this token allows attackers to authenticate and use your Twilio account."
+    }
+  ];
+
+  for (const change of changes) {
+    for (const rule of rules) {
+      rule.regex.lastIndex = 0;
+      if (rule.regex.test(change.content)) {
+        findings.push({
+          line: change.line,
+          type: "security",
+          comment: `### 🛡️ Hardcoded Secret Warning\n\nI have detected a hardcoded **${rule.type}** on line **${change.line}**.\n\n#### 💡 Actionable Suggestion\nMove this credential immediately to a protected environment variable (e.g. GitHub Secrets or \`.env\`) and load it dynamically at runtime. DO NOT commit plain secrets to public Git repositories!`
+        });
+      }
+    }
+  }
 
   return findings;
 }
@@ -278,6 +408,193 @@ app.post('/api/chat', async (req, res) => {
     return res.json({ response: responseMessage });
   }
 });
+
+// 🟢 Route: GitHub Webhook Receiver for automated Pull Request Reviews
+app.post('/api/webhook', async (req, res) => {
+  const event = req.headers['x-github-event'];
+  const payload = req.body;
+
+  if (event === 'pull_request') {
+    const action = payload.action;
+    if (action === 'opened' || action === 'synchronize') {
+      const pullNumber = payload.pull_request.number;
+      const owner = payload.repository.owner.login;
+      const repo = payload.repository.name;
+      
+      console.log(`📡 GitHub Webhook received: PR #${pullNumber} ${action} in ${owner}/${repo}`);
+      
+      // Execute code review asynchronously to prevent GitHub webhook timeout (10s)
+      runWebhookReview(owner, repo, pullNumber).catch(err => {
+        console.error(`❌ Async PR Review Error:`, err);
+      });
+    }
+  }
+
+  return res.json({ success: true, message: 'Webhook received.' });
+});
+
+// 🟢 Route: Create GitHub Issue automatically for Code Reviews
+app.post('/api/issues/create', async (req, res) => {
+  const { repoUrl, title, body, labels = [] } = req.body;
+  const token = process.env.GITHUB_PAT;
+
+  if (!token) {
+    return res.status(400).json({ error: 'GITHUB_PAT is not configured in backend/.env.' });
+  }
+
+  if (!repoUrl || !title || !body) {
+    return res.status(400).json({ error: 'Repository URL, title, and body are required.' });
+  }
+
+  try {
+    // Extract owner and repo from URL (e.g., https://github.com/owner/repo)
+    const cleanUrl = repoUrl.replace('.git', '').replace(/\/$/, '');
+    const parts = cleanUrl.split('/');
+    const repo = parts.pop();
+    const owner = parts.pop();
+
+    if (!owner || !repo) {
+      return res.status(400).json({ error: 'Invalid GitHub repository URL structure.' });
+    }
+
+    const octokit = new Octokit({ auth: token });
+    
+    console.log(`🤖 Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
+    
+    const response = await octokit.rest.issues.create({
+      owner,
+      repo,
+      title,
+      body,
+      labels
+    });
+
+    return res.json({
+      success: true,
+      issueUrl: response.data.html_url,
+      number: response.data.number
+    });
+
+  } catch (err) {
+    console.error('❌ Create GitHub Issue Error:', err.message);
+    return res.status(500).json({ error: `Failed to create issue: ${err.message}` });
+  }
+});
+
+// 🟢 Helper to execute Webhook PR review logic
+async function runWebhookReview(owner, repo, pullNumber) {
+  const token = process.env.GITHUB_PAT;
+  if (!token) {
+    console.warn("⚠️ GITHUB_PAT not set in backend/.env. Cannot run webhook PR review.");
+    return;
+  }
+
+  const octokit = new Octokit({ auth: token });
+  console.log(`🔍 Fetching diff for PR #${pullNumber}...`);
+
+  // 1. Fetch Diff from GitHub
+  const { data: diff } = await octokit.rest.pulls.get({
+    owner,
+    repo,
+    pull_number: pullNumber,
+    mediaType: {
+      format: 'diff'
+    }
+  });
+
+  if (!diff) {
+    console.warn("⚠️ No diff found for this PR.");
+    return;
+  }
+
+  // 2. Parse files and changes
+  const parsedFiles = parseDiff(diff);
+  console.log(`📁 Found ${parsedFiles.length} files in PR diff.`);
+
+  const commentsToPost = [];
+  const filesToReview = [];
+
+  for (const file of parsedFiles) {
+    // Check if file is supported
+    const ext = file.path.split('.').pop()?.toLowerCase();
+    const validExtensions = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'go', 'rs', 'cpp', 'h', 'cs', 'css', 'html', 'php', 'rb', 'sql'];
+    if (!ext || !validExtensions.includes(ext) || file.changes.length === 0) {
+      continue;
+    }
+
+    // Run local secrets scanner
+    const secretFindings = scanSecretsInChanges(file.changes);
+    secretFindings.forEach(f => {
+      commentsToPost.push({
+        path: file.path,
+        line: f.line,
+        body: `<!-- RepoSage Review Comment -->\n${f.comment}`
+      });
+    });
+
+    // Save list to send to FastAPI AI Engine
+    filesToReview.push({
+      path: file.path,
+      changes: file.changes.map(c => ({ line: c.line, content: c.content }))
+    });
+  }
+
+  if (filesToReview.length > 0) {
+    console.log(`🧠 Querying AI engine for ${filesToReview.length} files...`);
+    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    
+    try {
+      const aiResponse = await fetch(`${aiEngineUrl}/review-diff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: filesToReview })
+      });
+
+      if (aiResponse.ok) {
+        const result = await aiResponse.json();
+        if (result.comments && Array.isArray(result.comments)) {
+          result.comments.forEach(c => {
+            // Avoid duplicate comments if secrets scanner already flagged it
+            const duplicate = commentsToPost.some(exist => exist.path === c.path && exist.line === c.line);
+            if (!duplicate) {
+              commentsToPost.push(c);
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ FastAPI AI Engine error, posting local scans only:", err.message);
+    }
+  }
+
+  // 3. Post consolidated review comment back to GitHub PR
+  if (commentsToPost.length > 0) {
+    console.log(`✍️ Posting PR Review with ${commentsToPost.length} inline comments...`);
+    await octokit.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      event: 'COMMENT',
+      body: `## 🛡️ RepoSage AI Code Review Audit Completed!
+
+I have audited the code changes in this Pull Request and generated **${commentsToPost.length} actionable inline suggestions**. 
+
+Please review my feedback and suggestions below. Happy coding! 🚀`,
+      comments: commentsToPost
+    });
+  } else {
+    console.log('🎉 No code issues or recommendations found. Posting approval review...');
+    await octokit.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      event: 'APPROVE',
+      body: `## 🛡️ RepoSage AI Code Review Audit Completed!
+
+🎉 Outstanding work! I have scanned the PR and found **0 issues**. Your changes look pristine, clean, and optimized! Approved! 🚀`
+    });
+  }
+}
 
 // 🟢 Helper for Mock AI Review (Provides instant feedback when python server is offline)
 function mockAIReview(files, model = 'llama-3.3-70b-versatile') {

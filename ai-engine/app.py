@@ -218,6 +218,104 @@ Guidelines:
         print(f"❌ Groq Chat API Call Failed: {e}")
         raise HTTPException(status_code=500, detail=f"Groq API chat failed: {str(e)}")
 
+class DiffChange(BaseModel):
+    line: int
+    content: str
+
+class FileChanges(BaseModel):
+    path: str
+    changes: List[DiffChange]
+
+class ReviewDiffRequest(BaseModel):
+    files: List[FileChanges]
+    model: Optional[str] = "llama-3.3-70b-versatile"
+
+# 🟢 Route: AI Pull Request Review (Reviews specific file code additions/diffs)
+@app.post("/review-diff")
+async def review_diff(request: ReviewDiffRequest):
+    if not groq_client:
+        raise HTTPException(status_code=500, detail="Groq API client is not configured on this engine.")
+    
+    files = request.files
+    comments = []
+
+    # Model mapping for Groq
+    groq_model = "llama-3.3-70b-versatile"
+    req_model = request.model.lower() if request.model else ""
+    if "deepseek" in req_model:
+        groq_model = "deepseek-r1-distill-llama-70b"
+    elif "llama-3.1" in req_model or "8b" in req_model:
+        groq_model = "llama-3.1-8b-instant"
+    elif "gemma" in req_model:
+        groq_model = "gemma2-9b-it"
+
+    print(f"📡 Forwarding PR diff reviews to Groq using model: {groq_model}")
+
+    for file in files:
+        if len(file.changes) == 0:
+            continue
+        
+        changes_text = "\n".join([f"Line {c.line}: {c.content}" for c in file.changes])
+        
+        review_prompt = f"""You are a Senior Staff Engineer performing an automated Pull Request code review.
+Analyze the following code additions in the file "{file.path}". 
+Identify any logical bugs, security threats (API key leaks, hardcoded credentials, SQL injection, null references), naming/style issues, or performance optimization opportunities.
+
+Code additions with line numbers:
+{changes_text}
+
+You MUST reply ONLY in a valid JSON array format. Do not wrap in markdown quotes, do not explain.
+Format your JSON precisely as:
+[
+  {{
+    "line": 12,
+    "type": "bug | security | optimization | style",
+    "comment": "### 🐞 Bug Title\\n\\nClear, constructive description of the issue.\\n\\n#### 💡 Actionable Suggestion\\n\\n```language\\n// corrected code\\n```"
+  }}
+]
+If no issues are found, reply with an empty array: []"""
+
+        try:
+            # We specify response_format={"type": "json_object"} to enforce JSON output. 
+            # Note: Groq expects a schema or standard JSON. We ask for a JSON object in system instructions 
+            # but wrap the final prompt details to enforce a list or an object that holds the array list.
+            completion = groq_client.chat.completions.create(
+                model=groq_model,
+                messages=[{"role": "user", "content": review_prompt}],
+                temperature=0.2,
+                response_format={"type": "json_object"}
+            )
+            content = completion.choices[0].message.content
+            
+            # Groq's response_format type json_object requires the output to be a valid JSON object.
+            # An array [ ... ] is valid JSON, but some parser configurations prefer an object wrapper { "reviews": [ ... ] }.
+            # To handle both safely:
+            data = json.loads(content)
+            issues = []
+            if isinstance(data, list):
+                issues = data
+            elif isinstance(data, dict):
+                # Search for any array list value inside the dictionary
+                for key, val in data.items():
+                    if isinstance(val, list):
+                        issues = val
+                        break
+            
+            if isinstance(issues, list):
+                for issue in issues:
+                    line_num = issue.get("line")
+                    comment_body = issue.get("comment")
+                    if line_num and comment_body:
+                        comments.append({
+                            "path": file.path,
+                            "line": int(line_num),
+                            "body": f"<!-- RepoSage Review Comment -->\n{comment_body}"
+                        })
+        except Exception as e:
+            print(f"⚠️ Error reviewing file {file.path} on Groq: {e}")
+            
+    return {"comments": comments}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

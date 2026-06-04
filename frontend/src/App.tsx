@@ -11,11 +11,12 @@ import {
   AlertOctagon, 
   AlertTriangle,
   Download, 
-  Info,
   Layers,
   Code2,
   MessageSquare,
-  Send
+  Send,
+  Copy,
+  Check
 } from 'lucide-react';
 import mermaid from 'mermaid';
 
@@ -146,6 +147,55 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
   );
 }
 
+interface CopyButtonProps {
+  text: string;
+  style?: React.CSSProperties;
+  showText?: boolean;
+}
+
+function CopyButton({ text, style, showText = false }: CopyButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '4px 8px',
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        justifyContent: 'center',
+        color: copied ? '#22c55e' : '#9ca3af',
+        transition: 'all 0.2s ease',
+        ...style
+      }}
+      title={copied ? "Copied!" : "Copy Code"}
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+      {showText && (
+        <span style={{ fontSize: '11px', fontWeight: 600 }}>
+          {copied ? "Copied!" : "Copy"}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export default function App() {
   // Input State
   const [repoUrl, setRepoUrl] = useState('');
@@ -162,6 +212,163 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
+
+  // Automated Issue Generator States
+  const [isGssocLabelingEnabled, setIsGssocLabelingEnabled] = useState(true);
+  const [creatingIssues, setCreatingIssues] = useState<Record<string, boolean>>({});
+  const [createdIssues, setCreatedIssues] = useState<Record<string, string>>({});
+  const [readmeViewMode, setReadmeViewMode] = useState<'raw' | 'preview'>('preview');
+
+  // Simple markdown compiler for premium preview rendering
+  const renderMarkdown = (md: string) => {
+    const lines = md.split('\n');
+    let inCodeBlock = false;
+    let codeBlockLines: string[] = [];
+
+    return lines.map((line, idx) => {
+      // Handle multi-line code blocks
+      if (line.trim().startsWith('```')) {
+        if (inCodeBlock) {
+          inCodeBlock = false;
+          const codeContent = codeBlockLines.join('\n');
+          codeBlockLines = [];
+          return (
+            <div key={idx} style={{ position: 'relative', margin: '8px 0' }}>
+              <pre style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '10px', paddingRight: '40px', overflowX: 'auto', margin: 0 }}>
+                <code style={{ fontFamily: 'monospace', fontSize: '11px', color: '#c084fc' }}>{codeContent}</code>
+              </pre>
+              <CopyButton 
+                text={codeContent} 
+                style={{ 
+                  position: 'absolute', 
+                  top: '8px', 
+                  right: '8px', 
+                  background: 'rgba(15, 23, 42, 0.6)', 
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  padding: '4px'
+                }} 
+              />
+            </div>
+          );
+        } else {
+          inCodeBlock = true;
+          return null;
+        }
+      }
+
+      if (inCodeBlock) {
+        codeBlockLines.push(line);
+        return null;
+      }
+
+      // H1 Header
+      if (line.startsWith('# ')) {
+        return <h1 key={idx} style={{ fontSize: '18px', fontWeight: 800, color: '#f3f4f6', margin: '14px 0 8px 0', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '4px', fontFamily: 'inherit' }}>{line.slice(2)}</h1>;
+      }
+      // H2 Header
+      if (line.startsWith('## ')) {
+        return <h2 key={idx} style={{ fontSize: '14px', fontWeight: 700, color: '#e5e7eb', margin: '12px 0 6px 0', fontFamily: 'inherit' }}>{line.slice(3)}</h2>;
+      }
+      // H3 Header
+      if (line.startsWith('### ')) {
+        return <h3 key={idx} style={{ fontSize: '12px', fontWeight: 600, color: '#d1d5db', margin: '10px 0 4px 0', fontFamily: 'inherit' }}>{line.slice(4)}</h3>;
+      }
+      
+      // Inline parser helper for bold and code ticks
+      const parseInlineStyles = (text: string) => {
+        const codeParts = text.split('`');
+        return codeParts.map((codePart, cIdx) => {
+          if (cIdx % 2 === 1) {
+            return <code key={cIdx} style={{ background: 'rgba(255,255,255,0.06)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '11px', color: '#a855f7' }}>{codePart}</code>;
+          }
+          const boldParts = codePart.split('**');
+          return boldParts.map((boldPart, bIdx) => {
+            if (bIdx % 2 === 1) {
+              return <strong key={bIdx} style={{ color: '#fff', fontWeight: 700 }}>{boldPart}</strong>;
+            }
+            return boldPart;
+          });
+        });
+      };
+
+      // Unordered List Items
+      if (line.trim().startsWith('- ')) {
+        const content = line.trim().slice(2);
+        return (
+          <li key={idx} style={{ marginLeft: '16px', marginBottom: '4px', fontSize: '12px', color: '#d1d5db', listStyleType: 'disc', fontFamily: 'inherit', lineHeight: 1.6 }}>
+            {parseInlineStyles(content)}
+          </li>
+        );
+      }
+      // Empty spacing line
+      if (!line.trim()) {
+        return <div key={idx} style={{ height: '6px' }} />;
+      }
+      
+      // Regular Paragraphs
+      return (
+        <p key={idx} style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.6, fontFamily: 'inherit' }}>
+          {parseInlineStyles(line)}
+        </p>
+      );
+    });
+  };
+
+  const handleCreateGitHubIssue = async (file: string, item: ReviewItem, category: string, itemKey: string) => {
+    if (!analysisResult) return;
+    
+    setCreatingIssues(prev => ({ ...prev, [itemKey]: true }));
+    
+    const title = `[AI Finding] ${category.toUpperCase()}: ${item.type} in ${file} (Line ${item.line})`;
+    
+    const body = `## 🛡️ RepoSage AI Code Audit Finding\n\n` +
+      `An automated AI code audit detected a potential finding in the codebase.\n\n` +
+      `### 📄 Context\n` +
+      `- **File**: \`${file}\`\n` +
+      `- **Line**: ${item.line}\n` +
+      `- **Category**: \`${category.toUpperCase()}\`\n\n` +
+      `### 📝 Description\n` +
+      `${item.description}\n\n` +
+      `### 💡 Suggested Actionable Remediation\n` +
+      `\`\`\`\n${item.suggestion}\n\`\`\`\n\n` +
+      `---\n` +
+      `*Generated automatically by **RepoSage AI Copilot**.*`;
+      
+    const labels = isGssocLabelingEnabled 
+      ? ['gssoc26', 'good-first-issue', category] 
+      : [category];
+
+    try {
+      const response = await fetch('http://localhost:5000/api/issues/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoUrl,
+          title,
+          body,
+          labels
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create GitHub Issue');
+      }
+
+      const data = await response.json();
+      if (data.success && data.issueUrl) {
+        setCreatedIssues(prev => ({ ...prev, [itemKey]: data.issueUrl }));
+      } else {
+        throw new Error('Response did not contain issue URL');
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(`Error creating issue: ${err.message}`);
+    } finally {
+      setCreatingIssues(prev => ({ ...prev, [itemKey]: false }));
+    }
+  };
+
 
   // AI Chat with Repository States
   const [activeDashboardView, setActiveDashboardView] = useState<'audit' | 'chat' | 'diagram'>('audit');
@@ -207,20 +414,54 @@ export default function App() {
   };
 
   // GSSoC Issues State (Mentorship Panel)
-  const [assignedContributors, setAssignedContributors] = useState<Record<string, string>>({
-    'copy-code-button': 'Unassigned',
-    'secret-scanning-rules': 'Unassigned',
-    'api-documentation': 'Unassigned',
-    'persist-assignments': 'Unassigned'
+  const [assignedContributors, setAssignedContributors] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('reposage_contributor_assignments');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved assignments", e);
+      }
+    }
+    return {
+      'copy-code-button': 'Unassigned',
+      'secret-scanning-rules': 'Unassigned',
+      'api-documentation': 'Unassigned',
+      'persist-assignments': 'Unassigned',
+      'theme-toggle': 'Unassigned',
+      'file-filter-search': 'Unassigned',
+      'html-report-exporter': 'Unassigned',
+      'complexity-metrics': 'Unassigned'
+    };
   });
 
   const handleAssignContributor = (issueKey: string) => {
     const name = prompt("Enter the contributor's GitHub username to assign this issue:");
     if (name) {
-      setAssignedContributors(prev => ({
-        ...prev,
+      const updated = {
+        ...assignedContributors,
         [issueKey]: name
-      }));
+      };
+      setAssignedContributors(updated);
+      localStorage.setItem('reposage_contributor_assignments', JSON.stringify(updated));
+    }
+  };
+
+  const handleResetAssignments = () => {
+    const confirmReset = window.confirm("Are you sure you want to reset all contributor assignments?");
+    if (confirmReset) {
+      const initial = {
+        'copy-code-button': 'Unassigned',
+        'secret-scanning-rules': 'Unassigned',
+        'api-documentation': 'Unassigned',
+        'persist-assignments': 'Unassigned',
+        'theme-toggle': 'Unassigned',
+        'file-filter-search': 'Unassigned',
+        'html-report-exporter': 'Unassigned',
+        'complexity-metrics': 'Unassigned'
+      };
+      setAssignedContributors(initial);
+      localStorage.setItem('reposage_contributor_assignments', JSON.stringify(initial));
     }
   };
 
@@ -573,6 +814,75 @@ export default function App() {
                 </button>
               </div>
 
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(168,85,247,0.05)', borderRadius: '6px', border: '1px solid rgba(168,85,247,0.1)' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f3f4f6', display: 'block' }}>Implement Theme Toggle</span>
+                  <span style={{ fontSize: '10px', color: '#a855f7' }}>🏷️ frontend / styling</span>
+                </div>
+                <button 
+                  onClick={() => handleAssignContributor('theme-toggle')}
+                  style={{ background: assignedContributors['theme-toggle'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {assignedContributors['theme-toggle']}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(59,130,246,0.05)', borderRadius: '6px', border: '1px solid rgba(59,130,246,0.1)' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f3f4f6', display: 'block' }}>File tree filter search</span>
+                  <span style={{ fontSize: '10px', color: '#3b82f6' }}>🏷️ frontend</span>
+                </div>
+                <button 
+                  onClick={() => handleAssignContributor('file-filter-search')}
+                  style={{ background: assignedContributors['file-filter-search'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {assignedContributors['file-filter-search']}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(168,85,247,0.05)', borderRadius: '6px', border: '1px solid rgba(168,85,247,0.1)' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f3f4f6', display: 'block' }}>Export Report to HTML</span>
+                  <span style={{ fontSize: '10px', color: '#a855f7' }}>🏷️ backend</span>
+                </div>
+                <button 
+                  onClick={() => handleAssignContributor('html-report-exporter')}
+                  style={{ background: assignedContributors['html-report-exporter'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {assignedContributors['html-report-exporter']}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(34,197,94,0.05)', borderRadius: '6px', border: '1px solid rgba(34,197,94,0.1)' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f3f4f6', display: 'block' }}>Complexity Metrics Analyzer</span>
+                  <span style={{ fontSize: '10px', color: '#22c55e' }}>🏷️ backend</span>
+                </div>
+                <button 
+                  onClick={() => handleAssignContributor('complexity-metrics')}
+                  style={{ background: assignedContributors['complexity-metrics'] === 'Unassigned' ? '#a855f7' : '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {assignedContributors['complexity-metrics']}
+                </button>
+              </div>
+              <button
+                onClick={handleResetAssignments}
+                style={{
+                  marginTop: '14px',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: '#f87171',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease-in-out'
+                }}
+              >
+                Reset Assignments
+              </button>
             </div>
           </div>
 
@@ -731,8 +1041,24 @@ export default function App() {
                     {/* Central Audit Hub */}
                     <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
                       <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px', marginBottom: '16px' }}>
-                        <span style={{ fontSize: '10px', background: '#3b82f6', color: '#eff6ff', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, textTransform: 'uppercase' }}>File Audit</span>
-                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '4px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '10px', background: '#3b82f6', color: '#eff6ff', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, textTransform: 'uppercase' }}>File Audit</span>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '11px', color: '#9ca3af' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isGssocLabelingEnabled} 
+                              onChange={(e) => setIsGssocLabelingEnabled(e.target.checked)}
+                              style={{
+                                cursor: 'pointer',
+                                accentColor: '#a855f7',
+                                width: '13px',
+                                height: '13px'
+                              }}
+                            />
+                            <span>GSSoC Labeling</span>
+                          </label>
+                        </div>
+                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '6px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           📄 {selectedFile || 'Select a file'}
                         </h3>
                       </div>
@@ -824,30 +1150,90 @@ export default function App() {
                       {/* Audit Items Render */}
                       <div style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '54vh', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {selectedFile && analysisResult.analysis.fileReviews[selectedFile]?.[activeTab]?.length > 0 ? (
-                          analysisResult.analysis.fileReviews[selectedFile][activeTab].map((item, index) => (
-                            <div 
-                              key={index}
-                              style={{
-                                padding: '12px 14px',
-                                borderRadius: '8px',
-                                background: 'rgba(15,23,42,0.4)',
-                                borderLeft: '3px solid',
-                                borderColor: activeTab === 'bugs' ? '#f97316' : activeTab === 'security' ? '#ef4444' : activeTab === 'optimization' ? '#22c55e' : '#3b82f6'
-                              }}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 700, color: '#f3f4f6' }}>{item.type}</span>
-                                <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.08)', color: '#9ca3af', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                                  Line {item.line}
-                                </span>
+                          analysisResult.analysis.fileReviews[selectedFile][activeTab].map((item, index) => {
+                            const itemKey = `${selectedFile}-${activeTab}-${index}`;
+                            return (
+                              <div 
+                                key={index}
+                                style={{
+                                  padding: '12px 14px',
+                                  borderRadius: '8px',
+                                  background: 'rgba(15,23,42,0.4)',
+                                  borderLeft: '3px solid',
+                                  borderColor: activeTab === 'bugs' ? '#f97316' : activeTab === 'security' ? '#ef4444' : activeTab === 'optimization' ? '#22c55e' : '#3b82f6'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#f3f4f6' }}>{item.type}</span>
+                                  <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.08)', color: '#9ca3af', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                    Line {item.line}
+                                  </span>
+                                </div>
+                                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.4 }}>{item.description}</p>
+                                <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '8px 10px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>💡 AI Recommendation</span>
+                                    <CopyButton text={item.suggestion} style={{ padding: '2px' }} />
+                                  </div>
+                                  <code style={{ fontSize: '11px', color: '#a855f7', wordBreak: 'break-all' }}>{item.suggestion}</code>
+                                </div>
+                                <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                                  {createdIssues[itemKey] ? (
+                                    <a 
+                                      href={createdIssues[itemKey]} 
+                                      target="_blank" 
+                                      rel="noreferrer"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: 'rgba(34,197,94,0.1)',
+                                        border: '1px solid rgba(34,197,94,0.3)',
+                                        color: '#4ade80',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        fontSize: '11px',
+                                        fontWeight: 600,
+                                        textDecoration: 'none',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      🟢 View Issue on GitHub
+                                    </a>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleCreateGitHubIssue(selectedFile, item, activeTab, itemKey)}
+                                      disabled={creatingIssues[itemKey]}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: 'rgba(168,85,247,0.1)',
+                                        border: '1px solid rgba(168,85,247,0.3)',
+                                        color: '#c084fc',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        fontSize: '11px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        opacity: creatingIssues[itemKey] ? 0.6 : 1,
+                                        pointerEvents: creatingIssues[itemKey] ? 'none' : 'auto'
+                                      }}
+                                    >
+                                      {creatingIssues[itemKey] ? (
+                                        <>
+                                          <span className="spin-slow" style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #c084fc', borderTopColor: 'transparent', borderRadius: '50%' }}></span>
+                                          Creating...
+                                        </>
+                                      ) : (
+                                        <>🚨 Create GitHub Issue</>
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                              <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#d1d5db', lineHeight: 1.4 }}>{item.description}</p>
-                              <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '8px 10px' }}>
-                                <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px' }}>💡 AI Recommendation</span>
-                                <code style={{ fontSize: '11px', color: '#a855f7', wordBreak: 'break-all' }}>{item.suggestion}</code>
-                              </div>
-                            </div>
-                          ))
+                            );
+                          })
                         ) : (
                           <div style={{ textAlign: 'center', padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                             <CheckCircle size={32} style={{ color: '#22c55e' }} />
@@ -868,17 +1254,69 @@ export default function App() {
                           <span style={{ fontSize: '10px', background: '#a855f7', color: '#fae8ff', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, textTransform: 'uppercase' }}>Documentation</span>
                           <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '4px 0 0 0' }}>📄 GENERATED_README.md</h3>
                         </div>
-                        <button 
-                          onClick={downloadReadme}
-                          style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          <Download size={14} /> Download
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '2px' }}>
+                            <button
+                              onClick={() => setReadmeViewMode('preview')}
+                              style={{
+                                background: readmeViewMode === 'preview' ? 'rgba(168,85,247,0.15)' : 'transparent',
+                                border: 'none',
+                                color: readmeViewMode === 'preview' ? '#c084fc' : '#9ca3af',
+                                borderRadius: '4px',
+                                padding: '4px 10px',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Preview
+                            </button>
+                            <button
+                              onClick={() => setReadmeViewMode('raw')}
+                              style={{
+                                background: readmeViewMode === 'raw' ? 'rgba(168,85,247,0.15)' : 'transparent',
+                                border: 'none',
+                                color: readmeViewMode === 'raw' ? '#c084fc' : '#9ca3af',
+                                borderRadius: '4px',
+                                padding: '4px 10px',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Raw
+                            </button>
+                          </div>
+                           <CopyButton 
+                            text={analysisResult.analysis.generatedReadme} 
+                            showText={true}
+                            style={{ 
+                              background: 'rgba(168,85,247,0.1)', 
+                              border: '1px solid rgba(168,85,247,0.3)', 
+                              color: '#c084fc', 
+                              borderRadius: '6px', 
+                              padding: '6px 12px', 
+                              cursor: 'pointer' 
+                            }} 
+                          />
+                          <button 
+                            onClick={downloadReadme}
+                            style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc', borderRadius: '6px', padding: '6px 12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <Download size={14} /> Download
+                          </button>
+                        </div>
                       </div>
 
-                      <div style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '60vh', background: 'rgba(15,23,42,0.4)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '12px', lineHeight: 1.5, color: '#d1d5db', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-                        {analysisResult.analysis.generatedReadme}
-                      </div>
+                      {readmeViewMode === 'raw' ? (
+                        <div style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '60vh', background: 'rgba(15,23,42,0.4)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '12px', lineHeight: 1.5, color: '#d1d5db', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+                          {analysisResult.analysis.generatedReadme}
+                        </div>
+                      ) : (
+                        <div style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '60vh', background: 'rgba(15,23,42,0.4)', padding: '16px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column' }}>
+                          {renderMarkdown(analysisResult.analysis.generatedReadme)}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
