@@ -1079,50 +1079,62 @@ export default function App() {
                       </button>
                     ))}
                   </div>
-                  {Object.keys(analysisResult.analysis.fileReviews)
-                    .filter((filePath) => {
-                      const matchesSearch = filePath.toLowerCase().includes(fileFilterQuery.toLowerCase());
-                      if (!matchesSearch) return false;
-                      
-                      const ext = filePath.split('.').pop()?.toLowerCase();
-                      if (activeExtFilter === 'JS/TS') {
-                        return ['js', 'jsx', 'ts', 'tsx'].includes(ext || '');
-                      }
-                      if (activeExtFilter === 'Python') {
-                        return ext === 'py';
-                      }
-                      if (activeExtFilter === 'CSS/HTML') {
-                        return ['css', 'html'].includes(ext || '');
-                      }
-                      return true; // All
-                    })
-                    .map((filePath) => (
-                    <button
-                      key={filePath}
-                      onClick={() => setSelectedFile(filePath)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        background: selectedFile === filePath ? 'rgba(59,130,246,0.1)' : 'transparent',
-                        border: selectedFile === filePath ? '1px solid rgba(59,130,246,0.3)' : '1px solid transparent',
-                        color: selectedFile === filePath ? '#60a5fa' : '#d1d5db',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: selectedFile === filePath ? 600 : 500,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      <FileCode size={14} style={{ color: selectedFile === filePath ? '#60a5fa' : '#9ca3af' }} />
-                      {filePath}
-                    </button>
-                  ))}
+                  {(() => {
+                    const filteredFiles = Object.keys(analysisResult.analysis.fileReviews)
+                      .filter((filePath) => {
+                        const matchesSearch = filePath.toLowerCase().includes(fileFilterQuery.toLowerCase());
+                        if (!matchesSearch) return false;
+                        
+                        const ext = filePath.split('.').pop()?.toLowerCase();
+                        if (activeExtFilter === 'JS/TS') {
+                          return ['js', 'jsx', 'ts', 'tsx'].includes(ext || '');
+                        }
+                        if (activeExtFilter === 'Python') {
+                          return ext === 'py';
+                        }
+                        if (activeExtFilter === 'CSS/HTML') {
+                          return ['css', 'html'].includes(ext || '');
+                        }
+                        return true; // All
+                      });
+
+                    if (filteredFiles.length === 0) {
+                      return (
+                        <div style={{ textAlign: 'center', padding: '24px 10px', color: 'var(--subtext-color)', fontSize: '11px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                          <span>🚫 No matching files found</span>
+                        </div>
+                      );
+                    }
+
+                    return filteredFiles.map((filePath) => (
+                      <button
+                        key={filePath}
+                        onClick={() => setSelectedFile(filePath)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          background: selectedFile === filePath ? 'rgba(59,130,246,0.1)' : 'transparent',
+                          border: selectedFile === filePath ? '1px solid rgba(59,130,246,0.3)' : '1px solid transparent',
+                          color: selectedFile === filePath ? '#60a5fa' : 'var(--text-color)',
+                          textAlign: 'left',
+                          fontSize: '12px',
+                          fontWeight: selectedFile === filePath ? 600 : 500,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          transition: 'all 0.15s'
+                        }}
+                      >
+                        <FileCode size={14} style={{ color: selectedFile === filePath ? '#60a5fa' : 'var(--subtext-color)' }} />
+                        {filePath}
+                      </button>
+                    ));
+                  })()}
                 </div>
 
                 {activeDashboardView === 'audit' && (
