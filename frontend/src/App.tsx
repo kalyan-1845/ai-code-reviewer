@@ -653,10 +653,10 @@ export default function App() {
             <Sparkles size={24} style={{ color: 'white' }} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, background: 'linear-gradient(135deg, #f3f4f6 0%, #9ca3af 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              RepoSage <span style={{ fontSize: '12px', fontWeight: 600, color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)', padding: '2px 8px', borderRadius: '20px', marginLeft: '6px', background: 'rgba(168,85,247,0.1)' }}>GSSoC '26 MVP</span>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, background: 'linear-gradient(135deg, var(--text-color) 0%, var(--subtext-color) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              RepoSage <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--highlight-color)', border: '1px solid rgba(168,85,247,0.3)', padding: '2px 8px', borderRadius: '20px', marginLeft: '6px', background: 'rgba(168,85,247,0.1)' }}>GSSoC '26 MVP</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '11px', color: '#9ca3af' }}>Open Source AI Developer Copilot</p>
+            <p style={{ margin: 0, fontSize: '11px', color: 'var(--subtext-color)' }}>Open Source AI Developer Copilot</p>
           </div>
         </div>
         

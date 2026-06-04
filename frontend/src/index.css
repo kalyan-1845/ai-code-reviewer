@@ -81,9 +81,9 @@ h1, h2, h3, h4 {
 
 /* Tailwind Utilities Mockup (in case tailwind isn't configured, these ensure the dashboard layout works natively) */
 .glass-panel {
-  background: rgba(17, 24, 39, 0.7);
+  background: var(--panel-bg);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
 }
 
