@@ -385,9 +385,14 @@ app.post('/api/analyze', async (req, res) => {
         reviewResult = mockAIReview(files, model);
       }
 
-      // 3. Inject Regex-based Secret Detections into the analysis result
+      // 3. Inject Regex-based Secret Detections & Complexity Metrics into the analysis result
       if (reviewResult && reviewResult.fileReviews) {
+        reviewResult.metrics = {};
+        
         files.forEach(file => {
+          // Calculate complexity metrics
+          reviewResult.metrics[file.name] = analyzeComplexity(file.content, file.name);
+
           const secretFindings = scanSecrets(file.content);
           if (secretFindings.length > 0) {
             // Make sure the file exists in reviews
