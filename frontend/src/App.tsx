@@ -1038,7 +1038,25 @@ export default function App() {
                 
                 {/* File Tree List */}
                 <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '72vh' }}>
-                  <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>File Navigator</h3>
+                  <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.5px' }}>File Navigator</h3>
+                  <input
+                    type="text"
+                    value={fileFilterQuery}
+                    onChange={(e) => setFileFilterQuery(e.target.value)}
+                    placeholder="Search files..."
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      background: 'var(--input-bg)',
+                      border: '1px solid var(--input-border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-color)',
+                      fontSize: '11px',
+                      boxSizing: 'border-box',
+                      marginBottom: '8px',
+                      outline: 'none'
+                    }}
+                  />
                   {Object.keys(analysisResult.analysis.fileReviews).map((filePath) => (
                     <button
                       key={filePath}
