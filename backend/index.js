@@ -667,8 +667,138 @@ app.post('/api/reports/html', (req, res) => {
     return res.status(400).json({ error: 'Repository name and analysis result are required.' });
   }
 
-  // Placeholder for HTML template generation
-  const html = `<!DOCTYPE html><html><body><h1>Audit Report for ${repoName}</h1></body></html>`;
+  let fileRows = '';
+  
+  if (analysis && analysis.fileReviews) {
+    Object.keys(analysis.fileReviews).forEach(file => {
+      const review = analysis.fileReviews[file];
+      const allFindings = [
+        ...(review.bugs || []).map(f => ({ ...f, category: 'Bug' })),
+        ...(review.security || []).map(f => ({ ...f, category: 'Security' })),
+        ...(review.optimization || []).map(f => ({ ...f, category: 'Optimization' })),
+        ...(review.styling || []).map(f => ({ ...f, category: 'Styling' }))
+      ];
+      
+      allFindings.forEach(f => {
+        fileRows += `
+          <tr>
+            <td><strong>${file}</strong></td>
+            <td><span class="badge badge-${f.category.toLowerCase()}">${f.category}</span></td>
+            <td>${f.line}</td>
+            <td><strong>${f.type}</strong></td>
+            <td>${f.description}</td>
+            <td><code class="code-font">${f.suggestion.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></td>
+          </tr>
+        `;
+      });
+    });
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>RepoSage Code Audit - ${repoName}</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background: #0f172a;
+          color: #f1f5f9;
+          margin: 0;
+          padding: 40px;
+        }
+        .container {
+          max-width: 1200px;
+          margin: 0 auto;
+          background: #1e293b;
+          border-radius: 12px;
+          padding: 30px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+          border: 1px solid rgba(255,255,255,0.05);
+        }
+        h1 {
+          font-size: 28px;
+          margin-top: 0;
+          color: #a855f7;
+          border-bottom: 2px solid rgba(168,85,247,0.2);
+          padding-bottom: 15px;
+        }
+        .meta {
+          font-size: 14px;
+          color: #94a3b8;
+          margin-bottom: 25px;
+          line-height: 1.6;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 20px;
+        }
+        th, td {
+          padding: 12px 15px;
+          text-align: left;
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+          font-size: 13px;
+        }
+        th {
+          background-color: rgba(255,255,255,0.03);
+          color: #e2e8f0;
+          font-weight: 600;
+        }
+        tr:hover {
+          background-color: rgba(255,255,255,0.01);
+        }
+        .badge {
+          display: inline-block;
+          padding: 3px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+        .badge-bug { background: #ef4444; color: white; }
+        .badge-security { background: #f59e0b; color: #0f172a; }
+        .badge-optimization { background: #3b82f6; color: white; }
+        .badge-styling { background: #10b981; color: white; }
+        .code-font {
+          font-family: monospace;
+          background: rgba(0,0,0,0.2);
+          padding: 4px 8px;
+          border-radius: 4px;
+          color: #c084fc;
+          font-size: 12px;
+          white-space: pre-wrap;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🛡️ RepoSage AI Code Audit Report</h1>
+        <div class="meta">
+          <strong>Repository Name:</strong> ${repoName}<br>
+          <strong>Report Timestamp:</strong> ${new Date().toLocaleString()}<br>
+          <strong>Audited with:</strong> RepoSage GSSoC '26 Audit Engine
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>File Path</th>
+              <th>Category</th>
+              <th>Line</th>
+              <th>Finding Type</th>
+              <th>Description</th>
+              <th>Actionable Suggestion</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${fileRows || '<tr><td colspan="6" style="text-align:center;">🎉 No issues found! Your codebase is clean.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </body>
+    </html>
+  `;
   
   res.setHeader('Content-Type', 'text/html');
   res.setHeader('Content-Disposition', `attachment; filename="${repoName}_AUDIT_REPORT.html"`);
