@@ -16,7 +16,9 @@ import {
   MessageSquare,
   Send,
   Copy,
-  Check
+  Check,
+  Sun,
+  Moon
 } from 'lucide-react';
 import mermaid from 'mermaid';
 
@@ -667,6 +669,24 @@ export default function App() {
               <Download size={14} /> Export Audit Report
             </button>
           )}
+          <button 
+            onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+            style={{ 
+              background: 'rgba(255,255,255,0.05)', 
+              border: '1px solid var(--border-color)', 
+              borderRadius: '6px', 
+              padding: '6px 10px', 
+              cursor: 'pointer', 
+              color: 'var(--text-color)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              transition: 'all 0.2s'
+            }}
+            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
           <a href="https://github.com" target="_blank" rel="noreferrer" style={{ color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none', fontSize: '13px', fontWeight: 500 }} className="hover:text-white">
             <Github size={18} /> Codebase
           </a>
