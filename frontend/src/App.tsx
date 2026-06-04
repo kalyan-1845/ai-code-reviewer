@@ -645,6 +645,10 @@ export default function App() {
     document.body.removeChild(element);
   };
 
+  const downloadHTMLReport = () => {
+    console.log("HTML report exporter triggered");
+  };
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
       
@@ -664,12 +668,20 @@ export default function App() {
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           {analysisResult && (
-            <button 
-              onClick={downloadAuditReport}
-              style={{ background: 'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 12px rgba(168,85,247,0.2)' }}
-            >
-              <Download size={14} /> Export Audit Report
-            </button>
+            <>
+              <button 
+                onClick={downloadAuditReport}
+                style={{ background: 'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 12px rgba(168,85,247,0.2)' }}
+              >
+                <Download size={14} /> Export MD
+              </button>
+              <button 
+                onClick={downloadHTMLReport}
+                style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', color: '#22c55e', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s' }}
+              >
+                <FileCode size={14} /> Export HTML
+              </button>
+            </>
           )}
           <button 
             onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
