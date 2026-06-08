@@ -250,18 +250,54 @@ function scanSecretsInChanges(changes) {
 function analyzeComplexity(fileContent, filePath) {
   const lines = fileContent.split('\n');
   const totalLines = lines.length;
+  let emptyLines = 0;
   let commentLines = 0;
   let functionCount = 0;
 
   const ext = path.extname(filePath).toLowerCase();
 
+  // Languages that use C-style block comments /* ... */
+  const cStyleExts = ['.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.h', '.cs', '.go', '.rs', '.php', '.css'];
+  const usesCStyleBlocks = cStyleExts.includes(ext);
+  const usesHtmlBlocks = (ext === '.html');
+  let inBlockComment = false;
+
   lines.forEach(line => {
     const trimmed = line.trim();
-    if (trimmed === '') return;
 
-    // Comment Detection
-    if (['.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.h', '.cs', '.go', '.rs', '.php'].includes(ext)) {
-      if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+    // Empty line detection
+    if (trimmed === '') {
+      emptyLines++;
+      return;
+    }
+
+    // --- Comment Detection with multi-line block tracking ---
+
+    if (usesCStyleBlocks) {
+      // Currently inside a /* ... */ block comment
+      if (inBlockComment) {
+        commentLines++;
+        if (trimmed.includes('*/')) {
+          inBlockComment = false;
+        }
+        return;
+      }
+
+      // Single-line comment: //
+      if (trimmed.startsWith('//')) {
+        commentLines++;
+      }
+      // Single-line block comment: /* ... */ on same line
+      else if (trimmed.startsWith('/*') && trimmed.includes('*/')) {
+        commentLines++;
+      }
+      // Multi-line block comment opening: /*
+      else if (trimmed.startsWith('/*')) {
+        commentLines++;
+        inBlockComment = true;
+      }
+      // Line starting with * inside a doc-comment block (e.g. JSDoc)
+      else if (trimmed.startsWith('*')) {
         commentLines++;
       }
     } else if (ext === '.py' || ext === '.rb') {
@@ -269,16 +305,28 @@ function analyzeComplexity(fileContent, filePath) {
         commentLines++;
       }
     } else if (ext === '.sql') {
-      if (trimmed.startsWith('--') || trimmed.startsWith('/*')) {
+      if (inBlockComment) {
         commentLines++;
+        if (trimmed.includes('*/')) {
+          inBlockComment = false;
+        }
+        return;
       }
-    } else if (ext === '.html' || ext === '.css') {
-      if (trimmed.startsWith('<!--') || trimmed.startsWith('/*')) {
+      if (trimmed.startsWith('--')) {
+        commentLines++;
+      } else if (trimmed.startsWith('/*') && trimmed.includes('*/')) {
+        commentLines++;
+      } else if (trimmed.startsWith('/*')) {
+        commentLines++;
+        inBlockComment = true;
+      }
+    } else if (usesHtmlBlocks) {
+      if (trimmed.startsWith('<!--')) {
         commentLines++;
       }
     }
 
-    // Function Detection
+    // --- Function Detection ---
     if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
       if (trimmed.includes('function ') || trimmed.includes('=>') || /^\s*(?:async\s+)?\w+\s*\([^)]*\)\s*\{/g.test(trimmed)) {
         functionCount++;
@@ -298,6 +346,7 @@ function analyzeComplexity(fileContent, filePath) {
     }
   });
 
+  const codeLines = totalLines - emptyLines - commentLines;
   const complexityScore = Math.round((totalLines / 25) + (functionCount * 3));
   let grade = 'A';
   if (complexityScore > 40) grade = 'F';
@@ -307,7 +356,9 @@ function analyzeComplexity(fileContent, filePath) {
 
   return {
     totalLines,
+    emptyLines,
     commentLines,
+    codeLines,
     functionCount,
     complexityScore,
     grade

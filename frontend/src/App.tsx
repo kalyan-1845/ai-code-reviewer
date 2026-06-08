@@ -1200,6 +1200,33 @@ export default function App() {
                         </h3>
                       </div>
 
+                      {/* Compact Metrics Summary Banner */}
+                      {selectedFile && analysisResult.analysis.metrics?.[selectedFile] && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
+                          {[
+                            { label: 'Total Lines', value: analysisResult.analysis.metrics[selectedFile].totalLines, color: '#60a5fa' },
+                            { label: 'Code Lines', value: analysisResult.analysis.metrics[selectedFile].codeLines, color: '#22c55e' },
+                            { label: 'Comments', value: analysisResult.analysis.metrics[selectedFile].commentLines, color: '#a855f7' },
+                            { label: 'Empty Lines', value: analysisResult.analysis.metrics[selectedFile].emptyLines, color: '#f59e0b' }
+                          ].map((stat) => (
+                            <div
+                              key={stat.label}
+                              style={{
+                                background: `${stat.color}08`,
+                                border: `1px solid ${stat.color}25`,
+                                borderRadius: '8px',
+                                padding: '10px 12px',
+                                textAlign: 'center',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--subtext-color)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '4px' }}>{stat.label}</span>
+                              <span style={{ fontSize: '18px', fontWeight: 800, color: stat.color, display: 'block' }}>{stat.value ?? '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {/* Audit Tabs */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', marginBottom: '16px' }}>
                         <button
@@ -1309,16 +1336,22 @@ export default function App() {
                         {selectedFile && activeTab === 'metrics' ? (
                           (() => {
                             const fileMetrics = analysisResult.analysis.metrics?.[selectedFile] || {
-                              totalLines: 145,
-                              commentLines: 32,
-                              functionCount: 7,
-                              complexityScore: 11,
-                              grade: 'B'
+                              totalLines: 0,
+                              emptyLines: 0,
+                              commentLines: 0,
+                              codeLines: 0,
+                              functionCount: 0,
+                              complexityScore: 0,
+                              grade: 'A'
                             };
                             
                             const commentDensity = fileMetrics.totalLines > 0 
                               ? Math.round((fileMetrics.commentLines / fileMetrics.totalLines) * 100) 
                               : 0;
+
+                            const codePct = fileMetrics.totalLines > 0 ? Math.round((fileMetrics.codeLines / fileMetrics.totalLines) * 100) : 0;
+                            const commentPct = fileMetrics.totalLines > 0 ? Math.round((fileMetrics.commentLines / fileMetrics.totalLines) * 100) : 0;
+                            const emptyPct = fileMetrics.totalLines > 0 ? (100 - codePct - commentPct) : 0;
 
                             const gradeColors = {
                               'A': { text: '#22c55e', bg: 'rgba(34,197,94,0.05)', border: 'rgba(34,197,94,0.15)' },
@@ -1343,23 +1376,58 @@ export default function App() {
                                   </div>
                                 </div>
 
+                                {/* Line Composition Stacked Bar */}
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '14px', borderRadius: '8px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-color)' }}>Line Composition</span>
+                                    <span style={{ fontSize: '10px', color: 'var(--subtext-color)' }}>{fileMetrics.totalLines} total lines</span>
+                                  </div>
+                                  <div style={{ height: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', display: 'flex' }}>
+                                    <div style={{ height: '100%', width: `${codePct}%`, background: '#22c55e', transition: 'width 0.5s ease-out' }} title={`Code: ${codePct}%`} />
+                                    <div style={{ height: '100%', width: `${commentPct}%`, background: '#a855f7', transition: 'width 0.5s ease-out' }} title={`Comments: ${commentPct}%`} />
+                                    <div style={{ height: '100%', width: `${emptyPct}%`, background: '#f59e0b', transition: 'width 0.5s ease-out' }} title={`Empty: ${emptyPct}%`} />
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#22c55e' }} />
+                                      <span style={{ fontSize: '10px', color: 'var(--subtext-color)', fontWeight: 600 }}>Code {codePct}%</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#a855f7' }} />
+                                      <span style={{ fontSize: '10px', color: 'var(--subtext-color)', fontWeight: 600 }}>Comments {commentPct}%</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f59e0b' }} />
+                                      <span style={{ fontSize: '10px', color: 'var(--subtext-color)', fontWeight: 600 }}>Empty {emptyPct}%</span>
+                                    </div>
+                                  </div>
+                                </div>
+
                                 {/* Details Grid */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                                  <div style={{ background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.12)', padding: '12px', borderRadius: '8px' }}>
+                                    <span style={{ fontSize: '10px', color: '#22c55e', textTransform: 'uppercase', fontWeight: 600 }}>Code Lines</span>
+                                    <h3 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text-color)', fontWeight: 800 }}>{fileMetrics.codeLines}</h3>
+                                  </div>
+                                  <div style={{ background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.12)', padding: '12px', borderRadius: '8px' }}>
+                                    <span style={{ fontSize: '10px', color: '#a855f7', textTransform: 'uppercase', fontWeight: 600 }}>Comment Lines</span>
+                                    <h3 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text-color)', fontWeight: 800 }}>{fileMetrics.commentLines}</h3>
+                                  </div>
+                                  <div style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)', padding: '12px', borderRadius: '8px' }}>
+                                    <span style={{ fontSize: '10px', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 600 }}>Empty Lines</span>
+                                    <h3 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text-color)', fontWeight: 800 }}>{fileMetrics.emptyLines}</h3>
+                                  </div>
+                                </div>
+
+                                {/* Secondary Metrics Grid */}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
                                   <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '8px' }}>
-                                    <span style={{ fontSize: '10px', color: 'var(--subtext-color)', textTransform: 'uppercase', fontWeight: 600 }}>Total SLOC</span>
+                                    <span style={{ fontSize: '10px', color: 'var(--subtext-color)', textTransform: 'uppercase', fontWeight: 600 }}>Total Lines</span>
                                     <h3 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text-color)', fontWeight: 800 }}>{fileMetrics.totalLines}</h3>
                                   </div>
                                   <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '8px' }}>
                                     <span style={{ fontSize: '10px', color: 'var(--subtext-color)', textTransform: 'uppercase', fontWeight: 600 }}>Functions</span>
                                     <h3 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text-color)', fontWeight: 800 }}>{fileMetrics.functionCount}</h3>
-                                  </div>
-                                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '8px' }}>
-                                    <span style={{ fontSize: '10px', color: 'var(--subtext-color)', textTransform: 'uppercase', fontWeight: 600 }}>Comment Lines</span>
-                                    <h3 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text-color)', fontWeight: 800 }}>{fileMetrics.commentLines}</h3>
-                                  </div>
-                                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '8px' }}>
-                                    <span style={{ fontSize: '10px', color: 'var(--subtext-color)', textTransform: 'uppercase', fontWeight: 600 }}>Comment Density</span>
-                                    <h3 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text-color)', fontWeight: 800 }}>{commentDensity}%</h3>
                                   </div>
                                 </div>
 
