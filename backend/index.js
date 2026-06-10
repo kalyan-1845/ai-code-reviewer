@@ -551,7 +551,7 @@ app.post('/api/analyze', async (req, res) => {
 
 // 🟢 Route: AI Chat with Repository
 app.post('/api/chat', async (req, res) => {
-  const { message, history = [], model = 'llama-3.3-70b-versatile' } = req.body;
+  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.' } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'Message is required.' });
