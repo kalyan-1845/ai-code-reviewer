@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS = {
 };
 
 interface SettingsModalProps {
+  theme?: "dark" | "light";
   onClose: () => void;
 }
 
@@ -58,15 +59,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           maxWidth: "90%",
           padding: "24px",
           borderRadius: "12px",
-          background: "var(--bg-secondary)",
-          color: "var(--text-primary)",
+          background: "var(--panel-bg)",
+          color: "var(--text-color)",
           border: "1px solid var(--border-color)",
         }}
       >
         <h2
           style={{
             marginBottom: "24px",
-            color: "var(--text-primary)",
+            color: "var(--text-color)",
           }}
         >
           ⚙️ AI Settings
@@ -78,7 +79,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             style={{
               display: "block",
               marginBottom: "8px",
-              color: "var(--text-primary)",
+              color: "var(--text-color)",
               fontWeight: 600,
             }}
           >
@@ -110,7 +111,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             style={{
               display: "block",
               marginBottom: "8px",
-              color: "var(--text-primary)",
+              color: "var(--text-color)",
               fontWeight: 600,
             }}
           >
@@ -130,8 +131,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               width: "100%",
               padding: "10px",
               borderRadius: "8px",
-              background: "var(--bg-primary)",
-              color: "var(--text-primary)",
+              background: "rgba(15, 23, 42, 0.6)",
+              color: "var(--text-color)",
               border: "1px solid var(--border-color)",
               outline: "none",
             }}
@@ -144,7 +145,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             style={{
               display: "block",
               marginBottom: "8px",
-              color: "var(--text-primary)",
+              color: "var(--text-color)",
               fontWeight: 600,
             }}
           >
@@ -166,8 +167,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               padding: "12px",
               borderRadius: "8px",
               resize: "vertical",
-              background: "var(--bg-primary)",
-              color: "var(--text-primary)",
+              background: "rgba(15, 23, 42, 0.6)",
+              color: "var(--text-color)",
               border: "1px solid var(--border-color)",
               outline: "none",
             }}
@@ -185,8 +186,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           <button
             onClick={handleReset}
             style={{
-              background: "var(--bg-primary)",
-              color: "var(--text-primary)",
+              background: "rgba(15, 23, 42, 0.6)",
+              color: "var(--text-color)",
               border: "1px solid var(--border-color)",
               padding: "10px 16px",
               borderRadius: "8px",
@@ -206,8 +207,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             <button
               onClick={onClose}
               style={{
-                background: "var(--bg-primary)",
-                color: "var(--text-primary)",
+                background: "rgba(15, 23, 42, 0.6)",
+                color: "var(--text-color)",
                 border: "1px solid var(--border-color)",
                 padding: "10px 16px",
                 borderRadius: "8px",

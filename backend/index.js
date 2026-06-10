@@ -70,7 +70,7 @@ function isIgnored(filePath, patterns, baseDir) {
         if (new RegExp(`^${escaped}$`).test(relative)) return true;
       } catch { /* skip invalid pattern */ }
     } else {
-      if (relative === pattern || relative.startsWith(pattern + '/') || relative.startsWith(pattern + path.sep)) {
+      if (relative === pattern || relative.startsWith(pattern + path.sep)) {
         return true;
       }
     }

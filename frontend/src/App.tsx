@@ -21,6 +21,10 @@ import {
   Sun,
   Moon,
   Settings,
+  Search,
+  X,
+  Clock,
+  Trash2,
 } from "lucide-react";
 import mermaid from "mermaid";
 
@@ -340,6 +344,21 @@ export default function App() {
     "preview",
   );
 
+  // Batch Analysis Queue State
+  const [queuedRepos, setQueuedRepos] = useState<Array<{
+    id: string;
+    url: string;
+    status: 'queued' | 'analyzing' | 'done' | 'failed';
+    response?: BackendResponse;
+    error?: string;
+  }>>([]);
+  const [isBatchRunning, setIsBatchRunning] = useState(false);
+  const [activeRepoId, setActiveRepoId] = useState<string | null>(null);
+
+  // Derive the currently displayed result (batch or single)
+  const activeResult = activeRepoId
+    ? queuedRepos.find(r => r.id === activeRepoId)?.response ?? null
+    : analysisResult;
 
   // Simple markdown compiler for premium preview rendering
   const renderMarkdown = (md: string) => {
@@ -558,23 +577,6 @@ export default function App() {
       `\`\`\`\n${item.suggestion}\n\`\`\`\n\n` +
       `---\n` +
       `*Generated automatically by **RepoSage AI Copilot**.*`;
-
-    <button
-      onClick={() => setShowSettings(true)}
-      style={{
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid var(--border-color)",
-        borderRadius: "6px",
-        padding: "6px 10px",
-        cursor: "pointer",
-        color: "var(--text-color)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Settings size={15} />
-    </button>;
 
     const labels = isGssocLabelingEnabled
       ? ["gssoc26", "good-first-issue", category]
@@ -862,15 +864,109 @@ export default function App() {
     }
   };
 
+  // Batch Analysis: analyze all queued repos sequentially
+  const runBatchAnalysis = async () => {
+    if (queuedRepos.length === 0) return;
+    setIsBatchRunning(true);
+    setIsLoading(true);
+    setApiError(null);
+    setAnalysisResult(null);
+    setSelectedFile(null);
+
+    const aiSettings = JSON.parse(
+      localStorage.getItem("reposage_ai_settings") || "{}"
+    );
+
+    let completed = 0;
+    for (const repo of queuedRepos) {
+      // Mark as analyzing
+      setQueuedRepos(prev =>
+        prev.map(r => r.id === repo.id ? { ...r, status: 'analyzing' } : r)
+      );
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repoUrl: repo.url,
+            company,
+            language,
+            model: selectedModel,
+            temperature: aiSettings.temperature ?? 0.7,
+            maxTokens: aiSettings.maxTokens ?? 2048,
+            systemPrompt: aiSettings.systemPrompt ?? "",
+          }),
+        });
+
+        if (response.ok) {
+          const data: BackendResponse = await response.json();
+          setQueuedRepos(prev =>
+            prev.map(r => r.id === repo.id ? { ...r, status: 'done', response: data } : r)
+          );
+          if (completed === 0) {
+            setActiveRepoId(repo.id);
+            setAnalysisResult(data);
+            const filesList = Object.keys(data.analysis.fileReviews);
+            if (filesList.length > 0) setSelectedFile(filesList[0]);
+          }
+        } else {
+          const errText = await response.text();
+          setQueuedRepos(prev =>
+            prev.map(r => r.id === repo.id ? { ...r, status: 'failed', error: errText } : r)
+          );
+        }
+      } catch (err: any) {
+        setQueuedRepos(prev =>
+          prev.map(r => r.id === repo.id ? { ...r, status: 'failed', error: err.message } : r)
+        );
+      }
+
+      completed++;
+    }
+
+    setIsBatchRunning(false);
+    setIsLoading(false);
+  };
+
+  // Add a repo URL to the batch queue
+  const addToQueue = () => {
+    const url = repoUrl.trim();
+    if (!url) return;
+    const exists = queuedRepos.some(r => r.url === url);
+    if (exists) return;
+    setQueuedRepos(prev => [
+      ...prev,
+      { id: `repo-${Date.now()}`, url, status: 'queued' },
+    ]);
+    setRepoUrl('');
+  };
+
+  const removeFromQueue = (id: string) => {
+    setQueuedRepos(prev => prev.filter(r => r.id !== id));
+    if (activeRepoId === id) {
+      const remaining = queuedRepos.filter(r => r.id !== id);
+      const done = remaining.find(r => r.status === 'done');
+      if (done) {
+        setActiveRepoId(done.id);
+        setAnalysisResult(done.response ?? null);
+      } else {
+        setActiveRepoId(null);
+        setAnalysisResult(null);
+      }
+    }
+  };
+
   // Helper to trigger README download
   const downloadReadme = () => {
-    if (!analysisResult) return;
+    const result = activeResult ?? analysisResult;
+    if (!result) return;
     const element = document.createElement("a");
-    const file = new Blob([analysisResult.analysis.generatedReadme], {
+    const file = new Blob([result.analysis.generatedReadme], {
       type: "text/plain",
     });
     element.href = URL.createObjectURL(file);
-    element.download = "GENERATED_README.md";
+    element.download = `${result.repoName}_README.md`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
@@ -878,12 +974,13 @@ export default function App() {
 
   // Helper to compile and download complete Code Audit Report in Markdown format
   const downloadAuditReport = () => {
-    if (!analysisResult) return;
+    const result = activeResult ?? analysisResult;
+    if (!result) return;
 
     let md = `# 🛡️ RepoSage AI Code Review & Audit Report\n\n`;
-    md += `* **Repository**: ${analysisResult.repoName}\n`;
+    md += `* **Repository**: ${result.repoName}\n`;
     md += `* **Date**: ${new Date().toLocaleDateString()}\n`;
-    md += `* **Total Modules Scanned**: ${analysisResult.filesReviewedCount} files\n\n`;
+    md += `* **Total Modules Scanned**: ${result.filesReviewedCount} files\n\n`;
 
     md += `## 📊 Overall Code Health Summary\n\n`;
     let totalBugs = 0;
@@ -891,8 +988,8 @@ export default function App() {
     let totalPerf = 0;
     let totalStyle = 0;
 
-    Object.keys(analysisResult.analysis.fileReviews).forEach((file) => {
-      const review = analysisResult.analysis.fileReviews[file];
+    Object.keys(result.analysis.fileReviews).forEach((file) => {
+      const review = result.analysis.fileReviews[file];
       totalBugs += review.bugs?.length || 0;
       totalSecurity += review.security?.length || 0;
       totalPerf += review.optimization?.length || 0;
@@ -909,8 +1006,8 @@ export default function App() {
     md += `---\n\n`;
     md += `## 🔍 File-by-File Audit Details\n\n`;
 
-    Object.keys(analysisResult.analysis.fileReviews).forEach((file) => {
-      const review = analysisResult.analysis.fileReviews[file];
+    Object.keys(result.analysis.fileReviews).forEach((file) => {
+      const review = result.analysis.fileReviews[file];
       const hasIssues =
         (review.bugs?.length || 0) +
           (review.security?.length || 0) +
@@ -962,33 +1059,34 @@ export default function App() {
     });
 
     md += `## 📄 Generated README.md\n\n`;
-    md += analysisResult.analysis.generatedReadme;
+    md += result.analysis.generatedReadme;
 
     const element = document.createElement("a");
     const fileBlob = new Blob([md], { type: "text/plain" });
     element.href = URL.createObjectURL(fileBlob);
-    element.download = `${analysisResult.repoName}_AUDIT_REPORT.md`;
+    element.download = `${result.repoName}_AUDIT_REPORT.md`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
   };
 
   const downloadHTMLReport = async () => {
-    if (!analysisResult) return;
+    const result = activeResult ?? analysisResult;
+    if (!result) return;
     try {
       const response = await fetch(`${API_BASE_URL}/api/reports/html`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repoName: analysisResult.repoName,
-          analysis: analysisResult.analysis,
+          repoName: result.repoName,
+          analysis: result.analysis,
         }),
       });
       if (response.ok) {
         const htmlBlob = await response.blob();
         const element = document.createElement("a");
         element.href = URL.createObjectURL(htmlBlob);
-        element.download = `${analysisResult.repoName}_AUDIT_REPORT.html`;
+        element.download = `${result.repoName}_AUDIT_REPORT.html`;
         document.body.appendChild(element);
         element.click();
         document.body.removeChild(element);
@@ -1001,21 +1099,22 @@ export default function App() {
   };
 
   const downloadPDFReport = async () => {
-    if (!analysisResult) return;
+    const result = activeResult ?? analysisResult;
+    if (!result) return;
     try {
       const response = await fetch(`${API_BASE_URL}/api/reports/pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          repoName: analysisResult.repoName,
-          analysis: analysisResult.analysis
+          repoName: result.repoName,
+          analysis: result.analysis
         })
       });
       if (response.ok) {
         const pdfBlob = await response.blob();
         const element = document.createElement("a");
         element.href = URL.createObjectURL(pdfBlob);
-        element.download = `${analysisResult.repoName}_AUDIT_REPORT.pdf`;
+        element.download = `${result.repoName}_AUDIT_REPORT.pdf`;
         document.body.appendChild(element);
         element.click();
         document.body.removeChild(element);
@@ -1271,7 +1370,6 @@ export default function App() {
                 </label>
                 <input
                   type="url"
-                  required
                   placeholder="https://github.com/username/repo"
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
@@ -1287,6 +1385,133 @@ export default function App() {
                     boxSizing: "border-box",
                   }}
                 />
+                {/* Batch Queue Controls */}
+                <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                  <button
+                    type="button"
+                    onClick={addToQueue}
+                    disabled={!repoUrl.trim() || isLoading}
+                    style={{
+                      flex: 1,
+                      padding: "6px",
+                      background: "rgba(168,85,247,0.1)",
+                      border: "1px solid rgba(168,85,247,0.3)",
+                      borderRadius: "6px",
+                      color: "#c084fc",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: repoUrl.trim() && !isLoading ? "pointer" : "not-allowed",
+                      opacity: repoUrl.trim() && !isLoading ? 1 : 0.5,
+                    }}
+                  >
+                    + Add to Queue
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isLoading || isBatchRunning}
+                    className="glow-btn"
+                    style={{
+                      flex: 1,
+                      padding: "6px",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontSize: "11px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {isLoading ? (
+                      <><span className="spin-slow" style={{ display: "inline-block", width: "12px", height: "12px", border: "2px solid white", borderTopColor: "transparent", borderRadius: "50%" }}></span>Analyzing</>
+                    ) : (
+                      <><Sparkles size={14} /> Scan Now</>
+                    )}
+                  </button>
+                </div>
+                {/* Queued Repos List */}
+                {queuedRepos.length > 0 && (
+                  <div style={{ marginTop: "4px" }}>
+                    <div style={{ fontSize: "10px", fontWeight: 600, color: "#9ca3af", marginBottom: "6px", textTransform: "uppercase" }}>
+                      Queue ({queuedRepos.length}) —
+                      <button
+                        type="button"
+                        onClick={runBatchAnalysis}
+                        disabled={isBatchRunning}
+                        style={{
+                          marginLeft: "6px",
+                          background: "rgba(34,197,94,0.1)",
+                          border: "1px solid rgba(34,197,94,0.3)",
+                          borderRadius: "4px",
+                          color: "#4ade80",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          cursor: isBatchRunning ? "not-allowed" : "pointer",
+                          opacity: isBatchRunning ? 0.5 : 1,
+                        }}
+                      >
+                        {isBatchRunning ? `Running (${queuedRepos.filter(r => r.status === 'done').length}/${queuedRepos.length})` : `Run Batch Analysis`}
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "140px", overflowY: "auto" }}>
+                      {queuedRepos.map(repo => {
+                        const repoName = repo.url.split('/').pop()?.replace('.git', '') || repo.url;
+                        return (
+                          <div
+                            key={repo.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              padding: "4px 8px",
+                              background: activeRepoId === repo.id ? "rgba(168,85,247,0.15)" : "rgba(15,23,42,0.3)",
+                              border: `1px solid ${activeRepoId === repo.id ? "rgba(168,85,247,0.4)" : "rgba(255,255,255,0.05)"}`,
+                              borderRadius: "6px",
+                              cursor: repo.status === 'done' ? "pointer" : "default",
+                            }}
+                            onClick={() => {
+                              if (repo.status === 'done' && repo.response) {
+                                setActiveRepoId(repo.id);
+                                setAnalysisResult(repo.response);
+                                const files = Object.keys(repo.response.analysis.fileReviews);
+                                if (files.length > 0) setSelectedFile(files[0]);
+                              }
+                            }}
+                          >
+                            <span style={{
+                              fontSize: "8px",
+                              fontWeight: 700,
+                              color: repo.status === 'done' ? "#22c55e" : repo.status === 'failed' ? "#ef4444" : repo.status === 'analyzing' ? "#f59e0b" : "#9ca3af",
+                              width: "40px",
+                              textAlign: "center",
+                            }}>
+                              {repo.status === 'queued' ? 'WAIT' : repo.status === 'analyzing' ? 'RUN' : repo.status === 'done' ? 'DONE' : 'FAIL'}
+                            </span>
+                            <span style={{ flex: 1, fontSize: "11px", color: "var(--text-color)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {repoName}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); removeFromQueue(repo.id); }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "#9ca3af",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                                padding: "0 2px",
+                                lineHeight: 1,
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div
@@ -1402,44 +1627,6 @@ export default function App() {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="glow-btn"
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  marginTop: "6px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                }}
-              >
-                {isLoading ? (
-                  <>
-                    <span
-                      className="spin-slow"
-                      style={{
-                        display: "inline-block",
-                        width: "14px",
-                        height: "14px",
-                        border: "2px solid white",
-                        borderTopColor: "transparent",
-                        borderRadius: "50%",
-                      }}
-                    ></span>
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} /> Scan & Document Repo
-                  </>
-                )}
-              </button>
             </form>
           </div>
 
@@ -2391,6 +2578,96 @@ export default function App() {
 
                 {activeDashboardView === "audit" && (
                   <>
+                    {/* Repository Overview: File Extension & Code Composition Charts */}
+                    {(analysisResult || queuedRepos.some(r => r.status === 'done')) && (() => {
+                      const files = (activeResult ?? analysisResult)?.analysis?.fileReviews ?? {};
+                      const metrics = (activeResult ?? analysisResult)?.analysis?.metrics ?? {};
+
+                      // Aggregate language distribution
+                      const extCounts: Record<string, number> = {};
+                      Object.keys(files).forEach(filePath => {
+                        const ext = filePath.split('.').pop()?.toLowerCase() || 'other';
+                        extCounts[ext] = (extCounts[ext] || 0) + 1;
+                      });
+                      const totalFiles = Object.keys(files).length || 1;
+                      const sortedExts = Object.entries(extCounts).sort((a, b) => b[1] - a[1]);
+
+                      // Aggregate line ratios across all files
+                      let sumCode = 0, sumComments = 0, sumEmpty = 0, sumTotal = 0;
+                      Object.values(metrics).forEach((m: any) => {
+                        sumCode += m.codeLines || 0;
+                        sumComments += m.commentLines || 0;
+                        sumEmpty += m.emptyLines || 0;
+                        sumTotal += m.totalLines || 0;
+                      });
+
+                      const langColors: Record<string, string> = {
+                        js: '#f7df1e', ts: '#3178c6', tsx: '#3178c6', jsx: '#61dafb',
+                        py: '#3776ab', go: '#00add8', rs: '#dea584', java: '#ed8b00',
+                        cpp: '#00599c', cs: '#239120', php: '#777bb4', rb: '#cc342d',
+                        html: '#e34f26', css: '#1572b6', sql: '#336791', other: '#9ca3af',
+                      };
+
+                      const codePct = sumTotal > 0 ? Math.round((sumCode / sumTotal) * 100) : 0;
+                      const commentPct = sumTotal > 0 ? Math.round((sumComments / sumTotal) * 100) : 0;
+                      const emptyPct = sumTotal > 0 ? Math.round((sumEmpty / sumTotal) * 100) : 0;
+
+                      return (
+                        <div className="glass-panel" style={{ padding: '16px 20px', marginBottom: '16px' }}>
+                          <h3 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-color)', margin: '0 0 14px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Layers size={16} style={{ color: '#a855f7' }} />
+                            Repository Overview
+                          </h3>
+                          {/* Language Composition Bar */}
+                          <div style={{ marginBottom: '14px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--subtext-color)', marginBottom: '6px', fontWeight: 600 }}>
+                              <span>Language Distribution</span>
+                              <span>{Object.keys(files).length} files</span>
+                            </div>
+                            <div style={{ display: 'flex', height: '14px', borderRadius: '8px', overflow: 'hidden', gap: '1px' }}>
+                              {sortedExts.map(([ext, count]) => {
+                                const pct = Math.round((count / totalFiles) * 100);
+                                return (
+                                  <div key={ext} title={`${ext}: ${count} files (${pct}%)`} style={{ width: `${pct}%`, background: langColors[ext] || '#9ca3af', minWidth: pct > 0 ? '4px' : '0' }} />
+                                );
+                              })}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                              {sortedExts.map(([ext, count]) => {
+                                const pct = Math.round((count / totalFiles) * 100);
+                                return (
+                                  <span key={ext} style={{ fontSize: '10px', color: 'var(--subtext-color)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: langColors[ext] || '#9ca3af', display: 'inline-block' }} />
+                                    {ext.toUpperCase()} {pct}%
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          {/* Code vs Comments vs Empty Bar */}
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--subtext-color)', marginBottom: '6px', fontWeight: 600 }}>
+                              <span>Code Composition</span>
+                              <span>{sumTotal.toLocaleString()} total lines</span>
+                            </div>
+                            <div style={{ display: 'flex', height: '14px', borderRadius: '8px', overflow: 'hidden', gap: '1px' }}>
+                              <div style={{ width: `${codePct}%`, background: '#22c55e', minWidth: codePct > 0 ? '4px' : '0' }} title={`Code: ${codePct}%`} />
+                              <div style={{ width: `${commentPct}%`, background: '#3b82f6', minWidth: commentPct > 0 ? '4px' : '0' }} title={`Comments: ${commentPct}%`} />
+                              <div style={{ width: `${emptyPct}%`, background: 'rgba(255,255,255,0.08)', minWidth: emptyPct > 0 ? '4px' : '0' }} title={`Empty: ${emptyPct}%`} />
+                            </div>
+                            <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+                              {[['#22c55e', 'Code', codePct, sumCode], ['#3b82f6', 'Comments', commentPct, sumComments], ['rgba(255,255,255,0.2)', 'Empty', emptyPct, sumEmpty]].map(([color, label, pct, lines]) => (
+                                <span key={String(label)} style={{ fontSize: '10px', color: 'var(--subtext-color)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: color as string, display: 'inline-block' }} />
+                                  {String(label)} {String(pct)}% ({Number(lines).toLocaleString()})
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Central Audit Hub */}
                     <div
                       className="glass-panel"
