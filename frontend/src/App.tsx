@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import DOMPurify from 'dompurify';
 import SettingsModal from "./components/SettingsModal";
 import {
   Github,
@@ -343,7 +344,8 @@ export default function App() {
 
   // Simple markdown compiler for premium preview rendering
   const renderMarkdown = (md: string) => {
-    const lines = md.split("\n");
+    const sanitized = DOMPurify.sanitize(md);
+    const lines = sanitized.split("\n");
     let inCodeBlock = false;
     let codeBlockLines: string[] = [];
 
