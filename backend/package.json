@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "node tests/run-tests.js"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",

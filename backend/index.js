@@ -8,6 +8,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
 import PDFDocument from 'pdfkit';
+import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
 
 dotenv.config();
 
@@ -70,7 +71,7 @@ function isIgnored(filePath, patterns, baseDir) {
         if (new RegExp(`^${escaped}$`).test(relative)) return true;
       } catch { /* skip invalid pattern */ }
     } else {
-      if (relative === pattern || relative.startsWith(pattern + '/') || relative.startsWith(pattern + path.sep)) {
+      if (relative === pattern || relative.startsWith(pattern + path.sep)) {
         return true;
       }
     }
@@ -118,79 +119,8 @@ function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePatterns 
   return fileList;
 }
 
-// 🟢 Helper to scan for secrets/keys in code files
-function scanSecrets(fileContent) {
-  const findings = [];
-  const rules = [
-    {
-      type: "AWS Access Key Check",
-      regex: /AKIA[0-9A-Z]{16}/g,
-      description: "Potential AWS Access Key ID detected. If pushed to a public repository, malicious parties can hijack your AWS cloud infrastructure."
-    },
-    {
-      type: "GitHub Personal Access Token",
-      regex: /ghp_[a-zA-Z0-9]{36}/g,
-      description: "Hardcoded GitHub Personal Access Token detected. Unauthorized users can gain complete read/write access to your repositories."
-    },
-    {
-      type: "Stripe Secret API Key",
-      regex: /sk_live_[0-9a-zA-Z]{24}/g,
-      description: "Hardcoded live Stripe Secret Key detected. This can expose customer transaction history or result in financial exploitation."
-    },
-    {
-      type: "Google Cloud API Key",
-      regex: /AIzaSy[a-zA-Z0-9-_]{33}/g,
-      description: "Hardcoded Google Cloud API Key detected. Allows unauthorized usage of GCP billing services and resources."
-    },
-    {
-      type: "Database Connection Credentials",
-      regex: /(mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/|mysql:\/\/)[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
-      description: "Database connection credentials detected directly in code. Exposes the database tables to global read/write breaches."
-    },
-    {
-      type: "Slack Incoming Webhook",
-      regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
-      description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
-    },
-    {
-      type: "Generic Private Key",
-      regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/gi,
-      description: "Generic Private Key detected. Committing private keys to a repository exposes critical encryption keys, identity access, or infrastructure certificates."
-    },
-    {
-      type: "Common Environment Credential",
-      regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
-      description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
-    },
-    {
-      type: "Twilio Account SID",
-      regex: /\bAC[a-f0-9]{32}\b/gi,
-      description: "Potential Twilio Account SID detected. Exposing your Twilio SID allows unauthorized API access and billing charges."
-    },
-    {
-      type: "Twilio Auth Token",
-      regex: /(?:twilio_auth|twilio_token|auth_token)\s*[:=]\s*['"][a-f0-9]{32}['"]/gi,
-      description: "Potential Twilio Auth Token detected. Exposing this token allows attackers to authenticate and use your Twilio account."
-    }
-  ];
 
-  const lines = fileContent.split('\n');
-  lines.forEach((line, idx) => {
-    rules.forEach(rule => {
-      rule.regex.lastIndex = 0;
-      if (rule.regex.test(line)) {
-        findings.push({
-          type: rule.type,
-          line: idx + 1,
-          description: rule.description,
-          suggestion: "Move this secret immediately to a protected environment configuration file (.env) and reference it as a dynamic variable instead."
-        });
-      }
-    });
-  });
-
-  return findings;
-}
+// Note: scanSecrets function has been refactored and imported from ./utils/secretsScanner.js
 
 // 🟢 Helper to parse git diff for webhook changes
 function parseDiff(diffStr) {
@@ -229,77 +159,8 @@ function parseDiff(diffStr) {
   return files;
 }
 
-// 🟢 Helper to scan changes for hardcoded secrets
-function scanSecretsInChanges(changes) {
-  const findings = [];
-  const rules = [
-    {
-      type: "AWS Access Key Check",
-      regex: /AKIA[0-9A-Z]{16}/g,
-      description: "Potential AWS Access Key ID detected. If pushed to a public repository, malicious parties can hijack your AWS cloud infrastructure."
-    },
-    {
-      type: "GitHub Personal Access Token",
-      regex: /ghp_[a-zA-Z0-9]{36}/g,
-      description: "Hardcoded GitHub Personal Access Token detected. Unauthorized users can gain complete read/write access to your repositories."
-    },
-    {
-      type: "Stripe Secret API Key",
-      regex: /sk_live_[0-9a-zA-Z]{24}/g,
-      description: "Hardcoded live Stripe Secret Key detected. This can expose customer transaction history or result in financial exploitation."
-    },
-    {
-      type: "Google Cloud API Key",
-      regex: /AIzaSy[a-zA-Z0-9-_]{33}/g,
-      description: "Hardcoded Google Cloud API Key detected. Allows unauthorized usage of GCP billing services and resources."
-    },
-    {
-      type: "Database Connection Credentials",
-      regex: /(mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/|mysql:\/\/)[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
-      description: "Database connection credentials detected directly in code. Exposes the database tables to global read/write breaches."
-    },
-    {
-      type: "Slack Incoming Webhook",
-      regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
-      description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
-    },
-    {
-      type: "Generic Private Key",
-      regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/gi,
-      description: "Generic Private Key detected. Committing private keys to a repository exposes critical encryption keys, identity access, or infrastructure certificates."
-    },
-    {
-      type: "Common Environment Credential",
-      regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
-      description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
-    },
-    {
-      type: "Twilio Account SID",
-      regex: /\bAC[a-f0-9]{32}\b/gi,
-      description: "Potential Twilio Account SID detected. Exposing your Twilio SID allows unauthorized API access and billing charges."
-    },
-    {
-      type: "Twilio Auth Token",
-      regex: /(?:twilio_auth|twilio_token|auth_token)\s*[:=]\s*['"][a-f0-9]{32}['"]/gi,
-      description: "Potential Twilio Auth Token detected. Exposing this token allows attackers to authenticate and use your Twilio account."
-    }
-  ];
 
-  for (const change of changes) {
-    for (const rule of rules) {
-      rule.regex.lastIndex = 0;
-      if (rule.regex.test(change.content)) {
-        findings.push({
-          line: change.line,
-          type: "security",
-          comment: `### 🛡️ Hardcoded Secret Warning\n\nI have detected a hardcoded **${rule.type}** on line **${change.line}**.\n\n#### 💡 Actionable Suggestion\nMove this credential immediately to a protected environment variable (e.g. GitHub Secrets or \`.env\`) and load it dynamically at runtime. DO NOT commit plain secrets to public Git repositories!`
-        });
-      }
-    }
-  }
-
-  return findings;
-}
+// Note: scanSecretsInChanges function has been refactored and imported from ./utils/secretsScanner.js
 
 // 🟢 Helper to analyze static complexity of source files
 function analyzeComplexity(fileContent, filePath) {
@@ -551,7 +412,7 @@ app.post('/api/analyze', async (req, res) => {
 
 // 🟢 Route: AI Chat with Repository
 app.post('/api/chat', async (req, res) => {
-  const { message, history = [], model = 'llama-3.3-70b-versatile' } = req.body;
+  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.' } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'Message is required.' });
@@ -609,12 +470,19 @@ function verifyWebhookSignature(rawBody, signature, secret) {
 // 🟢 Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
-  if (webhookSecret) {
-    const signature = req.headers['x-hub-signature-256'];
-    if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
-      console.warn('❌ Webhook signature verification failed');
-      return res.status(401).json({ error: 'Invalid webhook signature' });
-    }
+  if (!webhookSecret) {
+    console.error('❌ WEBHOOK_SECRET not configured');
+    return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
+  }
+
+  const signature = req.headers['x-hub-signature-256'];
+  if (!signature) {
+    return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
+  }
+
+  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
+    console.warn('❌ Webhook signature verification failed');
+    return res.status(401).json({ error: 'Invalid webhook signature' });
   }
 
   const event = req.headers['x-github-event'];

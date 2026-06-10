@@ -17,3 +17,6 @@ A clear and concise description of any alternative solutions or features you've 
 
 ### 🎨 Additional Context
 Add any other context, mockup screenshots, or diagrams about the feature request here.
+
+---
+⭐ **Support RepoSage!** If you find this project helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!

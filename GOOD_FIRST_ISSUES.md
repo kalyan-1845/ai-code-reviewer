@@ -121,6 +121,34 @@ To claim an issue:
 
 ---
 
+## 🚀 Major "Killer Features" (Advanced Tasks)
+
+Looking for a bigger challenge? We have officially opened development for our next-generation major features. These tasks require more experience and will have a massive impact on the project.
+
+### 14. 🪄 Auto-Remediation (One-Click Fixes)
+* **Description**: Integrate the GitHub API's "Suggested Changes" feature so our PR bot automatically writes the code to fix the bugs it finds.
+* **Suggested Labels**: `gssoc26`, `enhancement`, `ai-engine`, `major-feature`
+* **Implementation Hints**: 
+  - Update the Groq LLM prompt to accurately return the corrected code block.
+  - Format the bot's comment to use the standard markdown ` ```suggestion ` syntax.
+  - Ensure the line mapping works correctly so suggestions don't break the build.
+
+### 15. 🧪 Automated Unit Test Generator
+* **Description**: Create an AI tool that automatically generates full Jest or PyTest unit test suites for untestable code files.
+* **Suggested Labels**: `gssoc26`, `enhancement`, `backend`, `ai-engine`, `major-feature`
+* **Implementation Hints**:
+  - Create a new `/api/generate-tests` endpoint.
+  - Build a prompt template that identifies exported functions and writes edge-case test cases.
+  - Add a "Generate Tests" button next to files in the frontend codebase browser.
+
+### 16. 🔍 Semantic Code Search
+* **Description**: Allow developers to search the codebase using natural language (e.g., "Where is the payment logic?") instead of standard keyword search.
+* **Suggested Labels**: `gssoc26`, `enhancement`, `ai-engine`, `major-feature`
+* **Implementation Hints**:
+  - Convert all code files into vector embeddings upon repository import.
+  - Store these embeddings in an open-source Vector Database like ChromaDB.
+  - When a user searches, perform a similarity search and return the top matched files with context.
+
+---
+
 Let's make RepoSage an amazing open-source experience together! 🚀🔥
-
-

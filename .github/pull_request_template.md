@@ -40,3 +40,6 @@ If your changes affect the Frontend UI or dashboard visuals, please attach scree
 - [ ] Any dependent changes have been merged and published in downstream modules
 - [ ] I have linked the PR to a specific issue (e.g. `Fixes #12`)
 - [ ] (GSSoC Contributors) I have added the appropriate `gssoc26` label
+
+---
+⭐ **Support RepoSage!** If you find this project helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!

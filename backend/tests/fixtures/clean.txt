@@ -1,0 +1,9 @@
+// Standard, safe JavaScript file with no secrets.
+import express from 'express';
+const app = express();
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'healthy', uptime: process.uptime() });
+});
+
+console.log("Health check endpoint initialized.");

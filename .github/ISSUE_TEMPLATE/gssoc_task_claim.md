@@ -20,3 +20,6 @@ Outline briefly how you plan to solve this issue (what libraries, modules, compo
 
 ### 📅 Estimated Timeline
 How long do you expect to take to submit a Pull Request? (e.g. 2 days, 1 week)
+
+---
+⭐ **Support RepoSage!** If you find this project helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!

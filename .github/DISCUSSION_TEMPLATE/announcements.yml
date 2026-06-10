@@ -1,0 +1,28 @@
+title: "[Announcement] "
+labels: ["announcement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 📢 Announcement
+        Use this template for major project announcements, new releases, or significant updates.
+  - type: textarea
+    id: announcement_details
+    attributes:
+      label: Announcement Details
+      description: What is the announcement?
+      placeholder: Share the details here...
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: How does this affect the users and contributors?
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ⭐ **Support RepoSage!** If you find this project helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!

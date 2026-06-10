@@ -30,3 +30,6 @@ If applicable, add screenshots or console output logs to help explain your probl
 
 ### 💡 Additional Context
 Add any other context about the problem here.
+
+---
+⭐ **Support RepoSage!** If you find this project helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!

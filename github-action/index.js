@@ -273,9 +273,14 @@ If no issues are found, reply with an empty array: []`;
         event: 'COMMENT',
         body: `## 🛡️ RepoSage AI Code Review Audit Completed!
 
+🧐 **I have professionally reviewed and checked all your changes** to ensure they meet our project's high quality standards.
+
 I have audited **${reviewedFilesCount} code files** in this Pull Request and generated **${commentsToPost.length} actionable inline suggestions**. 
 
-Please review my feedback and suggestions below. Happy coding! 🚀`,
+Please review my feedback and suggestions below. Happy coding! 🚀
+
+---
+⭐ **Support RepoSage!** If you find this AI helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!`,
         comments: commentsToPost
       });
     } else {
@@ -287,7 +292,12 @@ Please review my feedback and suggestions below. Happy coding! 🚀`,
         event: 'APPROVE',
         body: `## 🛡️ RepoSage AI Code Review Audit Completed!
 
-🎉 Outstanding work! I have scanned the PR and found **0 issues**. Your changes look pristine, clean, and optimized! Approved! 🚀`
+🧐 **I have professionally reviewed and checked all your changes** to ensure they meet our project's high quality standards.
+
+🎉 Outstanding work! I have scanned the PR and found **0 issues**. Your changes look pristine, clean, and optimized! Approved! 🚀
+
+---
+⭐ **Support RepoSage!** If you find this AI helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!`
       });
     }
 

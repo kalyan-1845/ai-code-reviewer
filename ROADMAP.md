@@ -73,6 +73,9 @@ Scaling RepoSage for power users and teams — dashboards, exports, and configur
 | 6 | 🔁 Multi-repo Batch Analysis | 📋 Planned | Analyze multiple repositories in a single session |
 | 7 | 🔗 CI/CD Pipeline Integration | 📋 Planned | Native support for GitHub Actions, GitLab CI, and Jenkins |
 | 8 | 🧩 Plugin Architecture | 📋 Planned | Extensible plugin system for custom review rules and integrations |
+| 9 | 🪄 Auto-Remediation (One-Click Fixes) | 📋 Planned | AI generates actionable code fixes directly via GitHub "Suggested Changes" |
+| 10 | 🧪 Automated Unit Test Generator | 📋 Planned | Automatically generate PyTest, Jest, and JUnit suites for files |
+| 11 | 🔍 Semantic Code Search | 📋 Planned | Ask natural language questions to search the codebase architecture |
 
 > [!TIP]
 > **Want to work on Phase 4?** Check our [issues](https://github.com/kalyan-1845/ai-code-reviewer/issues) tagged with `gssoc26` — many of these features are open for community contribution!
@@ -94,6 +97,8 @@ Enterprise-grade features for organizations and professional development teams.
 | 5 | 🧩 VS Code Extension | 📋 Planned | Review code directly inside Visual Studio Code |
 | 6 | 🌐 Self-hosted Deployment | 📋 Planned | Docker-based self-hosted option for air-gapped environments |
 | 7 | 📈 Analytics & Metrics Dashboard | 📋 Planned | Track code quality trends over time across repos |
+| 8 | 🔄 Automated Refactoring Bots | 📋 Planned | Standalone agents that constantly submit PRs to clear tech-debt |
+| 9 | 📦 Intelligent Dependency Upgrader | 📋 Planned | Upgrades outdated packages and fixes breaking syntax changes |
 
 ---
 
