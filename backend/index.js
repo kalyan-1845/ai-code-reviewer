@@ -609,12 +609,19 @@ function verifyWebhookSignature(rawBody, signature, secret) {
 // 🟢 Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
-  if (webhookSecret) {
-    const signature = req.headers['x-hub-signature-256'];
-    if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
-      console.warn('❌ Webhook signature verification failed');
-      return res.status(401).json({ error: 'Invalid webhook signature' });
-    }
+  if (!webhookSecret) {
+    console.error('❌ WEBHOOK_SECRET not configured');
+    return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
+  }
+
+  const signature = req.headers['x-hub-signature-256'];
+  if (!signature) {
+    return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
+  }
+
+  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
+    console.warn('❌ Webhook signature verification failed');
+    return res.status(401).json({ error: 'Invalid webhook signature' });
   }
 
   const event = req.headers['x-github-event'];
