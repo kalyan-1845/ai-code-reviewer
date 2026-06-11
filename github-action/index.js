@@ -22,9 +22,11 @@ function parseDiff(diffStr) {
       }
     } else if (line.startsWith('@@ ')) {
       // Hunk header: e.g. @@ -1,4 +1,5 @@ or @@ -1 +1 @@
-      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      const match = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
       if (match) {
         currentLineInNewFile = parseInt(match[1], 10);
+      } else {
+        console.warn(`⚠️ Warning: Could not parse hunk header: ${line}`);
       }
     } else if (currentFile) {
       if (line.startsWith('+') && !line.startsWith('+++')) {
