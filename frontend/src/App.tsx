@@ -78,6 +78,8 @@ interface BackendResponse {
   repoName: string;
   filesReviewedCount: number;
   analysis: AnalysisData;
+  _mock?: boolean;
+  _mockWarning?: string;
 }
 
 interface AuditHistoryEntry {
@@ -575,6 +577,12 @@ export default function App() {
     itemKey: string,
   ) => {
     if (!analysisResult) return;
+
+    // Disable issue creation for mock/placeholder findings
+    if (analysisResult._mock) {
+      alert('Cannot create GitHub issues for placeholder findings. Please connect the AI Engine for real analysis.');
+      return;
+    }
 
     setCreatingIssues((prev) => ({ ...prev, [itemKey]: true }));
 
@@ -2344,6 +2352,30 @@ export default function App() {
                   };
                 })}
             />
+              {/* Mock warning banner */}
+              {analysisResult._mock && (
+                <div
+                  style={{
+                    background: "rgba(245, 158, 11, 0.1)",
+                    border: "1px solid rgba(245, 158, 11, 0.3)",
+                    borderRadius: "8px",
+                    padding: "12px 16px",
+                    color: "#fbbf24",
+                    fontSize: "12px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                  }}
+                >
+                  <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: "1px" }} />
+                  <div>
+                    <strong style={{ display: "block", marginBottom: "2px" }}>
+                      ⚠️ Placeholder Analysis
+                    </strong>
+                    {analysisResult._mockWarning || "AI Engine is unavailable. These findings are placeholder suggestions and may not reflect actual code."}
+                  </div>
+                </div>
+              )}
               {/* Dashboard View Selection Tabs */}
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
