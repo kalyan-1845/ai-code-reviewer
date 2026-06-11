@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -22,6 +23,14 @@ for env_path in env_paths:
         break
 if not loaded:
     print("⚠️ No .env file found. Running with existing environment variables.")
+
+def sanitize_ai_output(text: str) -> str:
+    if not text:
+        return text
+    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL)
+    text = re.sub(r'\bon\w+\s*=\s*["\'][^"\']*["\']', '', text)
+    return text
+
 
 app = FastAPI(title="RepoSage AI Engine", description="FastAPI microservice for repository analysis and documentation generation")
 
@@ -174,6 +183,10 @@ Format your JSON precisely as:
       
       response_content = completion.choices[0].message.content
       result = json.loads(response_content)
+      if "mermaidDiagram" in result:
+        result["mermaidDiagram"] = sanitize_ai_output(result["mermaidDiagram"])
+      if "generatedReadme" in result:
+        result["generatedReadme"] = sanitize_ai_output(result["generatedReadme"])
       return result
       
     except Exception as e:
