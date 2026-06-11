@@ -34,8 +34,19 @@ if (!fs.existsSync(tempReposDir)) {
   fs.mkdirSync(tempReposDir, { recursive: true });
 }
 
-// Global variable to cache the active repository context for chat functionality
-let activeRepositoryContext = null;
+// Session-isolated repository contexts for chat functionality (issue #59)
+const repoContexts = new Map();
+const CONTEXT_TTL = 30 * 60 * 1000; // 30 minutes
+
+// Periodic cleanup of stale contexts
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, entry] of repoContexts) {
+    if (now - entry.timestamp > CONTEXT_TTL) {
+      repoContexts.delete(sessionId);
+    }
+  }
+}, 60 * 1000);
 
 // 🟢 Helper to load .reposageignore patterns from a directory
 function loadIgnorePatterns(dir) {
@@ -308,7 +319,7 @@ app.post('/api/analyze', async (req, res) => {
 
   // Generate unique folder name
   const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'temp';
-  const uniqueId = Date.now();
+  const uniqueId = crypto.randomUUID();
   const clonePath = path.join(tempReposDir, `${repoName}_${uniqueId}`);
 
   console.log(`🚀 Cloning: ${repoUrl} into ${clonePath}`);
@@ -384,12 +395,14 @@ app.post('/api/analyze', async (req, res) => {
         });
       }
 
-      // 3. Cache the active repository context for chat
-      activeRepositoryContext = {
+      // 3. Cache the repository context for chat with session isolation
+      const sessionId = crypto.randomUUID();
+      repoContexts.set(sessionId, {
         repoUrl,
         repoName,
-        files
-      };
+        files,
+        timestamp: Date.now()
+      });
 
       // 4. Clean up folder
       deleteFolderRecursive(clonePath);
@@ -399,7 +412,8 @@ app.post('/api/analyze', async (req, res) => {
         success: true,
         repoName,
         filesReviewedCount: files.length,
-        analysis: reviewResult
+        analysis: reviewResult,
+        sessionId
       });
 
     } catch (err) {
@@ -410,17 +424,21 @@ app.post('/api/analyze', async (req, res) => {
   });
 });
 
-// 🟢 Route: AI Chat with Repository
+// 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', async (req, res) => {
-  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.' } = req.body;
+  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'Message is required.' });
   }
 
-  if (!activeRepositoryContext) {
-    return res.status(400).json({ error: 'No repository is currently active. Please analyze a repository first.' });
+  const context = sessionId ? repoContexts.get(sessionId) : null;
+  if (!context) {
+    return res.status(400).json({ error: 'No repository is currently active or session expired. Please analyze a repository first.' });
   }
+
+  // Refresh TTL on access
+  context.timestamp = Date.now();
 
   const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -429,7 +447,7 @@ app.post('/api/chat', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        files: activeRepositoryContext.files,
+        files: context.files,
         message,
         history,
         model,
@@ -451,7 +469,7 @@ app.post('/api/chat', async (req, res) => {
     
     // Simple local fallback if Python FastAPI server is offline
     const responseMessage = `[Fallback Response] I see you are asking about: "${message}". Currently, the FastAPI AI Engine is offline, so I cannot analyze the full codebase for your query. Please make sure the AI Engine service is running on port 8000.`;
-    return res.json({ response: responseMessage });
+    return res.json({ response: responseMessage, sessionId });
   }
 });
 
@@ -488,18 +506,48 @@ app.post('/api/webhook', async (req, res) => {
   const event = req.headers['x-github-event'];
   const payload = req.body;
 
+// Idempotency sets for webhook deduplication (issue #59)
+const activeReviews = new Set();
+const processedDeliveries = new Set();
+
+// Clean up processed deliveries after 1 hour
+setInterval(() => {
+  processedDeliveries.clear();
+}, 60 * 60 * 1000);
+
   if (event === 'pull_request') {
+    // Deduplicate by X-GitHub-Delivery header
+    const deliveryId = req.headers['x-github-delivery'];
+    if (deliveryId) {
+      if (processedDeliveries.has(deliveryId)) {
+        console.log(`⏭️ Skipping duplicate webhook delivery: ${deliveryId}`);
+        return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
+      }
+      processedDeliveries.add(deliveryId);
+    }
+
     const action = payload.action;
     if (action === 'opened' || action === 'synchronize') {
       const pullNumber = payload.pull_request.number;
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
+      const reviewKey = `${owner}/${repo}/#${pullNumber}`;
       
       console.log(`📡 GitHub Webhook received: PR #${pullNumber} ${action} in ${owner}/${repo}`);
+      
+      // Skip if a review is already in progress for this PR
+      if (activeReviews.has(reviewKey)) {
+        console.log(`⏭️ Review already in progress for ${reviewKey}, skipping.`);
+        return res.json({ success: true, message: 'Webhook received (review in progress).' });
+      }
+      
+      activeReviews.add(reviewKey);
       
       // Execute code review asynchronously to prevent GitHub webhook timeout (10s)
       runWebhookReview(owner, repo, pullNumber).catch(err => {
         console.error(`❌ Async PR Review Error:`, err);
+      }).finally(() => {
+        activeReviews.delete(reviewKey);
       });
     }
   }
