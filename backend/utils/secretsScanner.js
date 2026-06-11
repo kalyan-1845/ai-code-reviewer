@@ -1,3 +1,5 @@
+// NOTE: Rules are kept in sync with github-action/index.js
+// If adding/modifying rules here, update the GitHub Action copy too.
 export const rules = [
   {
     type: "AWS Access Key Check",
