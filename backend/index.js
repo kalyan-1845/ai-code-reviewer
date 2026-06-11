@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
 import PDFDocument from 'pdfkit';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
+import { loadIgnorePatterns, isIgnored, readFilesRecursively } from './utils/ignoreHelper.js';
 
 dotenv.config();
 
@@ -34,90 +35,21 @@ if (!fs.existsSync(tempReposDir)) {
   fs.mkdirSync(tempReposDir, { recursive: true });
 }
 
-// Global variable to cache the active repository context for chat functionality
-let activeRepositoryContext = null;
+// Session-isolated repository contexts for chat functionality (issue #59)
+const repoContexts = new Map();
+const CONTEXT_TTL = 30 * 60 * 1000; // 30 minutes
 
-// 🟢 Helper to load .reposageignore patterns from a directory
-function loadIgnorePatterns(dir) {
-  const patterns = [];
-  const ignoreFile = path.join(dir, '.reposageignore');
-  if (fs.existsSync(ignoreFile)) {
-    const content = fs.readFileSync(ignoreFile, 'utf-8');
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        patterns.push(trimmed);
-      }
+// Periodic cleanup of stale contexts
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, entry] of repoContexts) {
+    if (now - entry.timestamp > CONTEXT_TTL) {
+      repoContexts.delete(sessionId);
     }
   }
-  return patterns;
-}
+}, 60 * 1000);
 
-// 🟢 Helper to check if a path matches any ignore pattern
-function isIgnored(filePath, patterns, baseDir) {
-  const relative = path.relative(baseDir, filePath);
-  for (const pattern of patterns) {
-    if (pattern.endsWith('/')) {
-      if (relative === pattern.slice(0, -1) || relative.startsWith(pattern)) {
-        return true;
-      }
-    } else if (pattern.startsWith('*.')) {
-      if (relative.endsWith(pattern.slice(1))) {
-        return true;
-      }
-    } else if (pattern.includes('*')) {
-      const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
-      try {
-        if (new RegExp(`^${escaped}$`).test(relative)) return true;
-      } catch { /* skip invalid pattern */ }
-    } else {
-      if (relative === pattern || relative.startsWith(pattern + path.sep)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-// 🟢 Helper to recursively read files
-function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePatterns = []) {
-  const files = fs.readdirSync(dir);
-  for (const file of files) {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
-
-    // Skip node_modules, git directories, and build artifacts
-    if (file === 'node_modules' || file === '.git' || file === 'dist' || file === 'build') {
-      continue;
-    }
-
-    // Skip .reposageignore itself and any ignored paths
-    if (file === '.reposageignore' || isIgnored(filePath, ignorePatterns, baseDir)) {
-      continue;
-    }
-
-    if (stat.isDirectory()) {
-      readFilesRecursively(filePath, fileList, baseDir, ignorePatterns);
-    } else {
-      // Analyze only source code files (Python, JS, TS, HTML, CSS, Go, Rust, Java, C++, PHP, Ruby, SQL)
-      const ext = path.extname(file).toLowerCase();
-      const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.go', '.rs', '.cpp', '.h', '.cs', '.php', '.rb', '.sql', '.html', '.css'];
-      
-      if (validExtensions.includes(ext)) {
-        try {
-          const content = fs.readFileSync(filePath, 'utf-8');
-          fileList.push({
-            name: path.relative(baseDir, filePath).replace(/\\/g, '/'),
-            content: content
-          });
-        } catch (e) {
-          console.warn(`Could not read file: ${filePath}`, e.message);
-        }
-      }
-    }
-  }
-  return fileList;
-}
+// Note: loadIgnorePatterns, isIgnored, and readFilesRecursively are imported from ./utils/ignoreHelper.js
 
 
 // Note: scanSecrets function has been refactored and imported from ./utils/secretsScanner.js
@@ -308,7 +240,7 @@ app.post('/api/analyze', async (req, res) => {
 
   // Generate unique folder name
   const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'temp';
-  const uniqueId = Date.now();
+  const uniqueId = crypto.randomUUID();
   const clonePath = path.join(tempReposDir, `${repoName}_${uniqueId}`);
 
   console.log(`🚀 Cloning: ${repoUrl} into ${clonePath}`);
@@ -385,12 +317,14 @@ app.post('/api/analyze', async (req, res) => {
         });
       }
 
-      // 3. Cache the active repository context for chat
-      activeRepositoryContext = {
+      // 3. Cache the repository context for chat with session isolation
+      const sessionId = crypto.randomUUID();
+      repoContexts.set(sessionId, {
         repoUrl,
         repoName,
-        files
-      };
+        files,
+        timestamp: Date.now()
+      });
 
       // 4. Clean up folder
       deleteFolderRecursive(clonePath);
@@ -400,7 +334,8 @@ app.post('/api/analyze', async (req, res) => {
         success: true,
         repoName,
         filesReviewedCount: files.length,
-        analysis: reviewResult
+        analysis: reviewResult,
+        sessionId
       });
 
     } catch (err) {
@@ -411,17 +346,21 @@ app.post('/api/analyze', async (req, res) => {
   });
 });
 
-// 🟢 Route: AI Chat with Repository
+// 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', async (req, res) => {
-  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.' } = req.body;
+  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'Message is required.' });
   }
 
-  if (!activeRepositoryContext) {
-    return res.status(400).json({ error: 'No repository is currently active. Please analyze a repository first.' });
+  const context = sessionId ? repoContexts.get(sessionId) : null;
+  if (!context) {
+    return res.status(400).json({ error: 'No repository is currently active or session expired. Please analyze a repository first.' });
   }
+
+  // Refresh TTL on access
+  context.timestamp = Date.now();
 
   const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -430,7 +369,7 @@ app.post('/api/chat', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        files: activeRepositoryContext.files,
+        files: context.files,
         message,
         history,
         model,
@@ -452,7 +391,7 @@ app.post('/api/chat', async (req, res) => {
     
     // Simple local fallback if Python FastAPI server is offline
     const responseMessage = `[Fallback Response] I see you are asking about: "${message}". Currently, the FastAPI AI Engine is offline, so I cannot analyze the full codebase for your query. Please make sure the AI Engine service is running on port 8000.`;
-    return res.json({ response: responseMessage, _mock: true, _mockWarning: 'AI Engine unavailable. Fallback response generated.' });
+    return res.json({ response: responseMessage, sessionId, _mock: true, _mockWarning: 'AI Engine unavailable. Fallback response generated.' });
   }
 });
 
@@ -489,18 +428,48 @@ app.post('/api/webhook', async (req, res) => {
   const event = req.headers['x-github-event'];
   const payload = req.body;
 
+// Idempotency sets for webhook deduplication (issue #59)
+const activeReviews = new Set();
+const processedDeliveries = new Set();
+
+// Clean up processed deliveries after 1 hour
+setInterval(() => {
+  processedDeliveries.clear();
+}, 60 * 60 * 1000);
+
   if (event === 'pull_request') {
+    // Deduplicate by X-GitHub-Delivery header
+    const deliveryId = req.headers['x-github-delivery'];
+    if (deliveryId) {
+      if (processedDeliveries.has(deliveryId)) {
+        console.log(`⏭️ Skipping duplicate webhook delivery: ${deliveryId}`);
+        return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
+      }
+      processedDeliveries.add(deliveryId);
+    }
+
     const action = payload.action;
     if (action === 'opened' || action === 'synchronize') {
       const pullNumber = payload.pull_request.number;
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
+      const reviewKey = `${owner}/${repo}/#${pullNumber}`;
       
       console.log(`📡 GitHub Webhook received: PR #${pullNumber} ${action} in ${owner}/${repo}`);
+      
+      // Skip if a review is already in progress for this PR
+      if (activeReviews.has(reviewKey)) {
+        console.log(`⏭️ Review already in progress for ${reviewKey}, skipping.`);
+        return res.json({ success: true, message: 'Webhook received (review in progress).' });
+      }
+      
+      activeReviews.add(reviewKey);
       
       // Execute code review asynchronously to prevent GitHub webhook timeout (10s)
       runWebhookReview(owner, repo, pullNumber).catch(err => {
         console.error(`❌ Async PR Review Error:`, err);
+      }).finally(() => {
+        activeReviews.delete(reviewKey);
       });
     }
   }

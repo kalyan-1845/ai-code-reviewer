@@ -45,6 +45,8 @@ function parseDiff(diffStr) {
 
 
 // 🟢 Helper to scan changes for hardcoded secrets
+// NOTE: Rules are kept in sync with backend/utils/secretsScanner.js
+// If adding/modifying rules here, update the backend copy too.
 function scanSecretsInChanges(changes) {
   const findings = [];
   const rules = [
@@ -77,6 +79,26 @@ function scanSecretsInChanges(changes) {
       type: "Slack Incoming Webhook",
       regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
       description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
+    },
+    {
+      type: "Generic Private Key",
+      regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/gi,
+      description: "Generic Private Key detected. Committing private keys to a repository exposes critical encryption keys, identity access, or infrastructure certificates."
+    },
+    {
+      type: "Common Environment Credential",
+      regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
+      description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
+    },
+    {
+      type: "Twilio Account SID",
+      regex: /\bAC[a-f0-9]{32}\b/gi,
+      description: "Potential Twilio Account SID detected. Exposing your Twilio SID allows unauthorized API access and billing charges."
+    },
+    {
+      type: "Twilio Auth Token",
+      regex: /(?:twilio_auth|twilio_token|auth_token)\s*[:=]\s*['"][a-f0-9]{32}['"]/gi,
+      description: "Potential Twilio Auth Token detected. Exposing this token allows attackers to authenticate and use your Twilio account."
     }
   ];
 
