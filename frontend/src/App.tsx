@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-<<<<<<< HEAD
 import SettingsModal from "./components/SettingsModal";
+import RepositoryOverview from './RepositoryOverview';
 import {
   Github,
   Terminal,
@@ -11,19 +11,6 @@ import {
   FileCode,
   CheckCircle,
   AlertOctagon,
-=======
-import RepositoryOverview from './RepositoryOverview';
-import { 
-  Github, 
-  Terminal, 
-  ShieldAlert, 
-  Zap, 
-  Sparkles, 
-  FolderGit, 
-  FileCode, 
-  CheckCircle, 
-  AlertOctagon, 
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
   AlertTriangle,
   Download,
   Layers,
@@ -62,13 +49,7 @@ try {
 }
 
 // API Endpoint Configuration
-<<<<<<< HEAD
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-=======
-// const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const API_BASE_URL = 'http://localhost:5000';
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
 // Define Types
 interface ReviewItem {
   type: string;
@@ -373,6 +354,20 @@ export default function App() {
   }>>([]);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
   const [activeRepoId, setActiveRepoId] = useState<string | null>(null);
+
+  // Refs for batch analysis to avoid stale closures
+  const queuedReposRef = useRef(queuedRepos);
+  queuedReposRef.current = queuedRepos;
+  const activeSetRef = useRef(false);
+  const abortControllersRef = useRef<AbortController[]>([]);
+
+  // Cleanup abort controllers on unmount
+  useEffect(() => {
+    return () => {
+      abortControllersRef.current.forEach(ac => ac.abort());
+      abortControllersRef.current = [];
+    };
+  }, []);
 
   // Derive the currently displayed result (batch or single)
   const activeResult = activeRepoId
@@ -891,14 +886,22 @@ export default function App() {
     setApiError(null);
     setAnalysisResult(null);
     setSelectedFile(null);
+    activeSetRef.current = false;
 
     const aiSettings = JSON.parse(
       localStorage.getItem("reposage_ai_settings") || "{}"
     );
 
-    let completed = 0;
-    for (const repo of queuedRepos) {
-      // Mark as analyzing
+    // Take a snapshot of the queue at start time
+    const snapshot = queuedReposRef.current;
+
+    for (const repo of snapshot) {
+      // Skip if this repo was removed from the queue mid-batch
+      if (!queuedReposRef.current.some(r => r.id === repo.id)) continue;
+
+      const controller = new AbortController();
+      abortControllersRef.current.push(controller);
+
       setQueuedRepos(prev =>
         prev.map(r => r.id === repo.id ? { ...r, status: 'analyzing' } : r)
       );
@@ -907,6 +910,7 @@ export default function App() {
         const response = await fetch(`${API_BASE_URL}/api/analyze`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             repoUrl: repo.url,
             company,
@@ -918,12 +922,16 @@ export default function App() {
           }),
         });
 
+        // Skip if repo was removed while fetch was in-flight
+        if (!queuedReposRef.current.some(r => r.id === repo.id)) continue;
+
         if (response.ok) {
           const data: BackendResponse = await response.json();
           setQueuedRepos(prev =>
             prev.map(r => r.id === repo.id ? { ...r, status: 'done', response: data } : r)
           );
-          if (completed === 0) {
+          if (!activeSetRef.current) {
+            activeSetRef.current = true;
             setActiveRepoId(repo.id);
             setAnalysisResult(data);
             const filesList = Object.keys(data.analysis.fileReviews);
@@ -936,12 +944,14 @@ export default function App() {
           );
         }
       } catch (err: any) {
+        if (err.name === 'AbortError') continue;
+        if (!queuedReposRef.current.some(r => r.id === repo.id)) continue;
         setQueuedRepos(prev =>
           prev.map(r => r.id === repo.id ? { ...r, status: 'failed', error: err.message } : r)
         );
+      } finally {
+        abortControllersRef.current = abortControllersRef.current.filter(ac => ac !== controller);
       }
-
-      completed++;
     }
 
     setIsBatchRunning(false);
@@ -962,18 +972,24 @@ export default function App() {
   };
 
   const removeFromQueue = (id: string) => {
-    setQueuedRepos(prev => prev.filter(r => r.id !== id));
-    if (activeRepoId === id) {
-      const remaining = queuedRepos.filter(r => r.id !== id);
-      const done = remaining.find(r => r.status === 'done');
-      if (done) {
-        setActiveRepoId(done.id);
-        setAnalysisResult(done.response ?? null);
-      } else {
-        setActiveRepoId(null);
-        setAnalysisResult(null);
+    setQueuedRepos(prev => {
+      const remaining = prev.filter(r => r.id !== id);
+      if (activeRepoId === id) {
+        const done = remaining.find(r => r.status === 'done');
+        if (done) {
+          setTimeout(() => {
+            setActiveRepoId(done.id);
+            setAnalysisResult(done.response ?? null);
+          }, 0);
+        } else {
+          setTimeout(() => {
+            setActiveRepoId(null);
+            setAnalysisResult(null);
+          }, 0);
+        }
       }
-    }
+      return remaining;
+    });
   };
 
   // Helper to trigger README download
@@ -1146,7 +1162,6 @@ export default function App() {
   };
 
   return (
-<<<<<<< HEAD
     <div
       style={{
         minHeight: "100vh",
@@ -1155,10 +1170,6 @@ export default function App() {
         boxSizing: "border-box",
       }}
     >
-=======
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-    
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
       {/* 🚀 Modern Navbar */}
       <header
         className="glass-panel"
@@ -2309,7 +2320,6 @@ export default function App() {
 
           {/* 4. The Complete Analysis Dashboard (Split Audit View) */}
           {!isLoading && analysisResult && (
-<<<<<<< HEAD
             <div
               style={{
                 flexGrow: 1,
@@ -2319,8 +2329,6 @@ export default function App() {
                 boxSizing: "border-box",
               }}
             >
-=======
-            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '16px', boxSizing: 'border-box' }}>
               <RepositoryOverview
                 files={Object.keys(analysisResult.analysis.fileReviews).map((filePath) => {
                   const ext = filePath.split('.').pop()?.toLowerCase() || 'other';
@@ -2334,7 +2342,6 @@ export default function App() {
                   };
                 })}
             />
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
               {/* Dashboard View Selection Tabs */}
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
@@ -4382,10 +4389,6 @@ export default function App() {
             </div>
           )}
         </section>
-<<<<<<< HEAD
-=======
-        
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
       </main>
       {showSettings && (
         <SettingsModal theme={theme} onClose={() => setShowSettings(false)} />
