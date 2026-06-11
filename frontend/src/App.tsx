@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-<<<<<<< HEAD
 import SettingsModal from "./components/SettingsModal";
+import RepositoryOverview from './RepositoryOverview';
 import {
   Github,
   Terminal,
@@ -11,19 +11,6 @@ import {
   FileCode,
   CheckCircle,
   AlertOctagon,
-=======
-import RepositoryOverview from './RepositoryOverview';
-import { 
-  Github, 
-  Terminal, 
-  ShieldAlert, 
-  Zap, 
-  Sparkles, 
-  FolderGit, 
-  FileCode, 
-  CheckCircle, 
-  AlertOctagon, 
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
   AlertTriangle,
   Download,
   Layers,
@@ -62,13 +49,7 @@ try {
 }
 
 // API Endpoint Configuration
-<<<<<<< HEAD
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-=======
-// const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const API_BASE_URL = 'http://localhost:5000';
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
 // Define Types
 interface ReviewItem {
   type: string;
@@ -1146,7 +1127,6 @@ export default function App() {
   };
 
   return (
-<<<<<<< HEAD
     <div
       style={{
         minHeight: "100vh",
@@ -1155,10 +1135,6 @@ export default function App() {
         boxSizing: "border-box",
       }}
     >
-=======
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-    
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
       {/* 🚀 Modern Navbar */}
       <header
         className="glass-panel"
@@ -2309,7 +2285,6 @@ export default function App() {
 
           {/* 4. The Complete Analysis Dashboard (Split Audit View) */}
           {!isLoading && analysisResult && (
-<<<<<<< HEAD
             <div
               style={{
                 flexGrow: 1,
@@ -2319,8 +2294,6 @@ export default function App() {
                 boxSizing: "border-box",
               }}
             >
-=======
-            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '16px', boxSizing: 'border-box' }}>
               <RepositoryOverview
                 files={Object.keys(analysisResult.analysis.fileReviews).map((filePath) => {
                   const ext = filePath.split('.').pop()?.toLowerCase() || 'other';
@@ -2334,7 +2307,6 @@ export default function App() {
                   };
                 })}
             />
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
               {/* Dashboard View Selection Tabs */}
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
@@ -4382,10 +4354,6 @@ export default function App() {
             </div>
           )}
         </section>
-<<<<<<< HEAD
-=======
-        
->>>>>>> 8ee7af9 (feat: add Repository Overview dashboard component (#22))
       </main>
       {showSettings && (
         <SettingsModal theme={theme} onClose={() => setShowSettings(false)} />
