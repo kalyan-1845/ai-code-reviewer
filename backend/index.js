@@ -49,6 +49,29 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
+// Webhook deduplication state (module scope to persist across requests)
+const activeReviews = new Set();
+const processedDeliveries = new Map();
+const DELIVERY_TTL = 60 * 60 * 1000; // 1 hour
+
+// Periodic cleanup of expired delivery entries (TTL-based eviction)
+const dedupCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [deliveryId, timestamp] of processedDeliveries) {
+    if (now - timestamp > DELIVERY_TTL) {
+      processedDeliveries.delete(deliveryId);
+    }
+  }
+}, 60 * 1000);
+
+// Clean up timers on server shutdown
+process.on('SIGTERM', () => {
+  clearInterval(dedupCleanupTimer);
+});
+process.on('SIGINT', () => {
+  clearInterval(dedupCleanupTimer);
+});
+
 // Note: loadIgnorePatterns, isIgnored, and readFilesRecursively are imported from ./utils/ignoreHelper.js
 
 
@@ -428,15 +451,6 @@ app.post('/api/webhook', async (req, res) => {
   const event = req.headers['x-github-event'];
   const payload = req.body;
 
-// Idempotency sets for webhook deduplication (issue #59)
-const activeReviews = new Set();
-const processedDeliveries = new Set();
-
-// Clean up processed deliveries after 1 hour
-setInterval(() => {
-  processedDeliveries.clear();
-}, 60 * 60 * 1000);
-
   if (event === 'pull_request') {
     // Deduplicate by X-GitHub-Delivery header
     const deliveryId = req.headers['x-github-delivery'];
@@ -445,7 +459,7 @@ setInterval(() => {
         console.log(`⏭️ Skipping duplicate webhook delivery: ${deliveryId}`);
         return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
       }
-      processedDeliveries.add(deliveryId);
+      processedDeliveries.set(deliveryId, Date.now());
     }
 
     const action = payload.action;
