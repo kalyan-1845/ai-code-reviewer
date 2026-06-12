@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -10,6 +10,7 @@ import { Octokit } from '@octokit/rest';
 import PDFDocument from 'pdfkit';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
 import { loadIgnorePatterns, isIgnored, readFilesRecursively } from './utils/ignoreHelper.js';
+import { isValidRepoUrl, parseRepoUrl } from './utils/urlValidator.js';
 
 dotenv.config();
 
@@ -238,19 +239,34 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(400).json({ error: 'GitHub Repository URL is required.' });
   }
 
+  if (!isValidRepoUrl(repoUrl)) {
+    return res.status(400).json({ error: 'Invalid GitHub repository URL. Only https://github.com/owner/repo URLs are allowed.' });
+  }
+
   // Generate unique folder name
-  const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'temp';
+  const parsed = parseRepoUrl(repoUrl);
+  const repoName = parsed.repo;
   const uniqueId = crypto.randomUUID();
   const clonePath = path.join(tempReposDir, `${repoName}_${uniqueId}`);
 
   console.log(`🚀 Cloning: ${repoUrl} into ${clonePath}`);
 
-  // Clone repo
-  exec(`git clone --depth 1 ${repoUrl} "${clonePath}"`, async (error) => {
-    if (error) {
-      console.error(`❌ Git Clone Error: ${error.message}`);
-      return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public.' });
-    }
+  // Clone repo using spawn to prevent shell injection
+  try {
+    await new Promise((resolve, reject) => {
+      const proc = spawn('git', ['clone', '--depth', '1', repoUrl, clonePath], { stdio: 'pipe' });
+      let stderr = '';
+      proc.stderr.on('data', (data) => { stderr += data.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr || `git clone exited with code ${code}`));
+      });
+      proc.on('error', reject);
+    });
+  } catch (error) {
+    console.error(`❌ Git Clone Error: ${error.message}`);
+    return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public.' });
+  }
 
     try {
       // 1. Load ignore patterns and read files
@@ -343,7 +359,6 @@ app.post('/api/analyze', async (req, res) => {
       deleteFolderRecursive(clonePath);
       return res.status(500).json({ error: 'An error occurred during repository analysis.' });
     }
-  });
 });
 
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
