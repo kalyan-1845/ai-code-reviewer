@@ -356,7 +356,8 @@ app.post('/api/chat', async (req, res) => {
 
   const context = sessionId ? repoContexts.get(sessionId) : null;
   if (!context) {
-    return res.status(400).json({ error: 'No repository is currently active or session expired. Please analyze a repository first.' });
+    const hint = !sessionId ? 'sessionId is missing from the request' : 'session expired';
+    return res.status(400).json({ error: `No repository is currently active or ${hint}. Please analyze a repository first.` });
   }
 
   // Refresh TTL on access

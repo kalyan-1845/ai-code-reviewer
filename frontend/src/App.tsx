@@ -80,6 +80,7 @@ interface BackendResponse {
   analysis: AnalysisData;
   _mock?: boolean;
   _mockWarning?: string;
+  sessionId?: string;
 }
 
 interface AuditHistoryEntry {
@@ -646,6 +647,7 @@ export default function App() {
     Array<{ role: "user" | "assistant"; content: string }>
   >([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const handleSendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -664,6 +666,7 @@ export default function App() {
           message: userMessage,
           history: chatHistory,
           model: selectedModel,
+          sessionId,
         }),
       });
 
@@ -869,6 +872,9 @@ export default function App() {
 
       const data: BackendResponse = await response.json();
       setAnalysisResult(data);
+      if (data.sessionId) {
+        setSessionId(data.sessionId);
+      }
       persistAuditHistory(data);
       
       // Select the first file reviewed automatically
