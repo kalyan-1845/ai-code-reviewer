@@ -29,7 +29,7 @@ import {
   Trash2,
 } from "lucide-react";
 import mermaid from "mermaid";
-import { sanitizeForStorage, sanitizeAuditEntry } from "./utils/sanitize";
+import { sanitizeForStorage } from "./utils/sanitize";
 
 // Initialize Mermaid outside the component to avoid multiple initializations
 try {
