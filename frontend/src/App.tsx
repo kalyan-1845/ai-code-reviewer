@@ -1302,6 +1302,8 @@ export default function App() {
           )}
           <button
             onClick={() => setShowSettings(true)}
+            aria-label="Open AI Settings"
+            title="AI Settings"
             style={{
               background: "rgba(255,255,255,0.05)",
               border: "1px solid var(--border-color)",
