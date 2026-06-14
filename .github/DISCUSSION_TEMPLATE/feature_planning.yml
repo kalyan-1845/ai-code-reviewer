@@ -1,0 +1,34 @@
+title: "[Feature Plan] "
+labels: ["enhancement", "feature-planning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🛠️ Feature Planning
+        Use this template to discuss the implementation details, architecture, and roadmap for new features.
+  - type: textarea
+    id: feature_description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of the planned feature.
+    validations:
+      required: true
+  - type: textarea
+    id: implementation_plan
+    attributes:
+      label: Proposed Implementation Plan
+      description: How should this be implemented? What components are affected?
+    validations:
+      required: true
+  - type: textarea
+    id: roadmap
+    attributes:
+      label: Roadmap / Timeline
+      description: What are the phases for releasing this feature?
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ⭐ **Support RepoSage!** If you find this project helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!

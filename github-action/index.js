@@ -22,9 +22,11 @@ function parseDiff(diffStr) {
       }
     } else if (line.startsWith('@@ ')) {
       // Hunk header: e.g. @@ -1,4 +1,5 @@ or @@ -1 +1 @@
-      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      const match = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
       if (match) {
         currentLineInNewFile = parseInt(match[1], 10);
+      } else {
+        console.warn(`⚠️ Warning: Could not parse hunk header: ${line}`);
       }
     } else if (currentFile) {
       if (line.startsWith('+') && !line.startsWith('+++')) {
@@ -43,6 +45,8 @@ function parseDiff(diffStr) {
 
 
 // 🟢 Helper to scan changes for hardcoded secrets
+// NOTE: Rules are kept in sync with backend/utils/secretsScanner.js
+// If adding/modifying rules here, update the backend copy too.
 function scanSecretsInChanges(changes) {
   const findings = [];
   const rules = [
@@ -75,6 +79,36 @@ function scanSecretsInChanges(changes) {
       type: "Slack Incoming Webhook",
       regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
       description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
+    },
+    {
+      type: "Generic Private Key",
+      regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/gi,
+      description: "Generic Private Key detected. Committing private keys to a repository exposes critical encryption keys, identity access, or infrastructure certificates."
+    },
+    {
+      type: "Common Environment Credential",
+      regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
+      description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
+    },
+    {
+      type: "Twilio Account SID",
+      regex: /\bAC[a-f0-9]{32}\b/gi,
+      description: "Potential Twilio Account SID detected. Exposing your Twilio SID allows unauthorized API access and billing charges."
+    },
+    {
+      type: "Twilio Auth Token",
+      regex: /(?:twilio_auth|twilio_token|auth_token)\s*[:=]\s*['"][a-f0-9]{32}['"]/gi,
+      description: "Potential Twilio Auth Token detected. Exposing this token allows attackers to authenticate and use your Twilio account."
+    },
+    {
+      type: "JWT Token Check",
+      regex: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*\b/g,
+      description: "Potential hardcoded JSON Web Token (JWT) detected. Exposing JWT credentials allows authentication bypass or identity impersonation."
+    },
+    {
+      type: "Generic API Key / Token",
+      regex: /(?:api_key|apikey|secret_key|auth_token|client_secret)\b\s*[:=]\s*['"]([A-Za-z0-9-_]{16,})['"]/gi,
+      description: "Potential hardcoded Generic API Key or Token detected. This can lead to unauthorized service integration access."
     }
   ];
 
@@ -273,9 +307,14 @@ If no issues are found, reply with an empty array: []`;
         event: 'COMMENT',
         body: `## 🛡️ RepoSage AI Code Review Audit Completed!
 
+🧐 **I have professionally reviewed and checked all your changes** to ensure they meet our project's high quality standards.
+
 I have audited **${reviewedFilesCount} code files** in this Pull Request and generated **${commentsToPost.length} actionable inline suggestions**. 
 
-Please review my feedback and suggestions below. Happy coding! 🚀`,
+Please review my feedback and suggestions below. Happy coding! 🚀
+
+---
+⭐ **Support RepoSage!** If you find this AI helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!`,
         comments: commentsToPost
       });
     } else {
@@ -287,7 +326,12 @@ Please review my feedback and suggestions below. Happy coding! 🚀`,
         event: 'APPROVE',
         body: `## 🛡️ RepoSage AI Code Review Audit Completed!
 
-🎉 Outstanding work! I have scanned the PR and found **0 issues**. Your changes look pristine, clean, and optimized! Approved! 🚀`
+🧐 **I have professionally reviewed and checked all your changes** to ensure they meet our project's high quality standards.
+
+🎉 Outstanding work! I have scanned the PR and found **0 issues**. Your changes look pristine, clean, and optimized! Approved! 🚀
+
+---
+⭐ **Support RepoSage!** If you find this AI helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!`
       });
     }
 

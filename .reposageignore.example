@@ -1,0 +1,14 @@
+# RepoSage Ignore File
+# Add file/directory patterns to exclude from analysis.
+# Syntax follows .gitignore-like conventions:
+#   - `dir/`        excludes an entire directory
+#   - `*.ext`       excludes all files with a given extension
+#   - `path/file`   excludes a specific file
+#   - `subdir/*`    excludes all files directly under subdir
+# Lines starting with # are comments.
+
+# Examples:
+# vendor/
+# *.min.js
+# docs/generated/
+# tests/fixtures/

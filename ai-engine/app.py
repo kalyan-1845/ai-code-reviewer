@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,10 +8,28 @@ from typing import List, Optional
 from groq import Groq
 from dotenv import load_dotenv
 
-# Load environment variables
-# First check AI_ENGINE_ENV_FILE override, then look for .env in this directory
-dotenv_path = os.getenv('AI_ENGINE_ENV_FILE') or os.path.join(os.path.dirname(__file__), '.env')
-load_dotenv(dotenv_path=dotenv_path)
+# Load environment variables: prefer local .env, fall back to backend/.env
+env_paths = [
+    os.path.join(os.path.dirname(__file__), '.env'),
+    os.path.join(os.path.dirname(__file__), '../backend/.env'),
+]
+loaded = False
+for env_path in env_paths:
+    abs_path = os.path.abspath(env_path)
+    if os.path.isfile(abs_path):
+        load_dotenv(dotenv_path=abs_path)
+        loaded = True
+        print(f"📄 Loaded environment from {abs_path}")
+        break
+if not loaded:
+    print("⚠️ No .env file found. Running with existing environment variables.")
+
+def sanitize_ai_output(text: str) -> str:
+    if not text:
+        return text
+    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL)
+    text = re.sub(r'\bon\w+\s*=\s*["\'][^"\']*["\']', '', text)
+    return text
 
 app = FastAPI(title="RepoSage AI Engine", description="FastAPI microservice for repository analysis and documentation generation")
 
@@ -46,6 +65,10 @@ class AnalyzeRequest(BaseModel):
     company: Optional[str] = "General"
     language: Optional[str] = "English"
     model: Optional[str] = "llama-3.3-70b-versatile"
+    temperature: Optional[float] = 0.7
+    maxTokens: Optional[int] = 2048
+    systemPrompt: Optional[str] = ""
+    
 
 class ChatRequest(BaseModel):
     files: List[FileItem]
@@ -67,6 +90,9 @@ async def analyze_repository(request: AnalyzeRequest):
     files = request.files
     company = request.company
     language = request.language
+    temperature = request.temperature or 0.7
+    max_tokens = request.maxTokens or 2048
+    custom_system_prompt = request.systemPrompt or ""
     
     # 1. Structure the files representation for the prompt
     repo_structure = []
@@ -79,8 +105,15 @@ async def analyze_repository(request: AnalyzeRequest):
     structure_text = "\n".join(repo_structure)
     contents_text = "\n\n".join(file_contents_summary)
 
+    base_prompt = (
+    custom_system_prompt.strip()
+    if custom_system_prompt.strip()
+    else "You are a senior staff engineer and security analyst conducting a thorough code review."
+)
+
     # 2. Call Groq to run Code Review
-    review_prompt = f"""You are a senior staff engineer and security analyst conducting a thorough code review.
+    review_prompt = f"""{base_prompt}
+
 Target Company Persona: {company}
 Response Language: {language}
 
@@ -131,14 +164,34 @@ Format your JSON precisely as:
 
     try:
       completion = groq_client.chat.completions.create(
-          model=groq_model,
-          messages=[{"role": "user", "content": review_prompt}],
-          temperature=0.3,
-          response_format={"type": "json_object"}
-      )
+    model=groq_model,
+    messages=[
+        {
+            "role": "system",
+            "content": base_prompt
+        },
+        {
+            "role": "user",
+            "content": review_prompt
+        }
+    ],
+    temperature=temperature,
+    max_tokens=max_tokens,
+    response_format={"type": "json_object"}
+)
       
       response_content = completion.choices[0].message.content
       result = json.loads(response_content)
+      if "mermaidDiagram" in result:
+        result["mermaidDiagram"] = sanitize_ai_output(result["mermaidDiagram"])
+      if "generatedReadme" in result:
+        result["generatedReadme"] = sanitize_ai_output(result["generatedReadme"])
+      if "fileReviews" in result:
+        for file_path, review in result["fileReviews"].items():
+          for category in ["bugs", "security", "optimization", "styling"]:
+            for item in review.get(category, []):
+              if "suggestion" in item:
+                item["suggestion"] = sanitize_ai_output(item["suggestion"])
       return result
       
     except Exception as e:
@@ -214,7 +267,7 @@ Guidelines:
             temperature=0.4
         )
         response_content = completion.choices[0].message.content
-        return {"response": response_content}
+        return {"response": sanitize_ai_output(response_content)}
         
     except Exception as e:
         print(f"❌ Groq Chat API Call Failed: {e}")
@@ -311,7 +364,7 @@ If no issues are found, reply with an empty array: []"""
                         comments.append({
                             "path": file.path,
                             "line": int(line_num),
-                            "body": f"<!-- RepoSage Review Comment -->\n{comment_body}"
+                            "body": f"<!-- RepoSage Review Comment -->\n{sanitize_ai_output(comment_body)}"
                         })
         except Exception as e:
             print(f"⚠️ Error reviewing file {file.path} on Groq: {e}")

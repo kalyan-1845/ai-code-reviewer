@@ -1,0 +1,34 @@
+title: "[Idea] "
+labels: ["enhancement", "idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 💡 Idea & Suggestions
+        Have a great idea or suggestion for RepoSage? Share it here!
+  - type: textarea
+    id: idea_description
+    attributes:
+      label: The Idea
+      description: What is your idea? Please describe it in detail.
+    validations:
+      required: true
+  - type: textarea
+    id: use_cases
+    attributes:
+      label: Use Cases
+      description: Who would benefit from this, and how would they use it?
+    validations:
+      required: false
+  - type: textarea
+    id: proposed_features
+    attributes:
+      label: Proposed Features to Inbuilt
+      description: What specific features should be built into the system to support this idea?
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ⭐ **Support RepoSage!** If you find this project helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!

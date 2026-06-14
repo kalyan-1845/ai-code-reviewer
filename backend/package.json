@@ -6,13 +6,16 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "node tests/run-tests.js"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.5.2",
+    "pdfkit": "^0.19.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

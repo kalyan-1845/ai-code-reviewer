@@ -79,8 +79,76 @@ To claim an issue:
 * **Implementation Hints**:
   - Write a helper parsing files in `backend/index.js` to compute counts and return them under a new `metrics` property per analyzed file.
 
+### 9. ⚙️ Backend: Support `.reposageignore` Config File for Excluding Files from Analysis
+* **Description**: Allow users to exclude specific files or directories (e.g., `node_modules/`, `dist/`, tests) from being scanned by the AI and metrics analyzer by reading a `.reposageignore` config file.
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `backend`, `enhancement`
+* **Implementation Hints**:
+  - Check if a `.reposageignore` file exists in the root of the cloned repository.
+  - Parse the ignore patterns (support `.gitignore`-style wildcards).
+  - Filter the file list before running analysis and metrics computation.
+
+### 10. 🎨 Frontend: Dashboard Audit History with Persistent Recents
+* **Description**: Persist a history of successfully audited repositories in `localStorage` so users can see recent audits and quickly reload cached results without re-cloning.
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `frontend`, `ux`
+* **Implementation Hints**:
+  - Store metadata of successful analysis runs in `localStorage` under `reposage_audit_history`.
+  - Render a "Recent Audits" section in the sidebar listing the 5 most recent audits.
+  - Clicking a recent audit loads its cached analysis result immediately.
+
+### 11. 📊 Frontend: File Extension & Code Composition Charts
+* **Description**: Create a visual dashboard component showing the distribution of file types across the repository and aggregated code vs. comment vs. empty line ratios.
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `frontend`
+* **Implementation Hints**:
+  - Aggregate file extension stats from the analysis result object.
+  - Build a horizontal stacked bar using pure CSS (no chart libraries).
+  - Add a "Repository Overview" section at the top of the audit dashboard.
+
+### 12. ⚙️ Backend: Add Export Report to PDF
+* **Description**: Add a `POST /api/reports/pdf` endpoint to generate and download a formatted PDF copy of the full code audit report.
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `backend`
+* **Implementation Hints**:
+  - Use `pdfkit` or `pdf-creator-node` to generate the PDF.
+  - Include repo name, date, grade, findings, and metrics in the document.
+  - Add an "Export PDF" button in the frontend navbar.
+
+### 13. 🎨 Frontend: Settings Modal for AI Model Parameter Controls
+* **Description**: Add a settings gear button in the header that opens a modal to customize AI analysis parameters (temperature, max tokens, custom system prompt).
+* **Suggested Labels**: `gssoc26`, `good-first-issue`, `frontend`, `backend`
+* **Implementation Hints**:
+  - Create a modal with sliders/inputs for temperature, max tokens, and a system prompt textarea.
+  - Persist settings in `localStorage` under `reposage_ai_settings`.
+  - Pass settings in the body of the `POST /api/analyze` request.
+
+---
+
+## 🚀 Major "Killer Features" (Advanced Tasks)
+
+Looking for a bigger challenge? We have officially opened development for our next-generation major features. These tasks require more experience and will have a massive impact on the project.
+
+### 14. 🪄 Auto-Remediation (One-Click Fixes)
+* **Description**: Integrate the GitHub API's "Suggested Changes" feature so our PR bot automatically writes the code to fix the bugs it finds.
+* **Suggested Labels**: `gssoc26`, `enhancement`, `ai-engine`, `major-feature`
+* **Implementation Hints**: 
+  - Update the Groq LLM prompt to accurately return the corrected code block.
+  - Format the bot's comment to use the standard markdown ` ```suggestion ` syntax.
+  - Ensure the line mapping works correctly so suggestions don't break the build.
+
+### 15. 🧪 Automated Unit Test Generator
+* **Description**: Create an AI tool that automatically generates full Jest or PyTest unit test suites for untestable code files.
+* **Suggested Labels**: `gssoc26`, `enhancement`, `backend`, `ai-engine`, `major-feature`
+* **Implementation Hints**:
+  - Create a new `/api/generate-tests` endpoint.
+  - Build a prompt template that identifies exported functions and writes edge-case test cases.
+  - Add a "Generate Tests" button next to files in the frontend codebase browser.
+
+### 16. 🔍 Semantic Code Search
+* **Description**: Allow developers to search the codebase using natural language (e.g., "Where is the payment logic?") instead of standard keyword search.
+* **Suggested Labels**: `gssoc26`, `enhancement`, `ai-engine`, `major-feature`
+* **Implementation Hints**:
+  - Convert all code files into vector embeddings upon repository import.
+  - Store these embeddings in an open-source Vector Database like ChromaDB.
+  - When a user searches, perform a similarity search and return the top matched files with context.
+
 ---
 
 Let's make RepoSage an amazing open-source experience together! 🚀🔥
-
-

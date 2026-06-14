@@ -1,11 +1,17 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
+import PDFDocument from 'pdfkit';
+import rateLimit from 'express-rate-limit';
+import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
+import { loadIgnorePatterns, isIgnored, readFilesRecursively } from './utils/ignoreHelper.js';
+import { isValidRepoUrl, parseRepoUrl } from './utils/urlValidator.js';
 
 dotenv.config();
 
@@ -15,9 +21,37 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Enable CORS and JSON parsing
-app.use(cors());
-app.use(express.json());
+// Enable CORS with explicit origin
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173').split(',');
+app.use(cors({
+  origin: ALLOWED_ORIGINS,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+  credentials: true
+}));
+
+// Per-IP rate limiting for expensive endpoints
+const analyzeLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many analyze requests. Please slow down and retry after 5 minutes.' }
+});
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many chat requests. Please slow down and retry after 1 minute.' }
+});
+
+// Capture raw body for webhook signature verification before JSON parsing
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 // Ensure temp_repos folder exists
 const tempReposDir = path.join(__dirname, 'temp_repos');
@@ -25,117 +59,57 @@ if (!fs.existsSync(tempReposDir)) {
   fs.mkdirSync(tempReposDir, { recursive: true });
 }
 
-// Global variable to cache the active repository context for chat functionality
-let activeRepositoryContext = null;
+// Clean up temp_repos on process exit to avoid leftover clones
+function cleanupTempRepos() {
+  if (fs.existsSync(tempReposDir)) {
+    fs.rmSync(tempReposDir, { recursive: true, force: true });
+  }
+}
+process.on('SIGINT', () => { cleanupTempRepos(); process.exit(0); });
+process.on('SIGTERM', () => { cleanupTempRepos(); process.exit(0); });
+process.on('exit', cleanupTempRepos);
 
-// 🟢 Helper to recursively read files
-function readFilesRecursively(dir, fileList = [], baseDir = dir) {
-  const files = fs.readdirSync(dir);
-  for (const file of files) {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
+// Session-isolated repository contexts for chat functionality (issue #59)
+const repoContexts = new Map();
+const CONTEXT_TTL = 30 * 60 * 1000; // 30 minutes
 
-    // Skip node_modules, git directories, and build artifacts
-    if (file === 'node_modules' || file === '.git' || file === 'dist' || file === 'build') {
-      continue;
-    }
-
-    if (stat.isDirectory()) {
-      readFilesRecursively(filePath, fileList, baseDir);
-    } else {
-      // Analyze only source code files (Python, JS, TS, HTML, CSS, Go, Rust, Java, C++, PHP, Ruby, SQL)
-      const ext = path.extname(file).toLowerCase();
-      const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.go', '.rs', '.cpp', '.h', '.cs', '.php', '.rb', '.sql', '.html', '.css'];
-      
-      if (validExtensions.includes(ext)) {
-        try {
-          const content = fs.readFileSync(filePath, 'utf-8');
-          fileList.push({
-            name: path.relative(baseDir, filePath).replace(/\\/g, '/'),
-            content: content
-          });
-        } catch (e) {
-          console.warn(`Could not read file: ${filePath}`, e.message);
-        }
-      }
+// Periodic cleanup of stale contexts
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, entry] of repoContexts) {
+    if (now - entry.timestamp > CONTEXT_TTL) {
+      repoContexts.delete(sessionId);
     }
   }
-  return fileList;
-}
+}, 60 * 1000);
 
-// 🟢 Helper to scan for secrets/keys in code files
-function scanSecrets(fileContent) {
-  const findings = [];
-  const rules = [
-    {
-      type: "AWS Access Key Check",
-      regex: /AKIA[0-9A-Z]{16}/g,
-      description: "Potential AWS Access Key ID detected. If pushed to a public repository, malicious parties can hijack your AWS cloud infrastructure."
-    },
-    {
-      type: "GitHub Personal Access Token",
-      regex: /ghp_[a-zA-Z0-9]{36}/g,
-      description: "Hardcoded GitHub Personal Access Token detected. Unauthorized users can gain complete read/write access to your repositories."
-    },
-    {
-      type: "Stripe Secret API Key",
-      regex: /sk_live_[0-9a-zA-Z]{24}/g,
-      description: "Hardcoded live Stripe Secret Key detected. This can expose customer transaction history or result in financial exploitation."
-    },
-    {
-      type: "Google Cloud API Key",
-      regex: /AIzaSy[a-zA-Z0-9-_]{33}/g,
-      description: "Hardcoded Google Cloud API Key detected. Allows unauthorized usage of GCP billing services and resources."
-    },
-    {
-      type: "Database Connection Credentials",
-      regex: /(mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/|mysql:\/\/)[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
-      description: "Database connection credentials detected directly in code. Exposes the database tables to global read/write breaches."
-    },
-    {
-      type: "Slack Incoming Webhook",
-      regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
-      description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
-    },
-    {
-      type: "Generic Private Key",
-      regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/gi,
-      description: "Generic Private Key detected. Committing private keys to a repository exposes critical encryption keys, identity access, or infrastructure certificates."
-    },
-    {
-      type: "Common Environment Credential",
-      regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
-      description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
-    },
-    {
-      type: "Twilio Account SID",
-      regex: /\bAC[a-f0-9]{32}\b/gi,
-      description: "Potential Twilio Account SID detected. Exposing your Twilio SID allows unauthorized API access and billing charges."
-    },
-    {
-      type: "Twilio Auth Token",
-      regex: /(?:twilio_auth|twilio_token|auth_token)\s*[:=]\s*['"][a-f0-9]{32}['"]/gi,
-      description: "Potential Twilio Auth Token detected. Exposing this token allows attackers to authenticate and use your Twilio account."
+// Webhook deduplication state (module scope to persist across requests)
+const activeReviews = new Set();
+const processedDeliveries = new Map();
+const DELIVERY_TTL = 60 * 60 * 1000; // 1 hour
+
+// Periodic cleanup of expired delivery entries (TTL-based eviction)
+const dedupCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [deliveryId, timestamp] of processedDeliveries) {
+    if (now - timestamp > DELIVERY_TTL) {
+      processedDeliveries.delete(deliveryId);
     }
-  ];
+  }
+}, 60 * 1000);
 
-  const lines = fileContent.split('\n');
-  lines.forEach((line, idx) => {
-    rules.forEach(rule => {
-      rule.regex.lastIndex = 0;
-      if (rule.regex.test(line)) {
-        findings.push({
-          type: rule.type,
-          line: idx + 1,
-          description: rule.description,
-          suggestion: "Move this secret immediately to a protected environment configuration file (.env) and reference it as a dynamic variable instead."
-        });
-      }
-    });
-  });
+// Clean up timers on server shutdown
+process.on('SIGTERM', () => {
+  clearInterval(dedupCleanupTimer);
+});
+process.on('SIGINT', () => {
+  clearInterval(dedupCleanupTimer);
+});
 
-  return findings;
-}
+// Note: loadIgnorePatterns, isIgnored, and readFilesRecursively are imported from ./utils/ignoreHelper.js
+
+
+// Note: scanSecrets function has been refactored and imported from ./utils/secretsScanner.js
 
 // 🟢 Helper to parse git diff for webhook changes
 function parseDiff(diffStr) {
@@ -174,94 +148,61 @@ function parseDiff(diffStr) {
   return files;
 }
 
-// 🟢 Helper to scan changes for hardcoded secrets
-function scanSecretsInChanges(changes) {
-  const findings = [];
-  const rules = [
-    {
-      type: "AWS Access Key Check",
-      regex: /AKIA[0-9A-Z]{16}/g,
-      description: "Potential AWS Access Key ID detected. If pushed to a public repository, malicious parties can hijack your AWS cloud infrastructure."
-    },
-    {
-      type: "GitHub Personal Access Token",
-      regex: /ghp_[a-zA-Z0-9]{36}/g,
-      description: "Hardcoded GitHub Personal Access Token detected. Unauthorized users can gain complete read/write access to your repositories."
-    },
-    {
-      type: "Stripe Secret API Key",
-      regex: /sk_live_[0-9a-zA-Z]{24}/g,
-      description: "Hardcoded live Stripe Secret Key detected. This can expose customer transaction history or result in financial exploitation."
-    },
-    {
-      type: "Google Cloud API Key",
-      regex: /AIzaSy[a-zA-Z0-9-_]{33}/g,
-      description: "Hardcoded Google Cloud API Key detected. Allows unauthorized usage of GCP billing services and resources."
-    },
-    {
-      type: "Database Connection Credentials",
-      regex: /(mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/|mysql:\/\/)[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
-      description: "Database connection credentials detected directly in code. Exposes the database tables to global read/write breaches."
-    },
-    {
-      type: "Slack Incoming Webhook",
-      regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
-      description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
-    },
-    {
-      type: "Generic Private Key",
-      regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/gi,
-      description: "Generic Private Key detected. Committing private keys to a repository exposes critical encryption keys, identity access, or infrastructure certificates."
-    },
-    {
-      type: "Common Environment Credential",
-      regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
-      description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
-    },
-    {
-      type: "Twilio Account SID",
-      regex: /\bAC[a-f0-9]{32}\b/gi,
-      description: "Potential Twilio Account SID detected. Exposing your Twilio SID allows unauthorized API access and billing charges."
-    },
-    {
-      type: "Twilio Auth Token",
-      regex: /(?:twilio_auth|twilio_token|auth_token)\s*[:=]\s*['"][a-f0-9]{32}['"]/gi,
-      description: "Potential Twilio Auth Token detected. Exposing this token allows attackers to authenticate and use your Twilio account."
-    }
-  ];
 
-  for (const change of changes) {
-    for (const rule of rules) {
-      rule.regex.lastIndex = 0;
-      if (rule.regex.test(change.content)) {
-        findings.push({
-          line: change.line,
-          type: "security",
-          comment: `### 🛡️ Hardcoded Secret Warning\n\nI have detected a hardcoded **${rule.type}** on line **${change.line}**.\n\n#### 💡 Actionable Suggestion\nMove this credential immediately to a protected environment variable (e.g. GitHub Secrets or \`.env\`) and load it dynamically at runtime. DO NOT commit plain secrets to public Git repositories!`
-        });
-      }
-    }
-  }
-
-  return findings;
-}
+// Note: scanSecretsInChanges function has been refactored and imported from ./utils/secretsScanner.js
 
 // 🟢 Helper to analyze static complexity of source files
 function analyzeComplexity(fileContent, filePath) {
   const lines = fileContent.split('\n');
   const totalLines = lines.length;
+  let emptyLines = 0;
   let commentLines = 0;
   let functionCount = 0;
 
   const ext = path.extname(filePath).toLowerCase();
 
+  // Languages that use C-style block comments /* ... */
+  const cStyleExts = ['.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.h', '.cs', '.go', '.rs', '.php', '.css'];
+  const usesCStyleBlocks = cStyleExts.includes(ext);
+  const usesHtmlBlocks = (ext === '.html');
+  let inBlockComment = false;
+
   lines.forEach(line => {
     const trimmed = line.trim();
-    if (trimmed === '') return;
 
-    // Comment Detection
-    if (['.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.h', '.cs', '.go', '.rs', '.php'].includes(ext)) {
-      if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+    // Empty line detection
+    if (trimmed === '') {
+      emptyLines++;
+      return;
+    }
+
+    // --- Comment Detection with multi-line block tracking ---
+
+    if (usesCStyleBlocks) {
+      // Currently inside a /* ... */ block comment
+      if (inBlockComment) {
+        commentLines++;
+        if (trimmed.includes('*/')) {
+          inBlockComment = false;
+        }
+        return;
+      }
+
+      // Single-line comment: //
+      if (trimmed.startsWith('//')) {
+        commentLines++;
+      }
+      // Single-line block comment: /* ... */ on same line
+      else if (trimmed.startsWith('/*') && trimmed.includes('*/')) {
+        commentLines++;
+      }
+      // Multi-line block comment opening: /*
+      else if (trimmed.startsWith('/*')) {
+        commentLines++;
+        inBlockComment = true;
+      }
+      // Line starting with * inside a doc-comment block (e.g. JSDoc)
+      else if (trimmed.startsWith('*')) {
         commentLines++;
       }
     } else if (ext === '.py' || ext === '.rb') {
@@ -269,16 +210,28 @@ function analyzeComplexity(fileContent, filePath) {
         commentLines++;
       }
     } else if (ext === '.sql') {
-      if (trimmed.startsWith('--') || trimmed.startsWith('/*')) {
+      if (inBlockComment) {
         commentLines++;
+        if (trimmed.includes('*/')) {
+          inBlockComment = false;
+        }
+        return;
       }
-    } else if (ext === '.html' || ext === '.css') {
-      if (trimmed.startsWith('<!--') || trimmed.startsWith('/*')) {
+      if (trimmed.startsWith('--')) {
+        commentLines++;
+      } else if (trimmed.startsWith('/*') && trimmed.includes('*/')) {
+        commentLines++;
+      } else if (trimmed.startsWith('/*')) {
+        commentLines++;
+        inBlockComment = true;
+      }
+    } else if (usesHtmlBlocks) {
+      if (trimmed.startsWith('<!--')) {
         commentLines++;
       }
     }
 
-    // Function Detection
+    // --- Function Detection ---
     if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
       if (trimmed.includes('function ') || trimmed.includes('=>') || /^\s*(?:async\s+)?\w+\s*\([^)]*\)\s*\{/g.test(trimmed)) {
         functionCount++;
@@ -298,6 +251,7 @@ function analyzeComplexity(fileContent, filePath) {
     }
   });
 
+  const codeLines = totalLines - emptyLines - commentLines;
   const complexityScore = Math.round((totalLines / 25) + (functionCount * 3));
   let grade = 'A';
   if (complexityScore > 40) grade = 'F';
@@ -307,7 +261,9 @@ function analyzeComplexity(fileContent, filePath) {
 
   return {
     totalLines,
+    emptyLines,
     commentLines,
+    codeLines,
     functionCount,
     complexityScore,
     grade
@@ -330,30 +286,48 @@ function deleteFolderRecursive(directoryPath) {
 }
 
 // 🟢 Route: GitHub Import & AI Review
-app.post('/api/analyze', async (req, res) => {
-  const { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile' } = req.body;
+app.post('/api/analyze', analyzeLimiter, async (req, res) => {
+  const { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
+     maxTokens = 2048,systemPrompt = ''
+   } = req.body;
 
   if (!repoUrl) {
     return res.status(400).json({ error: 'GitHub Repository URL is required.' });
   }
 
+  if (!isValidRepoUrl(repoUrl)) {
+    return res.status(400).json({ error: 'Invalid GitHub repository URL. Only https://github.com/owner/repo URLs are allowed.' });
+  }
+
   // Generate unique folder name
-  const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'temp';
-  const uniqueId = Date.now();
+  const parsed = parseRepoUrl(repoUrl);
+  const repoName = parsed.repo;
+  const uniqueId = crypto.randomUUID();
   const clonePath = path.join(tempReposDir, `${repoName}_${uniqueId}`);
 
   console.log(`🚀 Cloning: ${repoUrl} into ${clonePath}`);
 
-  // Clone repo
-  exec(`git clone --depth 1 ${repoUrl} "${clonePath}"`, async (error) => {
-    if (error) {
-      console.error(`❌ Git Clone Error: ${error.message}`);
-      return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public.' });
-    }
+  // Clone repo using spawn to prevent shell injection
+  try {
+    await new Promise((resolve, reject) => {
+      const proc = spawn('git', ['clone', '--depth', '1', repoUrl, clonePath], { stdio: 'pipe' });
+      let stderr = '';
+      proc.stderr.on('data', (data) => { stderr += data.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr || `git clone exited with code ${code}`));
+      });
+      proc.on('error', reject);
+    });
+  } catch (error) {
+    console.error(`❌ Git Clone Error: ${error.message}`);
+    return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public.' });
+  }
 
     try {
-      // 1. Read files
-      const files = readFilesRecursively(clonePath);
+      // 1. Load ignore patterns and read files
+      const ignorePatterns = loadIgnorePatterns(clonePath);
+      const files = readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
       
       if (files.length === 0) {
         deleteFolderRecursive(clonePath);
@@ -371,11 +345,12 @@ app.post('/api/analyze', async (req, res) => {
         const aiResponse = await fetch(`${aiEngineUrl}/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files, company, language, model })
+          body: JSON.stringify({ files, company, language, model,temperature,maxTokens, systemPrompt })
         });
         
         if (aiResponse.ok) {
           reviewResult = await aiResponse.json();
+          reviewResult._mock = false;
         } else {
           throw new Error('AI engine responded with error');
         }
@@ -414,12 +389,14 @@ app.post('/api/analyze', async (req, res) => {
         });
       }
 
-      // 3. Cache the active repository context for chat
-      activeRepositoryContext = {
+      // 3. Cache the repository context for chat with session isolation
+      const sessionId = crypto.randomUUID();
+      repoContexts.set(sessionId, {
         repoUrl,
         repoName,
-        files
-      };
+        files,
+        timestamp: Date.now()
+      });
 
       // 4. Clean up folder
       deleteFolderRecursive(clonePath);
@@ -429,7 +406,8 @@ app.post('/api/analyze', async (req, res) => {
         success: true,
         repoName,
         filesReviewedCount: files.length,
-        analysis: reviewResult
+        analysis: reviewResult,
+        sessionId
       });
 
     } catch (err) {
@@ -437,20 +415,24 @@ app.post('/api/analyze', async (req, res) => {
       deleteFolderRecursive(clonePath);
       return res.status(500).json({ error: 'An error occurred during repository analysis.' });
     }
-  });
 });
 
-// 🟢 Route: AI Chat with Repository
-app.post('/api/chat', async (req, res) => {
-  const { message, history = [], model = 'llama-3.3-70b-versatile' } = req.body;
+// 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
+app.post('/api/chat', chatLimiter, async (req, res) => {
+  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'Message is required.' });
   }
 
-  if (!activeRepositoryContext) {
-    return res.status(400).json({ error: 'No repository is currently active. Please analyze a repository first.' });
+  const context = sessionId ? repoContexts.get(sessionId) : null;
+  if (!context) {
+    const hint = !sessionId ? 'sessionId is missing from the request' : 'session expired';
+    return res.status(400).json({ error: `No repository is currently active or ${hint}. Please analyze a repository first.` });
   }
+
+  // Refresh TTL on access
+  context.timestamp = Date.now();
 
   const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -459,10 +441,13 @@ app.post('/api/chat', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        files: activeRepositoryContext.files,
+        files: context.files,
         message,
         history,
-        model
+        model,
+        temperature,
+        maxTokens,
+        systemPrompt
       })
     });
 
@@ -478,27 +463,76 @@ app.post('/api/chat', async (req, res) => {
     
     // Simple local fallback if Python FastAPI server is offline
     const responseMessage = `[Fallback Response] I see you are asking about: "${message}". Currently, the FastAPI AI Engine is offline, so I cannot analyze the full codebase for your query. Please make sure the AI Engine service is running on port 8000.`;
-    return res.json({ response: responseMessage });
+    return res.json({ response: responseMessage, sessionId, _mock: true, _mockWarning: 'AI Engine unavailable. Fallback response generated.' });
   }
 });
 
+function verifyWebhookSignature(rawBody, signature, secret) {
+  if (!signature || !secret) return false;
+  const sig = signature.startsWith('sha256=') ? signature : `sha256=${signature}`;
+  const hmac = crypto.createHmac('sha256', secret);
+  const digest = `sha256=${hmac.update(rawBody || '').digest('hex')}`;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(digest));
+  } catch {
+    return false;
+  }
+}
+
 // 🟢 Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', async (req, res) => {
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('❌ WEBHOOK_SECRET not configured');
+    return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
+  }
+
+  const signature = req.headers['x-hub-signature-256'];
+  if (!signature) {
+    return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
+  }
+
+  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
+    console.warn('❌ Webhook signature verification failed');
+    return res.status(401).json({ error: 'Invalid webhook signature' });
+  }
+
   const event = req.headers['x-github-event'];
   const payload = req.body;
 
   if (event === 'pull_request') {
+    // Deduplicate by X-GitHub-Delivery header
+    const deliveryId = req.headers['x-github-delivery'];
+    if (deliveryId) {
+      if (processedDeliveries.has(deliveryId)) {
+        console.log(`⏭️ Skipping duplicate webhook delivery: ${deliveryId}`);
+        return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
+      }
+      processedDeliveries.set(deliveryId, Date.now());
+    }
+
     const action = payload.action;
     if (action === 'opened' || action === 'synchronize') {
       const pullNumber = payload.pull_request.number;
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
+      const reviewKey = `${owner}/${repo}/#${pullNumber}`;
       
       console.log(`📡 GitHub Webhook received: PR #${pullNumber} ${action} in ${owner}/${repo}`);
+      
+      // Skip if a review is already in progress for this PR
+      if (activeReviews.has(reviewKey)) {
+        console.log(`⏭️ Review already in progress for ${reviewKey}, skipping.`);
+        return res.json({ success: true, message: 'Webhook received (review in progress).' });
+      }
+      
+      activeReviews.add(reviewKey);
       
       // Execute code review asynchronously to prevent GitHub webhook timeout (10s)
       runWebhookReview(owner, repo, pullNumber).catch(err => {
         console.error(`❌ Async PR Review Error:`, err);
+      }).finally(() => {
+        activeReviews.delete(reviewKey);
       });
     }
   }
@@ -515,20 +549,39 @@ app.post('/api/issues/create', async (req, res) => {
     return res.status(400).json({ error: 'GITHUB_PAT is not configured in backend/.env.' });
   }
 
-  if (!repoUrl || !title || !body) {
-    return res.status(400).json({ error: 'Repository URL, title, and body are required.' });
+  if (!title || typeof title !== 'string' || title.length < 1 || title.length > 256) {
+    return res.status(400).json({ error: 'Title is required and must be 1-256 characters.' });
+  }
+  if (!body || typeof body !== 'string' || body.length < 1 || body.length > 65536) {
+    return res.status(400).json({ error: 'Body is required and must be 1-65536 characters.' });
+  }
+  if (!Array.isArray(labels)) {
+    return res.status(400).json({ error: 'Labels must be an array.' });
+  }
+  if (labels.length > 10) {
+    return res.status(400).json({ error: 'Maximum 10 labels allowed.' });
+  }
+  for (const label of labels) {
+    if (typeof label !== 'string' || label.length > 50) {
+      return res.status(400).json({ error: 'Each label must be a string of at most 50 characters.' });
+    }
   }
 
   try {
-    // Extract owner and repo from URL (e.g., https://github.com/owner/repo)
-    const cleanUrl = repoUrl.replace('.git', '').replace(/\/$/, '');
-    const parts = cleanUrl.split('/');
-    const repo = parts.pop();
-    const owner = parts.pop();
-
-    if (!owner || !repo) {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(repoUrl);
+    } catch {
+      return res.status(400).json({ error: 'Invalid GitHub repository URL.' });
+    }
+    if (parsedUrl.hostname !== 'github.com') {
+      return res.status(400).json({ error: 'URL must be a github.com repository.' });
+    }
+    const pathParts = parsedUrl.pathname.replace(/\.git$/, '').replace(/\/$/, '').split('/').filter(Boolean);
+    if (pathParts.length < 2) {
       return res.status(400).json({ error: 'Invalid GitHub repository URL structure.' });
     }
+    const [owner, repo] = pathParts;
 
     const octokit = new Octokit({ auth: token });
     
@@ -729,7 +782,9 @@ Generated automatically by **RepoSage AI Generator**.`;
   return {
     fileReviews: reviews,
     generatedReadme: mockReadme,
-    mermaidDiagram: mockMermaid
+    mermaidDiagram: mockMermaid,
+    _mock: true,
+    _mockWarning: 'AI Engine unavailable. These findings are placeholder suggestions and may not reflect actual code.'
   };
 }
 
@@ -882,6 +937,135 @@ app.post('/api/reports/html', (req, res) => {
   res.setHeader('Content-Type', 'text/html');
   res.setHeader('Content-Disposition', `attachment; filename="${repoName}_AUDIT_REPORT.html"`);
   return res.send(html);
+});
+
+// 🟢 Route: Export Review Report to PDF
+app.post('/api/reports/pdf', (req, res) => {
+  const { repoName, analysis } = req.body;
+  if (!repoName || !analysis) {
+    return res.status(400).json({ error: 'Repository name and analysis result are required.' });
+  }
+
+  const fileReviews = analysis.fileReviews || {};
+  const metrics = analysis.metrics || {};
+  const categories = [
+    { key: 'bugs', label: 'Bug', badge: 'BUG', color: '#dc2626' },
+    { key: 'security', label: 'Security', badge: 'SECURITY', color: '#d97706' },
+    { key: 'optimization', label: 'Optimization', badge: 'PERF', color: '#2563eb' },
+    { key: 'styling', label: 'Styling', badge: 'STYLE', color: '#059669' }
+  ];
+
+  const findingsByFile = Object.entries(fileReviews).map(([file, review]) => {
+    const findings = categories.flatMap(category => (
+      (review[category.key] || []).map(finding => ({ ...finding, category }))
+    ));
+    return { file, findings };
+  });
+
+  const summary = categories.reduce((acc, category) => {
+    acc[category.key] = findingsByFile.reduce((total, { findings }) => (
+      total + findings.filter(finding => finding.category.key === category.key).length
+    ), 0);
+    return acc;
+  }, {});
+  const totalFindings = Object.values(summary).reduce((total, count) => total + count, 0);
+  const safeRepoName = String(repoName).replace(/[^\w.-]+/g, '_');
+
+  const doc = new PDFDocument({ margin: 48, size: 'A4' });
+  const chunks = [];
+
+  doc.on('data', chunk => chunks.push(chunk));
+  doc.on('end', () => {
+    const pdf = Buffer.concat(chunks);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeRepoName}_AUDIT_REPORT.pdf"`);
+    res.setHeader('Content-Length', pdf.length);
+    res.send(pdf);
+  });
+  doc.on('error', error => {
+    console.error('PDF report generation failed:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate PDF report.' });
+    }
+  });
+
+  const ensureSpace = (needed = 72) => {
+    if (doc.y + needed > doc.page.height - doc.page.margins.bottom) {
+      doc.addPage();
+    }
+  };
+
+  const normalizeText = value => String(value ?? 'N/A').replace(/\s+/g, ' ').trim();
+
+  const addSectionTitle = title => {
+    ensureSpace(48);
+    doc.moveDown(0.8);
+    doc.font('Helvetica-Bold').fontSize(15).fillColor('#111827').text(title);
+    doc.moveTo(48, doc.y + 4).lineTo(547, doc.y + 4).strokeColor('#e5e7eb').stroke();
+    doc.moveDown(0.8);
+  };
+
+  const addBadge = (label, color) => {
+    const x = doc.x;
+    const y = doc.y + 1;
+    const width = doc.widthOfString(label) + 12;
+    doc.save().roundedRect(x, y, width, 16, 4).fill(color).restore();
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#ffffff').text(label, x + 6, y + 4, { lineBreak: false });
+    doc.x = x + width + 8;
+    doc.y = y;
+  };
+
+  doc.font('Helvetica-Bold').fontSize(24).fillColor('#111827').text('RepoSage AI Code Audit Report');
+  doc.moveDown(0.4);
+  doc.font('Helvetica').fontSize(10).fillColor('#4b5563')
+    .text(`Repository: ${repoName}`)
+    .text(`Report Timestamp: ${new Date().toLocaleString()}`)
+    .text("Audited with: RepoSage GSSoC '26 Audit Engine");
+
+  addSectionTitle('Summary');
+  doc.font('Helvetica').fontSize(11).fillColor('#111827')
+    .text(`Files scanned: ${Object.keys(fileReviews).length}`)
+    .text(`Total findings: ${totalFindings}`)
+    .text(`Bugs: ${summary.bugs}   Security: ${summary.security}   Performance: ${summary.optimization}   Styling: ${summary.styling}`);
+
+  addSectionTitle('File Findings');
+  if (totalFindings === 0) {
+    doc.font('Helvetica').fontSize(11).fillColor('#059669').text('No issues found. Your codebase is clean.');
+  } else {
+    findingsByFile.forEach(({ file, findings }) => {
+      if (findings.length === 0) return;
+      ensureSpace(92);
+      doc.font('Helvetica-Bold').fontSize(12).fillColor('#111827').text(file);
+      doc.moveDown(0.35);
+
+      findings.forEach(finding => {
+        ensureSpace(112);
+        addBadge(finding.category.badge, finding.category.color);
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827')
+          .text(`${normalizeText(finding.type)} - Line ${normalizeText(finding.line)}`, doc.x, doc.y, { width: 380 });
+        doc.moveDown(0.25);
+        doc.font('Helvetica').fontSize(9).fillColor('#374151')
+          .text(`Description: ${normalizeText(finding.description)}`, { width: 490 });
+        doc.font('Helvetica').fontSize(9).fillColor('#4b5563')
+          .text(`Suggestion: ${normalizeText(finding.suggestion)}`, { width: 490 });
+        doc.moveDown(0.6);
+      });
+    });
+  }
+
+  const metricEntries = Object.entries(metrics);
+  if (metricEntries.length > 0) {
+    addSectionTitle('Code Metrics');
+    metricEntries.forEach(([file, fileMetrics]) => {
+      ensureSpace(42);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827').text(file);
+      doc.font('Helvetica').fontSize(9).fillColor('#4b5563')
+        .text(`Total: ${fileMetrics.totalLines ?? 0}   Code: ${fileMetrics.codeLines ?? 0}   Comments: ${fileMetrics.commentLines ?? 0}   Empty: ${fileMetrics.emptyLines ?? 0}`);
+      doc.moveDown(0.45);
+    });
+  }
+
+  doc.end();
 });
 
 app.listen(PORT, () => {
