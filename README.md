@@ -186,6 +186,12 @@ The project is split into **four independent modules**:
 - **Git**
 - A free **[Groq API Key](https://console.groq.com/keys)**
 
+### Getting Your GROQ API Key
+
+1. Go to **[console.groq.com/keys](https://console.groq.com/keys)** and sign in (or create a free account).
+2. Click **Create API Key**, give it a name (e.g., `reposage`), and copy the key.
+3. The key is used by both the **Backend** (via `GROQ_API_KEY` env var in `backend/.env`) and the **Frontend** (via `VITE_GROQ_API_KEY`). See the backend setup below.
+
 ### 1. Clone the Repository
 
 ```bash

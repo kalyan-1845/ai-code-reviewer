@@ -3,3 +3,4 @@ uvicorn==0.34.0
 groq==0.18.0
 python-dotenv==1.0.1
 pydantic==2.10.6
+bleach==6.2.0

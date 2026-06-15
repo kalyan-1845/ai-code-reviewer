@@ -29,13 +29,14 @@ import {
   Trash2,
 } from "lucide-react";
 import mermaid from "mermaid";
+import { sanitizeForStorage } from "./utils/sanitize";
 
 // Initialize Mermaid outside the component to avoid multiple initializations
 try {
   mermaid.initialize({
     startOnLoad: false,
     theme: "dark",
-    securityLevel: "loose",
+    securityLevel: "strict",
     themeVariables: {
       background: "#0f172a",
       primaryColor: "#3b82f6",
@@ -78,6 +79,9 @@ interface BackendResponse {
   repoName: string;
   filesReviewedCount: number;
   analysis: AnalysisData;
+  _mock?: boolean;
+  _mockWarning?: string;
+  sessionId?: string;
 }
 
 interface AuditHistoryEntry {
@@ -120,7 +124,7 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
         }
 
         const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
-        setSvg(renderedSvg);
+        setSvg(sanitizeForStorage(renderedSvg));
       } catch (err: any) {
         console.error("Mermaid Render Error:", err);
         setError(
@@ -134,7 +138,8 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
 
   const downloadSVG = () => {
     if (!svg) return;
-    const blob = new Blob([svg], { type: "image/svg+xml" });
+    const sanitizedSvg = sanitizeForStorage(svg);
+    const blob = new Blob([sanitizedSvg], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -229,9 +234,10 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
           width: "100%",
         }}
         dangerouslySetInnerHTML={{
-          __html:
+          __html: DOMPurify.sanitize(
             svg ||
-            '<span style="color:#9ca3af;font-size:12px;">Generating visual flowchart...</span>',
+            '<span style="color:#9ca3af;font-size:12px;">Generating visual flowchart...</span>'
+          ),
         }}
       />
     </div>
@@ -355,6 +361,20 @@ export default function App() {
   }>>([]);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
   const [activeRepoId, setActiveRepoId] = useState<string | null>(null);
+
+  // Refs for batch analysis to avoid stale closures
+  const queuedReposRef = useRef(queuedRepos);
+  queuedReposRef.current = queuedRepos;
+  const activeSetRef = useRef(false);
+  const abortControllersRef = useRef<AbortController[]>([]);
+
+  // Cleanup abort controllers on unmount
+  useEffect(() => {
+    return () => {
+      abortControllersRef.current.forEach(ac => ac.abort());
+      abortControllersRef.current = [];
+    };
+  }, []);
 
   // Derive the currently displayed result (batch or single)
   const activeResult = activeRepoId
@@ -562,6 +582,12 @@ export default function App() {
   ) => {
     if (!analysisResult) return;
 
+    // Disable issue creation for mock/placeholder findings
+    if (analysisResult._mock) {
+      alert('Cannot create GitHub issues for placeholder findings. Please connect the AI Engine for real analysis.');
+      return;
+    }
+
     setCreatingIssues((prev) => ({ ...prev, [itemKey]: true }));
 
     const title = `[AI Finding] ${category.toUpperCase()}: ${item.type} in ${file} (Line ${item.line})`;
@@ -624,6 +650,7 @@ export default function App() {
     Array<{ role: "user" | "assistant"; content: string }>
   >([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const handleSendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -642,6 +669,7 @@ export default function App() {
           message: userMessage,
           history: chatHistory,
           model: selectedModel,
+          sessionId,
         }),
       });
 
@@ -751,6 +779,18 @@ export default function App() {
 
   const persistAuditHistory = (result: BackendResponse) => {
     const totalFindings = calculateTotalFindings(result);
+    const sanitizedResult = {
+      ...result,
+      analysis: {
+        ...result.analysis,
+        mermaidDiagram: result.analysis.mermaidDiagram
+          ? sanitizeForStorage(result.analysis.mermaidDiagram)
+          : undefined,
+        generatedReadme: result.analysis.generatedReadme
+          ? result.analysis.generatedReadme
+          : '',
+      },
+    };
     const entry: AuditHistoryEntry = {
       id: `${result.repoName}-${Date.now()}`,
       repoUrl,
@@ -758,7 +798,7 @@ export default function App() {
       auditedAt: new Date().toISOString(),
       totalFindings,
       overallGrade: getAuditGrade(totalFindings),
-      response: result
+      response: sanitizedResult
     };
 
     setAuditHistory(prev => {
@@ -772,15 +812,24 @@ export default function App() {
   };
 
   const loadAuditFromHistory = (entry: AuditHistoryEntry) => {
+    const safeResponse = {
+      ...entry.response,
+      analysis: {
+        ...entry.response.analysis,
+        mermaidDiagram: entry.response.analysis.mermaidDiagram
+          ? sanitizeForStorage(entry.response.analysis.mermaidDiagram)
+          : undefined,
+      },
+    };
     setRepoUrl(entry.repoUrl);
-    setAnalysisResult(entry.response);
+    setAnalysisResult(safeResponse);
     setApiError(null);
     setIsLoading(false);
     setActiveDashboardView('audit');
     setFileFilterQuery('');
     setActiveExtFilter('All');
 
-    const filesList = Object.keys(entry.response.analysis.fileReviews || {});
+    const filesList = Object.keys(safeResponse.analysis.fileReviews || {});
     setSelectedFile(filesList[0] || null);
   };
 
@@ -847,6 +896,9 @@ export default function App() {
 
       const data: BackendResponse = await response.json();
       setAnalysisResult(data);
+      if (data.sessionId) {
+        setSessionId(data.sessionId);
+      }
       persistAuditHistory(data);
       
       // Select the first file reviewed automatically
@@ -874,14 +926,22 @@ export default function App() {
     setApiError(null);
     setAnalysisResult(null);
     setSelectedFile(null);
+    activeSetRef.current = false;
 
     const aiSettings = JSON.parse(
       localStorage.getItem("reposage_ai_settings") || "{}"
     );
 
-    let completed = 0;
-    for (const repo of queuedRepos) {
-      // Mark as analyzing
+    // Take a snapshot of the queue at start time
+    const snapshot = queuedReposRef.current;
+
+    for (const repo of snapshot) {
+      // Skip if this repo was removed from the queue mid-batch
+      if (!queuedReposRef.current.some(r => r.id === repo.id)) continue;
+
+      const controller = new AbortController();
+      abortControllersRef.current.push(controller);
+
       setQueuedRepos(prev =>
         prev.map(r => r.id === repo.id ? { ...r, status: 'analyzing' } : r)
       );
@@ -890,6 +950,7 @@ export default function App() {
         const response = await fetch(`${API_BASE_URL}/api/analyze`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             repoUrl: repo.url,
             company,
@@ -901,12 +962,16 @@ export default function App() {
           }),
         });
 
+        // Skip if repo was removed while fetch was in-flight
+        if (!queuedReposRef.current.some(r => r.id === repo.id)) continue;
+
         if (response.ok) {
           const data: BackendResponse = await response.json();
           setQueuedRepos(prev =>
             prev.map(r => r.id === repo.id ? { ...r, status: 'done', response: data } : r)
           );
-          if (completed === 0) {
+          if (!activeSetRef.current) {
+            activeSetRef.current = true;
             setActiveRepoId(repo.id);
             setAnalysisResult(data);
             const filesList = Object.keys(data.analysis.fileReviews);
@@ -919,12 +984,14 @@ export default function App() {
           );
         }
       } catch (err: any) {
+        if (err.name === 'AbortError') continue;
+        if (!queuedReposRef.current.some(r => r.id === repo.id)) continue;
         setQueuedRepos(prev =>
           prev.map(r => r.id === repo.id ? { ...r, status: 'failed', error: err.message } : r)
         );
+      } finally {
+        abortControllersRef.current = abortControllersRef.current.filter(ac => ac !== controller);
       }
-
-      completed++;
     }
 
     setIsBatchRunning(false);
@@ -945,18 +1012,24 @@ export default function App() {
   };
 
   const removeFromQueue = (id: string) => {
-    setQueuedRepos(prev => prev.filter(r => r.id !== id));
-    if (activeRepoId === id) {
-      const remaining = queuedRepos.filter(r => r.id !== id);
-      const done = remaining.find(r => r.status === 'done');
-      if (done) {
-        setActiveRepoId(done.id);
-        setAnalysisResult(done.response ?? null);
-      } else {
-        setActiveRepoId(null);
-        setAnalysisResult(null);
+    setQueuedRepos(prev => {
+      const remaining = prev.filter(r => r.id !== id);
+      if (activeRepoId === id) {
+        const done = remaining.find(r => r.status === 'done');
+        if (done) {
+          setTimeout(() => {
+            setActiveRepoId(done.id);
+            setAnalysisResult(done.response ?? null);
+          }, 0);
+        } else {
+          setTimeout(() => {
+            setActiveRepoId(null);
+            setAnalysisResult(null);
+          }, 0);
+        }
       }
-    }
+      return remaining;
+    });
   };
 
   // Helper to trigger README download
@@ -1253,6 +1326,8 @@ export default function App() {
           )}
           <button
             onClick={() => setShowSettings(true)}
+            aria-label="Open AI Settings"
+            title="AI Settings"
             style={{
               background: "rgba(255,255,255,0.05)",
               border: "1px solid var(--border-color)",
@@ -2309,6 +2384,30 @@ export default function App() {
                   };
                 })}
             />
+              {/* Mock warning banner */}
+              {analysisResult._mock && (
+                <div
+                  style={{
+                    background: "rgba(245, 158, 11, 0.1)",
+                    border: "1px solid rgba(245, 158, 11, 0.3)",
+                    borderRadius: "8px",
+                    padding: "12px 16px",
+                    color: "#fbbf24",
+                    fontSize: "12px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                  }}
+                >
+                  <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: "1px" }} />
+                  <div>
+                    <strong style={{ display: "block", marginBottom: "2px" }}>
+                      ⚠️ Placeholder Analysis
+                    </strong>
+                    {analysisResult._mockWarning || "AI Engine is unavailable. These findings are placeholder suggestions and may not reflect actual code."}
+                  </div>
+                </div>
+              )}
               {/* Dashboard View Selection Tabs */}
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
