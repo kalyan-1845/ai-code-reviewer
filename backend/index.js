@@ -288,7 +288,7 @@ function deleteFolderRecursive(directoryPath) {
 // 🟢 Route: GitHub Import & AI Review
 app.post('/api/analyze', analyzeLimiter, async (req, res) => {
   const { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
-     maxTokens = 2048,systemPrompt = ''
+     maxTokens = 2048, systemPrompt = ''
    } = req.body;
 
   if (!repoUrl) {
@@ -298,6 +298,22 @@ app.post('/api/analyze', analyzeLimiter, async (req, res) => {
   if (!isValidRepoUrl(repoUrl)) {
     return res.status(400).json({ error: 'Invalid GitHub repository URL. Only https://github.com/owner/repo URLs are allowed.' });
   }
+
+  // Sanitize systemPrompt: limit length and strip dangerous directives
+  const sanitizePrompt = (prompt) => {
+    if (!prompt) return '';
+    const safe = String(prompt).slice(0, 2000);
+    const dangerous = ['ignore all', 'ignore previous', 'ignore above', 'forget all', 'forget previous', 'you are not', 'override all', 'disregard'];
+    let result = safe;
+    for (const phrase of dangerous) {
+      const idx = result.toLowerCase().indexOf(phrase);
+      if (idx !== -1) {
+        result = result.slice(0, idx) + result.slice(idx + phrase.length);
+      }
+    }
+    return result;
+  };
+  const validatedPrompt = sanitizePrompt(systemPrompt);
 
   // Generate unique folder name
   const parsed = parseRepoUrl(repoUrl);
@@ -345,7 +361,7 @@ app.post('/api/analyze', analyzeLimiter, async (req, res) => {
         const aiResponse = await fetch(`${aiEngineUrl}/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files, company, language, model,temperature,maxTokens, systemPrompt })
+          body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt })
         });
         
         if (aiResponse.ok) {

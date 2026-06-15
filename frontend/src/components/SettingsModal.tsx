@@ -224,6 +224,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
           <textarea
             rows={6}
+            maxLength={2000}
             value={settings.systemPrompt}
             onChange={(e) =>
               setSettings({
@@ -243,6 +244,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               outline: "none",
             }}
           />
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: "4px",
+              fontSize: "11px",
+              color: "#9ca3af",
+            }}
+          >
+            <span>⚠️ Malicious prompts may override AI behavior. Use only trusted instructions.</span>
+            <span>{settings.systemPrompt.length}/2000</span>
+          </div>
         </div>
 
         {/* Buttons */}
