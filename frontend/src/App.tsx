@@ -29,6 +29,7 @@ import {
   Trash2,
 } from "lucide-react";
 import mermaid from "mermaid";
+import { sanitizeForStorage } from "./utils/sanitize";
 
 // Initialize Mermaid outside the component to avoid multiple initializations
 try {
@@ -123,7 +124,7 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
         }
 
         const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
-        setSvg(renderedSvg);
+        setSvg(sanitizeForStorage(renderedSvg));
       } catch (err: any) {
         console.error("Mermaid Render Error:", err);
         setError(
@@ -137,7 +138,8 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
 
   const downloadSVG = () => {
     if (!svg) return;
-    const blob = new Blob([svg], { type: "image/svg+xml" });
+    const sanitizedSvg = sanitizeForStorage(svg);
+    const blob = new Blob([sanitizedSvg], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -776,6 +778,18 @@ export default function App() {
 
   const persistAuditHistory = (result: BackendResponse) => {
     const totalFindings = calculateTotalFindings(result);
+    const sanitizedResult = {
+      ...result,
+      analysis: {
+        ...result.analysis,
+        mermaidDiagram: result.analysis.mermaidDiagram
+          ? sanitizeForStorage(result.analysis.mermaidDiagram)
+          : undefined,
+        generatedReadme: result.analysis.generatedReadme
+          ? result.analysis.generatedReadme
+          : '',
+      },
+    };
     const entry: AuditHistoryEntry = {
       id: `${result.repoName}-${Date.now()}`,
       repoUrl,
@@ -783,7 +797,7 @@ export default function App() {
       auditedAt: new Date().toISOString(),
       totalFindings,
       overallGrade: getAuditGrade(totalFindings),
-      response: result
+      response: sanitizedResult
     };
 
     setAuditHistory(prev => {
@@ -797,15 +811,24 @@ export default function App() {
   };
 
   const loadAuditFromHistory = (entry: AuditHistoryEntry) => {
+    const safeResponse = {
+      ...entry.response,
+      analysis: {
+        ...entry.response.analysis,
+        mermaidDiagram: entry.response.analysis.mermaidDiagram
+          ? sanitizeForStorage(entry.response.analysis.mermaidDiagram)
+          : undefined,
+      },
+    };
     setRepoUrl(entry.repoUrl);
-    setAnalysisResult(entry.response);
+    setAnalysisResult(safeResponse);
     setApiError(null);
     setIsLoading(false);
     setActiveDashboardView('audit');
     setFileFilterQuery('');
     setActiveExtFilter('All');
 
-    const filesList = Object.keys(entry.response.analysis.fileReviews || {});
+    const filesList = Object.keys(safeResponse.analysis.fileReviews || {});
     setSelectedFile(filesList[0] || null);
   };
 
