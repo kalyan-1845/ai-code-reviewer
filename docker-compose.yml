@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   ai-engine:
     build:
@@ -13,6 +11,7 @@ services:
       - /usr/src/app/__pycache__
     environment:
       - PORT=8000
+      - GROQ_API_KEY=${GROQ_API_KEY}
     restart: always
 
   backend:
@@ -28,6 +27,11 @@ services:
     environment:
       - PORT=5000
       - AI_ENGINE_URL=http://ai-engine:8000
+      - GITHUB_PAT=${GITHUB_PAT}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - GIT_CLONE_TIMEOUT=${GIT_CLONE_TIMEOUT:-120000}
+      - MAX_REPO_SIZE_MB=${MAX_REPO_SIZE_MB:-100}
     depends_on:
       - ai-engine
     restart: always

@@ -4,6 +4,7 @@ const DEFAULT_SETTINGS = {
   temperature: 0.7,
   maxTokens: 2048,
   systemPrompt: "",
+  batchSize: 5,
 };
 
 interface SettingsModalProps {
@@ -195,6 +196,42 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               setSettings({
                 ...settings,
                 maxTokens: Number(e.target.value),
+              })
+            }
+            style={{
+              width: "100%",
+              padding: "10px",
+              borderRadius: "8px",
+              background: "rgba(15, 23, 42, 0.6)",
+              color: "var(--text-color)",
+              border: "1px solid var(--border-color)",
+              outline: "none",
+            }}
+          />
+        </div>
+
+        {/* Batch Size */}
+        <div style={{ marginBottom: "24px" }}>
+          <label
+            style={{
+              display: "block",
+              marginBottom: "8px",
+              color: "var(--text-color)",
+              fontWeight: 600,
+            }}
+          >
+            Batch Size (Files per API call)
+          </label>
+
+          <input
+            type="number"
+            min="1"
+            max="20"
+            value={settings.batchSize}
+            onChange={(e) =>
+              setSettings({
+                ...settings,
+                batchSize: Number(e.target.value),
               })
             }
             style={{

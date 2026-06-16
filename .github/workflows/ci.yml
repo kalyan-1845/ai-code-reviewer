@@ -52,11 +52,17 @@ jobs:
           cd backend
           npm ci
 
+      - name: Run Backend Tests
+        run: |
+          cd backend
+          npm test
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: ai-engine/requirements.txt
 
       - name: Install AI Engine Dependencies
         run: |

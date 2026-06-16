@@ -336,6 +336,18 @@ Please review my feedback and suggestions below. Happy coding! 🚀
 ---
 ⭐ **Support RepoSage!** If you find this AI helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!`
       });
+
+      try {
+        await octokit.rest.issues.addLabels({
+          owner,
+          repo,
+          issue_number: pullNumber,
+          labels: ['gssoc:approved']
+        });
+        console.log('✅ Added gssoc:approved label to PR');
+      } catch (err) {
+        console.warn('⚠️ Could not add gssoc:approved label:', err.message);
+      }
     }
 
     console.log('✅ RepoSage AI Pull Request Review completed successfully.');

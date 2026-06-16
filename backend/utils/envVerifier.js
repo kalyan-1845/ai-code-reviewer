@@ -2,6 +2,9 @@ export function verifyPort(portVal) {
   if (portVal === undefined || portVal === '' || portVal === null) {
     return 5000;
   }
+  if (typeof portVal !== 'string' && typeof portVal !== 'number') {
+    throw new Error(`Invalid port: ${portVal} must be a string or number`);
+  }
   if (typeof portVal === 'string' && !/^\d+$/.test(portVal)) {
     throw new Error(`Invalid port: "${portVal}" contains non-numeric characters`);
   }

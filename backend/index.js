@@ -2,16 +2,23 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
 import PDFDocument from 'pdfkit';
+import { requireApiKey } from './utils/authMiddleware.js';
 import rateLimit from 'express-rate-limit';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
-import { loadIgnorePatterns, isIgnored, readFilesRecursively } from './utils/ignoreHelper.js';
+import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
 import { isValidRepoUrl, parseRepoUrl } from './utils/urlValidator.js';
+import simpleGit from 'simple-git';
+import escapeHtml from 'lodash.escape';
+import { parseDiff } from './utils/diffParser.js';
+import { analyzeComplexity } from './utils/complexityAnalyzer.js';
+import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
+import { verifyWebhookSignature } from './utils/signatureVerifier.js';
+import { mockAIReview } from './utils/mockAIReview.js';
 
 dotenv.config();
 
@@ -106,189 +113,10 @@ process.on('SIGINT', () => {
   clearInterval(dedupCleanupTimer);
 });
 
-// Note: loadIgnorePatterns, isIgnored, and readFilesRecursively are imported from ./utils/ignoreHelper.js
-
-
-// Note: scanSecrets function has been refactored and imported from ./utils/secretsScanner.js
-
-// 🟢 Helper to parse git diff for webhook changes
-function parseDiff(diffStr) {
-  const files = [];
-  const lines = diffStr.split('\n');
-  let currentFile = null;
-  let currentLineInNewFile = 0;
-
-  for (const line of lines) {
-    if (line.startsWith('diff --git')) {
-      const match = line.match(/b\/(.+)$/);
-      if (match) {
-        currentFile = {
-          path: match[1],
-          changes: []
-        };
-        files.push(currentFile);
-      }
-    } else if (line.startsWith('@@ ')) {
-      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-      if (match) {
-        currentLineInNewFile = parseInt(match[1], 10);
-      }
-    } else if (currentFile) {
-      if (line.startsWith('+') && !line.startsWith('+++')) {
-        currentFile.changes.push({
-          line: currentLineInNewFile,
-          content: line.slice(1)
-        });
-        currentLineInNewFile++;
-      } else if (line.startsWith(' ')) {
-        currentLineInNewFile++;
-      }
-    }
-  }
-  return files;
-}
-
-
-// Note: scanSecretsInChanges function has been refactored and imported from ./utils/secretsScanner.js
-
-// 🟢 Helper to analyze static complexity of source files
-function analyzeComplexity(fileContent, filePath) {
-  const lines = fileContent.split('\n');
-  const totalLines = lines.length;
-  let emptyLines = 0;
-  let commentLines = 0;
-  let functionCount = 0;
-
-  const ext = path.extname(filePath).toLowerCase();
-
-  // Languages that use C-style block comments /* ... */
-  const cStyleExts = ['.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.h', '.cs', '.go', '.rs', '.php', '.css'];
-  const usesCStyleBlocks = cStyleExts.includes(ext);
-  const usesHtmlBlocks = (ext === '.html');
-  let inBlockComment = false;
-
-  lines.forEach(line => {
-    const trimmed = line.trim();
-
-    // Empty line detection
-    if (trimmed === '') {
-      emptyLines++;
-      return;
-    }
-
-    // --- Comment Detection with multi-line block tracking ---
-
-    if (usesCStyleBlocks) {
-      // Currently inside a /* ... */ block comment
-      if (inBlockComment) {
-        commentLines++;
-        if (trimmed.includes('*/')) {
-          inBlockComment = false;
-        }
-        return;
-      }
-
-      // Single-line comment: //
-      if (trimmed.startsWith('//')) {
-        commentLines++;
-      }
-      // Single-line block comment: /* ... */ on same line
-      else if (trimmed.startsWith('/*') && trimmed.includes('*/')) {
-        commentLines++;
-      }
-      // Multi-line block comment opening: /*
-      else if (trimmed.startsWith('/*')) {
-        commentLines++;
-        inBlockComment = true;
-      }
-      // Line starting with * inside a doc-comment block (e.g. JSDoc)
-      else if (trimmed.startsWith('*')) {
-        commentLines++;
-      }
-    } else if (ext === '.py' || ext === '.rb') {
-      if (trimmed.startsWith('#')) {
-        commentLines++;
-      }
-    } else if (ext === '.sql') {
-      if (inBlockComment) {
-        commentLines++;
-        if (trimmed.includes('*/')) {
-          inBlockComment = false;
-        }
-        return;
-      }
-      if (trimmed.startsWith('--')) {
-        commentLines++;
-      } else if (trimmed.startsWith('/*') && trimmed.includes('*/')) {
-        commentLines++;
-      } else if (trimmed.startsWith('/*')) {
-        commentLines++;
-        inBlockComment = true;
-      }
-    } else if (usesHtmlBlocks) {
-      if (trimmed.startsWith('<!--')) {
-        commentLines++;
-      }
-    }
-
-    // --- Function Detection ---
-    if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
-      if (trimmed.includes('function ') || trimmed.includes('=>') || /^\s*(?:async\s+)?\w+\s*\([^)]*\)\s*\{/g.test(trimmed)) {
-        functionCount++;
-      }
-    } else if (ext === '.py') {
-      if (trimmed.startsWith('def ')) {
-        functionCount++;
-      }
-    } else if (ext === '.go') {
-      if (trimmed.startsWith('func ')) {
-        functionCount++;
-      }
-    } else if (['.java', '.cpp', '.cs'].includes(ext)) {
-      if (/(?:public|private|protected|static|\w+)\s+\w+\s*\([^)]*\)\s*(?:\{|const)?/g.test(trimmed)) {
-        functionCount++;
-      }
-    }
-  });
-
-  const codeLines = totalLines - emptyLines - commentLines;
-  const complexityScore = Math.round((totalLines / 25) + (functionCount * 3));
-  let grade = 'A';
-  if (complexityScore > 40) grade = 'F';
-  else if (complexityScore > 25) grade = 'D';
-  else if (complexityScore > 15) grade = 'C';
-  else if (complexityScore > 8) grade = 'B';
-
-  return {
-    totalLines,
-    emptyLines,
-    commentLines,
-    codeLines,
-    functionCount,
-    complexityScore,
-    grade
-  };
-}
-
-// 🟢 Helper to delete a folder recursively
-function deleteFolderRecursive(directoryPath) {
-  if (fs.existsSync(directoryPath)) {
-    fs.readdirSync(directoryPath).forEach((file) => {
-      const curPath = path.join(directoryPath, file);
-      if (fs.lstatSync(curPath).isDirectory()) {
-        deleteFolderRecursive(curPath);
-      } else {
-        fs.unlinkSync(curPath);
-      }
-    });
-    fs.rmdirSync(directoryPath);
-  }
-}
-
 // 🟢 Route: GitHub Import & AI Review
-app.post('/api/analyze', analyzeLimiter, async (req, res) => {
+app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
   const { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
-     maxTokens = 2048, systemPrompt = ''
+     maxTokens = 2048, systemPrompt = '', batchSize = 5
    } = req.body;
 
   if (!repoUrl) {
@@ -323,21 +151,25 @@ app.post('/api/analyze', analyzeLimiter, async (req, res) => {
 
   console.log(`🚀 Cloning: ${repoUrl} into ${clonePath}`);
 
-  // Clone repo using spawn to prevent shell injection
+  // Clone repo using simple-git to prevent shell injection and handle timeouts
   try {
-    await new Promise((resolve, reject) => {
-      const proc = spawn('git', ['clone', '--depth', '1', repoUrl, clonePath], { stdio: 'pipe' });
-      let stderr = '';
-      proc.stderr.on('data', (data) => { stderr += data.toString(); });
-      proc.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(stderr || `git clone exited with code ${code}`));
-      });
-      proc.on('error', reject);
-    });
+    const cloneTimeout = parseInt(process.env.GIT_CLONE_TIMEOUT) || 120000;
+    const git = simpleGit({ timeout: { block: cloneTimeout } });
+    await git.clone(repoUrl, clonePath, ['--depth', '1']);
+
+    // Check repository size
+    const maxRepoSizeMB = parseInt(process.env.MAX_REPO_SIZE_MB) || 100;
+    const maxSizeBytes = maxRepoSizeMB * 1024 * 1024;
+    const repoSize = getFolderSize(clonePath);
+    
+    if (repoSize > maxSizeBytes) {
+      deleteFolderRecursive(clonePath);
+      return res.status(413).json({ error: `Repository exceeds the maximum allowed size of ${maxRepoSizeMB}MB.` });
+    }
   } catch (error) {
     console.error(`❌ Git Clone Error: ${error.message}`);
-    return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public.' });
+    deleteFolderRecursive(clonePath);
+    return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public and within size limits.' });
   }
 
     try {
@@ -361,7 +193,7 @@ app.post('/api/analyze', analyzeLimiter, async (req, res) => {
         const aiResponse = await fetch(`${aiEngineUrl}/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt })
+          body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
         });
         
         if (aiResponse.ok) {
@@ -434,7 +266,7 @@ app.post('/api/analyze', analyzeLimiter, async (req, res) => {
 });
 
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
-app.post('/api/chat', chatLimiter, async (req, res) => {
+app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
   const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId } = req.body;
 
   if (!message) {
@@ -483,17 +315,7 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
   }
 });
 
-function verifyWebhookSignature(rawBody, signature, secret) {
-  if (!signature || !secret) return false;
-  const sig = signature.startsWith('sha256=') ? signature : `sha256=${signature}`;
-  const hmac = crypto.createHmac('sha256', secret);
-  const digest = `sha256=${hmac.update(rawBody || '').digest('hex')}`;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(digest));
-  } catch {
-    return false;
-  }
-}
+
 
 // 🟢 Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', async (req, res) => {
@@ -557,7 +379,7 @@ app.post('/api/webhook', async (req, res) => {
 });
 
 // 🟢 Route: Create GitHub Issue automatically for Code Reviews
-app.post('/api/issues/create', async (req, res) => {
+app.post('/api/issues/create', requireApiKey, async (req, res) => {
   const { repoUrl, title, body, labels = [] } = req.body;
   const token = process.env.GITHUB_PAT;
 
@@ -735,77 +557,25 @@ Please review my feedback and suggestions below. Happy coding! 🚀`,
 
 🎉 Outstanding work! I have scanned the PR and found **0 issues**. Your changes look pristine, clean, and optimized! Approved! 🚀`
     });
+
+    try {
+      await octokit.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        labels: ['gssoc:approved']
+      });
+      console.log('✅ Added gssoc:approved label to PR');
+    } catch (err) {
+      console.warn('⚠️ Could not add gssoc:approved label:', err.message);
+    }
   }
 }
 
-// 🟢 Helper for Mock AI Review (Provides instant feedback when python server is offline)
-function mockAIReview(files, model = 'llama-3.3-70b-versatile') {
-  const reviews = {};
-  
-  files.forEach(file => {
-    reviews[file.name] = {
-      bugs: [
-        {
-          type: "Null Pointer Risk",
-          line: 12,
-          description: `Variables should be validated before use to prevent potential runtime crashes in ${file.name}.`,
-          suggestion: "Add a standard null-check check (e.g. `if (!variable)` or `if variable is None`)."
-        }
-      ],
-      security: [
-        {
-          type: "Hardcoded API Key Check",
-          line: 5,
-          description: "Potential hardcoded credentials detected. API keys should always be loaded from environment variables (.env).",
-          suggestion: "Move the key to a `.env` file and load using standard environment managers."
-        }
-      ],
-      optimization: [
-        {
-          type: "Complexity Reduction",
-          line: 25,
-          description: "Avoid using nested iterations if time complexity grows quadratically. Consider using a Map/Dictionary lookup.",
-          suggestion: "Implement a mapping cache instead of performing dual-nested loops."
-        }
-      ],
-      styling: [
-        {
-          type: "Naming Convention",
-          line: 8,
-          description: "CamelCase or snake_case format mismatch detected on function declaration.",
-          suggestion: "Reformat variable or function definitions to conform to standard styling rules."
-        }
-      ]
-    };
-  });
 
-  // Mock generated README
-  const mockReadme = `# 🚀 ${files[0].name.split('/')[0] || 'My Repository'}
-
-This repository is powered by RepoSage AI Copilot (Audited using **${model}**). 
-
-## 🏗️ Folder Layout
-${files.map(f => `- 📄 **${f.name}**`).join('\n')}
-
-## 💻 Tech Stack
-- Source files: ${files.length} modules analyzed.
-
-Generated automatically by **RepoSage AI Generator**.`;
-
-  // Mock generated Mermaid flowchart
-  const mockMermaid = `graph TD\n  Root["📦 ${files[0].name.split('/')[0] || 'Repository'}"]\n  ${files.slice(0, 5).map((f, i) => `  Root --> File_${i}["📄 ${f.name.split('/').pop()}"]`).join('\n')}`;
-
-  return {
-    fileReviews: reviews,
-    generatedReadme: mockReadme,
-    mermaidDiagram: mockMermaid,
-    _mock: true,
-    _mockWarning: 'AI Engine unavailable. These findings are placeholder suggestions and may not reflect actual code.'
-  };
-}
 
 // 🟢 Route: Export Review Report to HTML
-app.post('/api/reports/html', (req, res) => {
+app.post('/api/reports/html', requireApiKey, (req, res) => {
   const { repoName, analysis } = req.body;
   if (!repoName || !analysis) {
     return res.status(400).json({ error: 'Repository name and analysis result are required.' });
@@ -826,12 +596,12 @@ app.post('/api/reports/html', (req, res) => {
       allFindings.forEach(f => {
         fileRows += `
           <tr>
-            <td><strong>${file}</strong></td>
-            <td><span class="badge badge-${f.category.toLowerCase()}">${f.category}</span></td>
-            <td>${f.line}</td>
-            <td><strong>${f.type}</strong></td>
-            <td>${f.description}</td>
-            <td><code class="code-font">${f.suggestion.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></td>
+            <td><strong>${escapeHtml(file)}</strong></td>
+            <td><span class="badge badge-${escapeHtml(f.category).toLowerCase()}">${escapeHtml(f.category)}</span></td>
+            <td>${escapeHtml(String(f.line))}</td>
+            <td><strong>${escapeHtml(f.type)}</strong></td>
+            <td>${escapeHtml(f.description)}</td>
+            <td><code class="code-font">${escapeHtml(f.suggestion)}</code></td>
           </tr>
         `;
       });
@@ -843,7 +613,7 @@ app.post('/api/reports/html', (req, res) => {
     <html lang="en">
     <head>
       <meta charset="UTF-8">
-      <title>RepoSage Code Audit - ${repoName}</title>
+      <title>RepoSage Code Audit - ${escapeHtml(repoName)}</title>
       <style>
         body {
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -923,7 +693,7 @@ app.post('/api/reports/html', (req, res) => {
       <div class="container">
         <h1>🛡️ RepoSage AI Code Audit Report</h1>
         <div class="meta">
-          <strong>Repository Name:</strong> ${repoName}<br>
+          <strong>Repository Name:</strong> ${escapeHtml(repoName)}<br>
           <strong>Report Timestamp:</strong> ${new Date().toLocaleString()}<br>
           <strong>Audited with:</strong> RepoSage GSSoC '26 Audit Engine
         </div>
@@ -956,7 +726,7 @@ app.post('/api/reports/html', (req, res) => {
 });
 
 // 🟢 Route: Export Review Report to PDF
-app.post('/api/reports/pdf', (req, res) => {
+app.post('/api/reports/pdf', requireApiKey, (req, res) => {
   const { repoName, analysis } = req.body;
   if (!repoName || !analysis) {
     return res.status(400).json({ error: 'Repository name and analysis result are required.' });

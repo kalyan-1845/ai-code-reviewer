@@ -28,3 +28,12 @@ ENV/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Temporary files and databases
+temp_repos/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local queries and scripts
+*.gql

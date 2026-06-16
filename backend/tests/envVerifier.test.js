@@ -21,6 +21,13 @@ test('verifyPort throws for non-numeric strings', () => {
   assert.throws(() => verifyPort('3.14'), /non-numeric/);
 });
 
+test('verifyPort throws for edge cases like booleans and arrays', () => {
+  assert.throws(() => verifyPort(false), /must be a string or number/);
+  assert.throws(() => verifyPort(true), /must be a string or number/);
+  assert.throws(() => verifyPort([]), /must be a string or number/);
+  assert.throws(() => verifyPort([8080]), /must be a string or number/);
+});
+
 test('verifyPort throws for out-of-range values', () => {
   assert.throws(() => verifyPort(-1), /between 0 and 65535/);
   assert.throws(() => verifyPort(65536), /between 0 and 65535/);

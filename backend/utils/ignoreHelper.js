@@ -19,7 +19,7 @@ export function loadIgnorePatterns(dir) {
 
 // 🟢 Helper to check if a path matches any ignore pattern
 export function isIgnored(filePath, patterns, baseDir) {
-  const relative = path.relative(baseDir, filePath);
+  const relative = path.relative(baseDir, filePath).replace(/\\/g, '/');
   for (const pattern of patterns) {
     if (pattern.endsWith('/')) {
       if (relative === pattern.slice(0, -1) || relative.startsWith(pattern)) {
@@ -35,7 +35,7 @@ export function isIgnored(filePath, patterns, baseDir) {
         if (new RegExp(`^${escaped}$`).test(relative)) return true;
       } catch { /* skip invalid pattern */ }
     } else {
-      if (relative === pattern || relative.startsWith(pattern + path.sep)) {
+      if (relative === pattern || relative.startsWith(pattern + '/')) {
         return true;
       }
     }
@@ -55,7 +55,7 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
     const filePath = path.join(dir, file);
     let stat;
     try {
-      stat = fs.statSync(filePath);
+      stat = fs.lstatSync(filePath);
     } catch {
       continue;
     }
