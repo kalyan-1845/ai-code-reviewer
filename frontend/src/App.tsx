@@ -14,6 +14,7 @@ import {
   AlertOctagon,
   AlertTriangle,
   Download,
+  FileSpreadsheet,
   Layers,
   Code2,
   MessageSquare,
@@ -1225,6 +1226,42 @@ export default function App() {
     }
   };
 
+  const downloadCSVReport = () => {
+    const result = activeResult ?? analysisResult;
+    if (!result) return;
+
+    const rows: string[][] = [];
+    rows.push(["File", "Category", "Type", "Line", "Description", "Suggestion"]);
+
+    Object.keys(result.analysis.fileReviews).forEach((file) => {
+      const review = result.analysis.fileReviews[file];
+      (review.bugs || []).forEach((item: { line: number; type: string; description: string; suggestion: string }) =>
+        rows.push([file, "Bug", item.type, String(item.line), item.description, item.suggestion])
+      );
+      (review.security || []).forEach((item: { line: number; type: string; description: string; suggestion: string }) =>
+        rows.push([file, "Security", item.type, String(item.line), item.description, item.suggestion])
+      );
+      (review.optimization || []).forEach((item: { line: number; type: string; description: string; suggestion: string }) =>
+        rows.push([file, "Optimization", item.type, String(item.line), item.description, item.suggestion])
+      );
+      (review.styling || []).forEach((item: { line: number; type: string; description: string; suggestion: string }) =>
+        rows.push([file, "Styling", item.type, String(item.line), item.description, item.suggestion])
+      );
+    });
+
+    const csvContent = rows.map((r) =>
+      r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")
+    ).join("\n");
+
+    const element = document.createElement("a");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    element.href = URL.createObjectURL(blob);
+    element.download = `${result.repoName}_FINDINGS.csv`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   return (
     <div
       style={{
@@ -1345,6 +1382,12 @@ export default function App() {
                 style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#f59e0b', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s' }}
               >
                 <Download size={14} /> Export PDF
+              </button>
+              <button
+                onClick={downloadCSVReport}
+                style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#3b82f6', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s' }}
+              >
+                <FileSpreadsheet size={14} /> Export CSV
               </button>
             </>
           )}
