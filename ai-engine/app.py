@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -8,6 +9,7 @@ from groq import Groq
 from dotenv import load_dotenv
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
+from rag import ingest_chunks, get_collection_stats
 
 # Load environment variables: prefer local .env, fall back to backend/.env
 env_paths = [
@@ -484,6 +486,59 @@ If no issues are found, reply with an empty array: []"""
             print(f"⚠️ Error reviewing file {file.path} on Groq: {_redact_key(str(e), api_key)}")
             
     return {"comments": comments}
+
+# ─── RAG Data Models ──────────────────────────────────────────
+
+class ChunkItem(BaseModel):
+    text: str
+    metadata: dict = Field(default_factory=dict)
+
+class IngestRequest(BaseModel):
+    session_id: Optional[str] = None
+    chunks: List[ChunkItem]
+
+class IngestResponse(BaseModel):
+    success: bool
+    ingested: int
+    session_id: str
+
+class RAGStatsResponse(BaseModel):
+    collection: str
+    chunk_count: int
+    embedding_dimension: int
+
+# 🟢 Route: Ingest embeddings into ChromaDB
+@app.post("/api/rag/ingest", response_model=IngestResponse)
+async def ingest_embeddings(request: IngestRequest):
+    session_id = request.session_id or str(uuid.uuid4())
+    chunks = request.chunks
+
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No chunks provided.")
+
+    ids = []
+    metadatas = []
+    texts = []
+
+    for i, chunk in enumerate(chunks):
+        chunk_id = f"{session_id}_{i}"
+        ids.append(chunk_id)
+        texts.append(chunk.text)
+        meta = dict(chunk.metadata)
+        meta["session_id"] = session_id
+        meta["chunk_index"] = i
+        metadatas.append(meta)
+
+    ingested = ingest_chunks(texts, metadatas, ids)
+    return IngestResponse(success=True, ingested=ingested, session_id=session_id)
+
+
+# 🟢 Route: Get RAG collection stats
+@app.get("/api/rag/stats", response_model=RAGStatsResponse)
+async def rag_stats():
+    stats = get_collection_stats()
+    return RAGStatsResponse(**stats)
+
 
 if __name__ == "__main__":
     import uvicorn
