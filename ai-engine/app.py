@@ -485,6 +485,27 @@ If no issues are found, reply with an empty array: []"""
             
     return {"comments": comments}
 
+# ─── RAG Query ────────────────────────────────────────────────
+
+class QueryRequest(BaseModel):
+    query: str
+    n_results: int = 5
+
+class QueryResultItem(BaseModel):
+    text: str
+    metadata: dict
+    score: float
+
+class QueryResponse(BaseModel):
+    results: list[QueryResultItem]
+
+@app.post("/api/rag/query", response_model=QueryResponse)
+async def query_similar_chunks(request: QueryRequest):
+    from rag import query_similar
+    results = query_similar(request.query, request.n_results)
+    return QueryResponse(results=results)
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
