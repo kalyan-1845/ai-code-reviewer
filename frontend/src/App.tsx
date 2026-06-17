@@ -8,6 +8,8 @@ import {
   ShieldAlert,
   Zap,
   Sparkles,
+  Bug,
+  FileText,
   FolderGit,
   FileCode,
   CheckCircle,
@@ -2284,7 +2286,7 @@ export default function App() {
             </div>
           )}
 
-          {/* 3. Welcome / Sandbox Guide (When no scan has occurred yet) */}
+          {/* 3. Empty-State Dashboard (When no scan has occurred yet) */}
           {!isLoading && !analysisResult && (
             <div
               className="glass-panel"
@@ -2292,31 +2294,37 @@ export default function App() {
                 flexGrow: 1,
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
                 padding: "40px",
-                textAlign: "center",
-                gap: "24px",
+                gap: "32px",
               }}
             >
+              {/* Hero Section */}
               <div
                 style={{
-                  background: "rgba(59, 130, 246, 0.1)",
-                  padding: "16px",
-                  borderRadius: "50%",
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  justifyContent: "center",
+                  textAlign: "center",
+                  gap: "16px",
                 }}
               >
-                <Code2 size={48} style={{ color: "#3b82f6" }} />
-              </div>
-              <div style={{ maxWidth: "500px" }}>
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, rgba(59,130,246,0.15), rgba(168,85,247,0.15))",
+                    padding: "20px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Code2 size={48} style={{ color: "#3b82f6" }} />
+                </div>
                 <h2
                   style={{
-                    fontSize: "20px",
+                    fontSize: "24px",
                     fontWeight: 700,
-                    margin: "0 0 10px 0",
+                    margin: 0,
                     color: "#f3f4f6",
                   }}
                 >
@@ -2324,22 +2332,203 @@ export default function App() {
                 </h2>
                 <p
                   style={{
-                    margin: "0 0 20px 0",
+                    margin: 0,
                     fontSize: "14px",
                     color: "#9ca3af",
-                    lineHeight: 1.5,
+                    lineHeight: 1.6,
+                    maxWidth: "520px",
                   }}
                 >
-                  Enter a public GitHub repository link on the left panel to
-                  trigger a complete multi-file AI evaluation. Our service
-                  clones the codebase, audits variables for null risks or
-                  hardcoded credentials, and outputs an automated custom
-                  README.md structure.
+                  Enter a public GitHub repository URL in the left panel to
+                  trigger a complete multi-file AI evaluation. RepoSage clones
+                  the codebase, scans for bugs, security threats, and
+                  performance issues, then generates a custom README.
                 </p>
+              </div>
+
+              {/* Feature Cards */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "12px",
+                }}
+              >
+                {[
+                  {
+                    icon: ShieldAlert,
+                    label: "Security Scan",
+                    desc: "API leaks, hardcoded credentials, SQL injection",
+                  },
+                  {
+                    icon: Bug,
+                    label: "Bug Detection",
+                    desc: "Logical errors, null references, edge cases",
+                  },
+                  {
+                    icon: Zap,
+                    label: "Performance",
+                    desc: "Slow code, memory issues, optimization tips",
+                  },
+                  {
+                    icon: FileText,
+                    label: "Auto README",
+                    desc: "Generate professional documentation",
+                  },
+                ].map((feat) => (
+                  <div
+                    key={feat.label}
+                    style={{
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      borderRadius: "10px",
+                      padding: "16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "8px",
+                      textAlign: "center",
+                    }}
+                  >
+                    <feat.icon size={24} style={{ color: "#3b82f6" }} />
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        color: "#e5e7eb",
+                      }}
+                    >
+                      {feat.label}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: "#6b7280",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {feat.desc}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Quick Start Steps */}
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: "12px",
+                  padding: "20px",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: "0 0 16px 0",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#d1d5db",
+                  }}
+                >
+                  Quick Start
+                </h3>
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "center",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  {[
+                    {
+                      step: "1",
+                      title: "Enter a Repository URL",
+                      desc: "Paste a public GitHub repo link in the left panel",
+                    },
+                    {
+                      step: "2",
+                      title: "Configure Settings",
+                      desc: "Optionally set company persona, language, and model",
+                    },
+                    {
+                      step: "3",
+                      title: "Run Analysis",
+                      desc: "Click Analyze and review security, bug, and performance reports",
+                    },
+                  ].map((s) => (
+                    <div
+                      key={s.step}
+                      style={{
+                        display: "flex",
+                        gap: "12px",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "26px",
+                          height: "26px",
+                          borderRadius: "50%",
+                          background: "rgba(59,130,246,0.2)",
+                          color: "#3b82f6",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {s.step}
+                      </div>
+                      <div>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            fontSize: "13px",
+                            color: "#e5e7eb",
+                          }}
+                        >
+                          {s.title}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            color: "#6b7280",
+                            marginTop: "2px",
+                          }}
+                        >
+                          {s.desc}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sample Repos */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "12px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#6b7280",
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
+                  }}
+                >
+                  Try a Sample Repo
+                </span>
+                <div
+                  style={{
+                    display: "flex",
                     gap: "10px",
                   }}
                 >
@@ -2352,14 +2541,15 @@ export default function App() {
                       background: "rgba(255,255,255,0.05)",
                       color: "#d1d5db",
                       border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: "6px",
-                      padding: "8px 16px",
-                      fontSize: "12px",
+                      borderRadius: "8px",
+                      padding: "10px 18px",
+                      fontSize: "13px",
                       fontWeight: 600,
                       cursor: "pointer",
+                      transition: "all 0.15s",
                     }}
                   >
-                    💡 Load Sample: Guava
+                    Load Sample: Guava
                   </button>
                   <button
                     onClick={() => {
@@ -2370,14 +2560,15 @@ export default function App() {
                       background: "rgba(255,255,255,0.05)",
                       color: "#d1d5db",
                       border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: "6px",
-                      padding: "8px 16px",
-                      fontSize: "12px",
+                      borderRadius: "8px",
+                      padding: "10px 18px",
+                      fontSize: "13px",
                       fontWeight: 600,
                       cursor: "pointer",
+                      transition: "all 0.15s",
                     }}
                   >
-                    💡 Load Sample: AuraCore
+                    Load Sample: AuraCore
                   </button>
                 </div>
               </div>
