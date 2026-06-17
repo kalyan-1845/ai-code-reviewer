@@ -976,6 +976,23 @@ export default function App() {
     setSelectedFile(null);
     activeSetRef.current = false;
 
+    const batchSteps = [
+      "📦 Preparing batch queue...",
+      "🔍 Authenticating connection...",
+      "📥 Cloning repositories...",
+      "🧠 Running LLM analysis on batch...",
+      "📜 Generating reports...",
+      "🎉 Finalizing batch results...",
+    ];
+    let batchStepIdx = 0;
+    setLoadingStep(batchSteps[0]);
+    const batchStepInterval = setInterval(() => {
+      batchStepIdx++;
+      if (batchStepIdx < batchSteps.length) {
+        setLoadingStep(batchSteps[batchStepIdx]);
+      }
+    }, 1500);
+
     const aiSettings = JSON.parse(
       localStorage.getItem("reposage_ai_settings") || "{}"
     );
@@ -1046,6 +1063,7 @@ export default function App() {
       }
     }
 
+    clearInterval(batchStepInterval);
     setIsBatchRunning(false);
     setIsLoading(false);
   };
@@ -1527,6 +1545,41 @@ export default function App() {
               <FolderGit size={18} style={{ color: "#3b82f6" }} /> Import
               Repository
             </h2>
+
+            {isLoading && (
+              <div style={{ marginBottom: "14px" }}>
+                <div
+                  style={{
+                    height: "4px",
+                    background: "rgba(255,255,255,0.08)",
+                    borderRadius: "2px",
+                    overflow: "hidden",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: "30%",
+                      background: "linear-gradient(90deg, #a855f7, #3b82f6, #a855f7)",
+                      backgroundSize: "200% 100%",
+                      borderRadius: "2px",
+                      animation: "progress-slide 1.5s ease infinite",
+                    }}
+                  />
+                </div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "11px",
+                    color: "#a855f7",
+                    fontStyle: "italic",
+                  }}
+                >
+                  {loadingStep || "Processing..."}
+                </p>
+              </div>
+            )}
 
             <form
               onSubmit={handleAnalyze}
