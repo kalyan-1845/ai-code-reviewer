@@ -19,6 +19,7 @@ import { analyzeComplexity } from './utils/complexityAnalyzer.js';
 import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import { mockAIReview } from './utils/mockAIReview.js';
+import { saveAnalytics, getSummary, getTrends } from './utils/analyticsModel.js';
 
 dotenv.config();
 
@@ -246,10 +247,21 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
         timestamp: Date.now()
       });
 
-      // 4. Clean up folder
+      // 4. Save analytics
+      try {
+        const allFiles = Object.values(reviewResult.fileReviews || {});
+        const totalIssues = allFiles.reduce((sum, f) => sum + (f.bugs?.length || 0) + (f.security?.length || 0) + (f.optimization?.length || 0) + (f.styling?.length || 0), 0);
+        const criticalBugs = allFiles.reduce((sum, f) => sum + (f.bugs?.length || 0) + (f.security?.length || 0), 0);
+        const linesOfCode = files.reduce((sum, f) => sum + (f.content?.split('\n').length || 0), 0);
+        saveAnalytics({ repoName, totalIssues, criticalBugs, linesOfCode });
+      } catch (analyticsErr) {
+        console.warn('⚠️ Failed to save analytics:', analyticsErr.message);
+      }
+
+      // 5. Clean up folder
       deleteFolderRecursive(clonePath);
       
-      // 5. Return result
+      // 6. Return result
       return res.json({
         success: true,
         repoName,
@@ -316,6 +328,29 @@ app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
 });
 
 
+
+// 🟢 Route: Get Analytics Summary
+app.get('/api/analytics/summary', requireApiKey, (req, res) => {
+  try {
+    const summary = getSummary();
+    return res.json({ success: true, ...summary });
+  } catch (err) {
+    console.error('❌ Analytics Summary Error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch analytics summary.' });
+  }
+});
+
+// 🟢 Route: Get Analytics Trends (30-day time-series)
+app.get('/api/analytics/trends', requireApiKey, (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const trends = getTrends(days);
+    return res.json({ success: true, trends });
+  } catch (err) {
+    console.error('❌ Analytics Trends Error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch analytics trends.' });
+  }
+});
 
 // 🟢 Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', async (req, res) => {
