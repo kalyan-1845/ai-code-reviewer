@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import SettingsModal from "./components/SettingsModal";
 import RepositoryOverview from './RepositoryOverview';
+import RepositorySummaryCard from './RepositorySummaryCard';
 import {
   Github,
   Terminal,
@@ -365,9 +366,39 @@ export default function App() {
     status: 'queued' | 'analyzing' | 'done' | 'failed';
     response?: BackendResponse;
     error?: string;
-  }>>([]);
+  }>>(() => {
+    try {
+      // Allow fallback to eposage_batch_results just in case
+      const saved = localStorage.getItem('reposage_batch_results') || localStorage.getItem('eposage_batch_results');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map((r: any) => 
+          r.status === 'analyzing' ? { ...r, status: 'failed', error: 'Analysis interrupted by reload' } : r
+        );
+      }
+    } catch (e) {
+      console.error('Failed to load batch results:', e);
+    }
+    return [];
+  });
   const [isBatchRunning, setIsBatchRunning] = useState(false);
-  const [activeRepoId, setActiveRepoId] = useState<string | null>(null);
+  const [activeRepoId, setActiveRepoId] = useState<string | null>(() => {
+    return localStorage.getItem('reposage_active_repo_id') || null;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('reposage_batch_results', JSON.stringify(queuedRepos));
+    // Also save under requested key just in case testing relies on it
+    localStorage.setItem('eposage_batch_results', JSON.stringify(queuedRepos));
+  }, [queuedRepos]);
+
+  useEffect(() => {
+    if (activeRepoId) {
+      localStorage.setItem('reposage_active_repo_id', activeRepoId);
+    } else {
+      localStorage.removeItem('reposage_active_repo_id');
+    }
+  }, [activeRepoId]);
 
   // Refs for batch analysis to avoid stale closures
   const queuedReposRef = useRef(queuedRepos);
@@ -2629,6 +2660,7 @@ export default function App() {
                 boxSizing: "border-box",
               }}
             >
+              <RepositorySummaryCard result={activeResult ?? analysisResult} />
               <RepositoryOverview
                 files={Object.keys(analysisResult.analysis.fileReviews).map((filePath) => {
                   const ext = filePath.split('.').pop()?.toLowerCase() || 'other';
