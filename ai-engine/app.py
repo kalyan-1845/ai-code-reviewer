@@ -179,10 +179,10 @@ async def analyze_repository(request: AnalyzeRequest):
     if custom_system_prompt:
         base_prompt = (
             custom_system_prompt
-            + "\n\nAdditionally, you are a senior staff engineer and security analyst conducting a thorough code review. You MUST follow the JSON output format specified below."
+            + "\n\nAdditionally, you are a senior staff engineer and security analyst conducting a thorough code review. You must answer strictly based on the provided code context. Do not use any external knowledge, assumptions, or information beyond the files and repository structure given above. If a question cannot be answered from the provided context alone, state that clearly and do not speculate. You MUST follow the JSON output format specified below."
         )
     else:
-        base_prompt = "You are a senior staff engineer and security analyst conducting a thorough code review."
+        base_prompt = "You are a senior staff engineer and security analyst conducting a thorough code review. You must answer strictly based on the provided code context. Do not use any external knowledge, assumptions, or information beyond the files and repository structure given above. If a question cannot be answered from the provided context alone, state that clearly and do not speculate."
 
     groq_model = get_groq_model(request.model)
     print(f"📡 Forwarding batched analysis request to Groq using model: {groq_model} (Batch size: {batch_size})")
@@ -357,7 +357,7 @@ Here is the code file content context:
 Guidelines:
 - Provide clear, direct, and technically accurate explanations.
 - When generating code, use appropriate syntax block formatting (e.g. ```javascript ... ```).
-- If the question cannot be answered using the provided context, state that clearly but try to offer general guidance based on standard practices.
+- You must answer strictly based on the provided code context. Do not use any external knowledge, assumptions, or information beyond the repository layout and file contents given above. If a question cannot be answered from the provided context alone, state that clearly and do not speculate.
 """
 
     # 3. Assemble chat messages history + user query
@@ -427,6 +427,8 @@ async def review_diff(request: ReviewDiffRequest):
         review_prompt = f"""You are a Senior Staff Engineer performing an automated Pull Request code review.
 Analyze the following code additions in the file "{file.path}". 
 Identify any logical bugs, security threats (API key leaks, hardcoded credentials, SQL injection, null references), naming/style issues, or performance optimization opportunities.
+
+You must answer strictly based on the provided code additions. Do not use any external knowledge, assumptions, or information beyond the code changes shown above. If you cannot identify any issues in the provided code, return an empty array.
 
 Code additions with line numbers:
 {changes_text}
