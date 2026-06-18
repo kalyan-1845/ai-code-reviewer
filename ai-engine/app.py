@@ -344,7 +344,30 @@ async def chat_with_repository(request: ChatRequest):
     structure_text = "\n".join(repo_structure)
     contents_text = "\n\n".join(file_contents_summary)
 
+    # 2a. Retrieve RAG chunks for the user's question
+    rag_context = ""
+    try:
+        from rag import query_chunks
+        rag_chunks = query_chunks(message, n_results=5)
+        if rag_chunks:
+            chunk_parts = []
+            for i, c in enumerate(rag_chunks, 1):
+                meta = c.get("metadata", {})
+                source = meta.get("file_path", meta.get("source", "unknown"))
+                chunk_parts.append(f"[Chunk {i} from {source}]\n{c['content']}")
+            rag_context = "\n\n".join(chunk_parts)
+    except Exception:
+        rag_context = ""
+
     # 2. Build the system prompt injecting repository context
+    if rag_context:
+        context_section = f"""{contents_text}
+
+Additionally, the following semantically relevant code snippets were retrieved from the repository:
+{rag_context}"""
+    else:
+        context_section = contents_text
+
     system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
 You are helping the user understand and work with their codebase. Use the code context provided below to answer questions, explain logic, write tests, or find issues.
 
@@ -352,7 +375,7 @@ Here is the repository layout:
 {structure_text}
 
 Here is the code file content context:
-{contents_text}
+{context_section}
 
 Guidelines:
 - Provide clear, direct, and technically accurate explanations.
