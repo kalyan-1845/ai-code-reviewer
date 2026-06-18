@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import SettingsModal from "./components/SettingsModal";
+import HealthScoreGauge from './components/HealthScoreGauge';
 import RepositoryOverview from './RepositoryOverview';
 import RepositorySummaryCard from './RepositorySummaryCard';
 import {
@@ -2761,6 +2762,7 @@ export default function App() {
               }}
             >
               <RepositorySummaryCard result={activeResult ?? analysisResult} />
+              <HealthScoreGauge fileReviews={analysisResult.analysis.fileReviews} />
               <RepositoryOverview
                 files={Object.keys(analysisResult.analysis.fileReviews).map((filePath) => {
                   const ext = filePath.split('.').pop()?.toLowerCase() || 'other';
