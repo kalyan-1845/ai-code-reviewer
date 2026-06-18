@@ -19,8 +19,15 @@ import { analyzeComplexity } from './utils/complexityAnalyzer.js';
 import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import { mockAIReview } from './utils/mockAIReview.js';
+import mongoose from 'mongoose';
+import Analytics from './models/Analytics.js';
 
 dotenv.config();
+
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/reposage';
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.warn('⚠️ MongoDB connection failed:', err.message));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -852,6 +859,54 @@ app.post('/api/reports/pdf', requireApiKey, (req, res) => {
   }
 
   doc.end();
+});
+
+// 🟢 Route: Analytics Summary — total lifetime bugs caught
+app.get('/api/analytics/summary', requireApiKey, async (req, res) => {
+  try {
+    const [result] = await Analytics.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalAnalyses: { $sum: 1 },
+          totalBugs: { $sum: '$totalBugs' },
+          totalSecurityIssues: { $sum: '$totalSecurityIssues' },
+          totalOptimizations: { $sum: '$totalOptimizations' },
+          totalStylingIssues: { $sum: '$totalStylingIssues' },
+          totalFindings: { $sum: '$totalFindings' },
+          totalFilesReviewed: { $sum: '$filesReviewedCount' },
+          avgHealthScore: { $avg: '$healthScore' },
+        },
+      },
+    ]);
+
+    if (!result) {
+      return res.json({
+        totalAnalyses: 0,
+        totalBugs: 0,
+        totalSecurityIssues: 0,
+        totalOptimizations: 0,
+        totalStylingIssues: 0,
+        totalFindings: 0,
+        totalFilesReviewed: 0,
+        avgHealthScore: 100,
+      });
+    }
+
+    return res.json({
+      totalAnalyses: result.totalAnalyses,
+      totalBugs: result.totalBugs,
+      totalSecurityIssues: result.totalSecurityIssues,
+      totalOptimizations: result.totalOptimizations,
+      totalStylingIssues: result.totalStylingIssues,
+      totalFindings: result.totalFindings,
+      totalFilesReviewed: result.totalFilesReviewed,
+      avgHealthScore: Math.round(result.avgHealthScore * 10) / 10,
+    });
+  } catch (err) {
+    console.error('❌ Analytics Summary Error:', err.message);
+    return res.status(500).json({ error: 'Failed to retrieve analytics summary.' });
+  }
 });
 
 app.listen(PORT, () => {
