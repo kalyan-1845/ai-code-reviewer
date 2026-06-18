@@ -2763,8 +2763,8 @@ export default function App() {
               }}
             >
               <RepositorySummaryCard result={activeResult ?? analysisResult} />
-              <HealthScoreGauge fileReviews={analysisResult.analysis.fileReviews} />
-              <TotalIssuesKpiCard fileReviews={analysisResult.analysis.fileReviews} />
+              <HealthScoreGauge fileReviews={(activeResult ?? analysisResult)?.analysis?.fileReviews || {}} />
+              <TotalIssuesKpiCard fileReviews={(activeResult ?? analysisResult)?.analysis?.fileReviews || {}} />
               <RepositoryOverview
                 files={Object.keys(analysisResult.analysis.fileReviews).map((filePath) => {
                   const ext = filePath.split('.').pop()?.toLowerCase() || 'other';

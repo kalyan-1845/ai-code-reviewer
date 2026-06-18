@@ -19,7 +19,7 @@ interface Props {
 
 function computeHealthScore(fileReviews: Record<string, FileReview>): number {
   let totalBugs = 0, totalSecurityIssues = 0, totalOptimizations = 0, totalStylingIssues = 0;
-  for (const review of Object.values(fileReviews)) {
+  for (const review of Object.values(fileReviews || {})) {
     totalBugs += review.bugs?.length || 0;
     totalSecurityIssues += review.security?.length || 0;
     totalOptimizations += review.optimization?.length || 0;

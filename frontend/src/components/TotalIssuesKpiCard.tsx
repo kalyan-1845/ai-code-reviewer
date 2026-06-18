@@ -20,7 +20,7 @@ interface Props {
 }
 
 export default function TotalIssuesKpiCard({ fileReviews, isLoading = false }: Props) {
-  const counts = Object.values(fileReviews).reduce(
+  const counts = Object.values(fileReviews || {}).reduce(
     (acc, review) => ({
       bugs: acc.bugs + (review.bugs?.length || 0),
       security: acc.security + (review.security?.length || 0),
