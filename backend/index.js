@@ -27,7 +27,7 @@ dotenv.config();
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/reposage';
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.warn('⚠️ MongoDB connection failed:', err.message));
+  .catch(err => console.warn('⚠️ MongoDB connection failed, analytics will not be persisted:', err.message));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -253,10 +253,43 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
         timestamp: Date.now()
       });
 
-      // 4. Clean up folder
+      // 4. Compute and persist analytics
+      let totalBugs = 0, totalSecurityIssues = 0, totalOptimizations = 0, totalStylingIssues = 0;
+      if (reviewResult && reviewResult.fileReviews) {
+        for (const file of Object.keys(reviewResult.fileReviews)) {
+          const review = reviewResult.fileReviews[file];
+          totalBugs += (review.bugs || []).length;
+          totalSecurityIssues += (review.security || []).length;
+          totalOptimizations += (review.optimization || []).length;
+          totalStylingIssues += (review.styling || []).length;
+        }
+      }
+      const totalFindings = totalBugs + totalSecurityIssues + totalOptimizations + totalStylingIssues;
+      const healthScore = Math.max(0, Math.round(100 - totalBugs * 5 - totalSecurityIssues * 3 - totalOptimizations * 1 - totalStylingIssues * 0.5));
+
+      try {
+        await Analytics.create({
+          repoUrl,
+          repoName,
+          filesReviewedCount: files.length,
+          totalBugs,
+          totalSecurityIssues,
+          totalOptimizations,
+          totalStylingIssues,
+          totalFindings,
+          healthScore,
+          language: language || 'General',
+          model: model || 'llama-3.3-70b-versatile',
+          analyzedAt: new Date(),
+        });
+      } catch (dbErr) {
+        console.warn('⚠️ Failed to persist analytics:', dbErr.message);
+      }
+
+      // 5. Clean up folder
       deleteFolderRecursive(clonePath);
       
-      // 5. Return result
+      // 6. Return result
       return res.json({
         success: true,
         repoName,
