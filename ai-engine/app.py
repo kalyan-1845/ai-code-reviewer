@@ -152,6 +152,7 @@ class ChatRequest(BaseModel):
     message: str
     history: Optional[List[dict]] = Field(default_factory=list)
     model: Optional[str] = "llama-3.3-70b-versatile"
+    useRag: Optional[bool] = False
 
 # 🟢 Route: Root Check
 @app.get("/")
@@ -333,19 +334,65 @@ async def chat_with_repository(request: ChatRequest):
     message = request.message
     history = request.history
     
-    # 1. Structure the files representation for the prompt context
-    repo_structure = []
-    file_contents_summary = []
-    
-    for f in files[:20]:  # Limit context window to top 20 files
-        repo_structure.append(f.name)
-        file_contents_summary.append(f"--- File: {f.name} ---\n{f.content[:1500]}") # Truncate large files
-        
-    structure_text = "\n".join(repo_structure)
-    contents_text = "\n\n".join(file_contents_summary)
+    # 1. Build the system prompt injecting repository context
+    if request.useRag:
+        # Query ChromaDB for semantically relevant code chunks
+        try:
+            from rag import query_chunks
+            rag_results = query_chunks(message, n_results=5)
+            rag_context = "\n\n".join(
+                f"**From {c['metadata'].get('file_path', 'unknown')}**:\n{c['content']}"
+                for c in rag_results
+            )
+        except Exception as e:
+            print(f"⚠️ RAG query failed, falling back to file context: {e}")
+            rag_context = None
 
-    # 2. Build the system prompt injecting repository context
-    system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
+        if rag_context:
+            system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
+You are helping the user understand and work with their codebase. Use the code context retrieved from the repository below to answer questions, explain logic, write tests, or find issues.
+
+Here is the relevant code context retrieved from the repository:
+{rag_context}
+
+Guidelines:
+- Provide clear, direct, and technically accurate explanations.
+- When generating code, use appropriate syntax block formatting (e.g. ```javascript ... ```).
+- You must answer strictly based on the provided code context. Do not use any external knowledge, assumptions, or information beyond the code context given above. If a question cannot be answered from the provided context alone, state that clearly and do not speculate.
+"""
+        else:
+            # Fallback to standard file context if RAG is unavailable
+            repo_structure = []
+            file_contents_summary = []
+            for f in files[:20]:
+                repo_structure.append(f.name)
+                file_contents_summary.append(f"--- File: {f.name} ---\n{f.content[:1500]}")
+            structure_text = "\n".join(repo_structure)
+            contents_text = "\n\n".join(file_contents_summary)
+            system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
+You are helping the user understand and work with their codebase. Use the code context provided below to answer questions, explain logic, write tests, or find issues.
+
+Here is the repository layout:
+{structure_text}
+
+Here is the code file content context:
+{contents_text}
+
+Guidelines:
+- Provide clear, direct, and technically accurate explanations.
+- When generating code, use appropriate syntax block formatting (e.g. ```javascript ... ```).
+- You must answer strictly based on the provided code context. Do not use any external knowledge, assumptions, or information beyond the repository layout and file contents given above. If a question cannot be answered from the provided context alone, state that clearly and do not speculate.
+"""
+    else:
+        # Standard file context without RAG
+        repo_structure = []
+        file_contents_summary = []
+        for f in files[:20]:
+            repo_structure.append(f.name)
+            file_contents_summary.append(f"--- File: {f.name} ---\n{f.content[:1500]}")
+        structure_text = "\n".join(repo_structure)
+        contents_text = "\n\n".join(file_contents_summary)
+        system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
 You are helping the user understand and work with their codebase. Use the code context provided below to answer questions, explain logic, write tests, or find issues.
 
 Here is the repository layout:

@@ -732,23 +732,19 @@ export default function App() {
     setIsChatLoading(true);
 
     try {
-      const endpoint = useRag ? `${API_BASE_URL}/api/rag/query` : `${API_BASE_URL}/api/chat`;
-      const body = useRag
-        ? JSON.stringify({ question: userMessage })
-        : JSON.stringify({
-            message: userMessage,
-            history: chatHistory,
-            model: selectedModel,
-            sessionId,
-          });
-
-      const response = await fetch(endpoint, {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": import.meta.env.VITE_REPOSAGE_API_KEY
         },
-        body,
+        body: JSON.stringify({
+          message: userMessage,
+          history: chatHistory,
+          model: selectedModel,
+          sessionId,
+          useRag,
+        }),
       });
 
       if (!response.ok) {
@@ -756,12 +752,9 @@ export default function App() {
       }
 
       const data = await response.json();
-      const reply = useRag
-        ? data.chunks?.map((c: any) => `**From ${c.metadata?.file_path || "unknown"}**:\n${c.content}`).join("\n\n") || "No relevant context found."
-        : data.response;
       setChatHistory((prev) => [
         ...prev,
-        { role: "assistant", content: reply },
+        { role: "assistant", content: data.response },
       ]);
     } catch (err: any) {
       console.error(err);

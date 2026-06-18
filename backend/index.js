@@ -304,7 +304,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
 
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
-  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId } = req.body;
+  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, useRag } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'Message is required.' });
@@ -332,7 +332,8 @@ app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
         model,
         temperature,
         maxTokens,
-        systemPrompt
+        systemPrompt,
+        useRag
       })
     });
 
