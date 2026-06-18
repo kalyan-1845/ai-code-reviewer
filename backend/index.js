@@ -19,15 +19,12 @@ import { analyzeComplexity } from './utils/complexityAnalyzer.js';
 import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import { mockAIReview } from './utils/mockAIReview.js';
-import mongoose from 'mongoose';
 import Analytics from './models/Analytics.js';
+import { connectDatabase } from './config/db.js';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/reposage';
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.warn('⚠️ MongoDB connection failed, analytics will not be persisted:', err.message));
+connectDatabase();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
