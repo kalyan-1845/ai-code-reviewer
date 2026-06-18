@@ -720,6 +720,7 @@ export default function App() {
   >([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [useRag, setUseRag] = useState(false);
 
   const handleSendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -731,18 +732,23 @@ export default function App() {
     setIsChatLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+      const endpoint = useRag ? `${API_BASE_URL}/api/rag/query` : `${API_BASE_URL}/api/chat`;
+      const body = useRag
+        ? JSON.stringify({ question: userMessage })
+        : JSON.stringify({
+            message: userMessage,
+            history: chatHistory,
+            model: selectedModel,
+            sessionId,
+          });
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": import.meta.env.VITE_REPOSAGE_API_KEY
         },
-        body: JSON.stringify({
-          message: userMessage,
-          history: chatHistory,
-          model: selectedModel,
-          sessionId,
-        }),
+        body,
       });
 
       if (!response.ok) {
@@ -750,9 +756,12 @@ export default function App() {
       }
 
       const data = await response.json();
+      const reply = useRag
+        ? data.chunks?.map((c: any) => `**From ${c.metadata?.file_path || "unknown"}**:\n${c.content}`).join("\n\n") || "No relevant context found."
+        : data.response;
       setChatHistory((prev) => [
         ...prev,
-        { role: "assistant", content: data.response },
+        { role: "assistant", content: reply },
       ]);
     } catch (err: any) {
       console.error(err);
@@ -4732,6 +4741,17 @@ export default function App() {
                     </div>
 
                     {/* Chat Input form */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#9ca3af", cursor: "pointer", whiteSpace: "nowrap" }}>
+                        <input
+                          type="checkbox"
+                          checked={useRag}
+                          onChange={(e) => setUseRag(e.target.checked)}
+                          style={{ accentColor: "#a855f7" }}
+                        />
+                        Chat with Repository
+                      </label>
+                    </div>
                     <form
                       onSubmit={handleSendChatMessage}
                       style={{
