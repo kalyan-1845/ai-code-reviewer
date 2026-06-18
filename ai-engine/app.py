@@ -497,6 +497,15 @@ class SplitResponse(BaseModel):
     total_files: int
 
 
+class RagQueryRequest(BaseModel):
+    question: str
+
+
+class RagQueryResponse(BaseModel):
+    chunks: List[dict]
+    total_chunks: int
+
+
 # 🟢 Route: Split files into text chunks for RAG ingestion
 @app.post("/api/rag/split", response_model=SplitResponse)
 async def split_files_for_rag(request: SplitRequest):
@@ -512,6 +521,18 @@ async def split_files_for_rag(request: SplitRequest):
         chunks=chunks,
         total_chunks=len(chunks),
         total_files=len(request.files),
+    )
+
+
+# 🟢 Route: Query RAG chunks for a given question
+@app.post("/api/rag/query", response_model=RagQueryResponse)
+async def query_rag_chunks(request: RagQueryRequest):
+    from rag import query_chunks
+
+    chunks = query_chunks(request.question, n_results=5)
+    return RagQueryResponse(
+        chunks=chunks,
+        total_chunks=len(chunks),
     )
 
 

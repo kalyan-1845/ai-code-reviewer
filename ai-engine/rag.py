@@ -60,6 +60,28 @@ def ingest_chunks(
     return len(chunks)
 
 
+def query_chunks(query_text: str, n_results: int = 5) -> list[dict]:
+    collection = _get_collection()
+    query_embedding = embed_texts([query_text])
+    results = collection.query(
+        query_embeddings=query_embedding,
+        n_results=n_results,
+    )
+    chunks = []
+    metadatas = results.get("metadatas", [[]])[0] if results.get("metadatas") else []
+    documents = results.get("documents", [[]])[0] if results.get("documents") else []
+    distances = results.get("distances", [[]])[0] if results.get("distances") else []
+    ids = results.get("ids", [[]])[0] if results.get("ids") else []
+    for i in range(len(documents)):
+        chunks.append({
+            "chunk_id": ids[i] if i < len(ids) else None,
+            "content": documents[i],
+            "metadata": metadatas[i] if i < len(metadatas) else {},
+            "similarity_score": 1.0 - distances[i] if i < len(distances) else None,
+        })
+    return chunks
+
+
 def get_collection_stats() -> dict:
     collection = _get_collection()
     count = collection.count()
