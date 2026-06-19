@@ -1,0 +1,72 @@
+{
+  "name": "reposage-vscode",
+  "displayName": "RepoSage",
+  "description": "AI-powered code review assistant for VS Code",
+  "version": "0.1.0",
+  "publisher": "reposage",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Other"
+  ],
+  "icon": "icon.png",
+  "activationEvents": [
+    "onCommand:reposage.reviewCurrentFile",
+    "onView:reposage.sidebarView"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "reposage.reviewCurrentFile",
+        "title": "RepoSage: Review Current File"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "reposage-sidebar",
+          "title": "RepoSage",
+          "icon": "$(sparkle)"
+        }
+      ]
+    },
+    "views": {
+      "reposage-sidebar": [
+        {
+          "type": "webview",
+          "id": "reposage.sidebarView",
+          "name": "Review Results"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "RepoSage",
+      "properties": {
+        "reposage.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:5000",
+          "description": "RepoSage backend API base URL"
+        },
+        "reposage.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for RepoSage backend authentication"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
