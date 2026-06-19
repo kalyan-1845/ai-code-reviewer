@@ -18,6 +18,7 @@ import { parseDiff } from './utils/diffParser.js';
 import { analyzeComplexity } from './utils/complexityAnalyzer.js';
 import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
+import { verifyPort } from './utils/envVerifier.js';
 import { mockAIReview } from './utils/mockAIReview.js';
 import Analytics from './models/Analytics.js';
 import { connectDatabase } from './config/db.js';
@@ -30,7 +31,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = verifyPort(process.env.PORT || 5000);
 
 // Enable CORS with explicit origin
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173').split(',');

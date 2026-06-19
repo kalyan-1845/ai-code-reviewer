@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import SettingsModal from "./components/SettingsModal";
+import HealthScoreGauge from './components/HealthScoreGauge';
 import TotalIssuesKpiCard from './components/TotalIssuesKpiCard';
 import RepositoryOverview from './RepositoryOverview';
 import RepositorySummaryCard from './RepositorySummaryCard';
@@ -2764,7 +2765,8 @@ export default function App() {
               }}
             >
               <RepositorySummaryCard result={activeResult ?? analysisResult} />
-              <TotalIssuesKpiCard fileReviews={analysisResult.analysis.fileReviews} />
+              <HealthScoreGauge fileReviews={(activeResult ?? analysisResult)?.analysis?.fileReviews || {}} />
+              <TotalIssuesKpiCard fileReviews={(activeResult ?? analysisResult)?.analysis?.fileReviews || {}} />
               <RepositoryOverview
                 files={Object.keys(analysisResult.analysis.fileReviews).map((filePath) => {
                   const ext = filePath.split('.').pop()?.toLowerCase() || 'other';

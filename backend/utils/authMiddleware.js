@@ -1,6 +1,3 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 export const requireApiKey = (req, res, next) => {
   // Get the API key from the request headers
   const providedKey = req.headers['x-api-key'];

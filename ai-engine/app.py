@@ -335,71 +335,48 @@ async def chat_with_repository(request: ChatRequest):
     history = request.history
     
     # 1. Build the system prompt injecting repository context
+    repo_structure = []
+    file_contents_summary = []
+    for f in files[:20]:
+        repo_structure.append(f.name)
+        file_contents_summary.append(f"--- File: {f.name} ---\n{f.content[:1500]}")
+    structure_text = "\n".join(repo_structure)
+    contents_text = "\n\n".join(file_contents_summary)
+
+    # 2. Optionally retrieve RAG chunks if toggle is on
+    rag_context = ""
     if request.useRag:
-        # Query ChromaDB for semantically relevant code chunks
         try:
             from rag import query_chunks
-            rag_results = query_chunks(message, n_results=5)
-            rag_context = "\n\n".join(
-                f"**From {c['metadata'].get('file_path', 'unknown')}**:\n{c['content']}"
-                for c in rag_results
-            )
+            rag_chunks = query_chunks(message, n_results=5)
+            if rag_chunks:
+                chunk_parts = []
+                for i, c in enumerate(rag_chunks, 1):
+                    meta = c.get("metadata", {})
+                    source = meta.get("file_path", meta.get("source", "unknown"))
+                    chunk_parts.append(f"[Chunk {i} from {source}]\n{c['content']}")
+                rag_context = "\n\n".join(chunk_parts)
         except Exception as e:
-            print(f"⚠️ RAG query failed, falling back to file context: {e}")
-            rag_context = None
+            print(f"⚠️ RAG query failed: {e}")
+            rag_context = ""
 
-        if rag_context:
-            system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
-You are helping the user understand and work with their codebase. Use the code context retrieved from the repository below to answer questions, explain logic, write tests, or find issues.
+    # 3. Build context section with optional RAG chunks
+    if rag_context:
+        context_section = f"""{contents_text}
 
-Here is the relevant code context retrieved from the repository:
-{rag_context}
-
-Guidelines:
-- Provide clear, direct, and technically accurate explanations.
-- When generating code, use appropriate syntax block formatting (e.g. ```javascript ... ```).
-- You must answer strictly based on the provided code context. Do not use any external knowledge, assumptions, or information beyond the code context given above. If a question cannot be answered from the provided context alone, state that clearly and do not speculate.
-"""
-        else:
-            # Fallback to standard file context if RAG is unavailable
-            repo_structure = []
-            file_contents_summary = []
-            for f in files[:20]:
-                repo_structure.append(f.name)
-                file_contents_summary.append(f"--- File: {f.name} ---\n{f.content[:1500]}")
-            structure_text = "\n".join(repo_structure)
-            contents_text = "\n\n".join(file_contents_summary)
-            system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
-You are helping the user understand and work with their codebase. Use the code context provided below to answer questions, explain logic, write tests, or find issues.
-
-Here is the repository layout:
-{structure_text}
-
-Here is the code file content context:
-{contents_text}
-
-Guidelines:
-- Provide clear, direct, and technically accurate explanations.
-- When generating code, use appropriate syntax block formatting (e.g. ```javascript ... ```).
-- You must answer strictly based on the provided code context. Do not use any external knowledge, assumptions, or information beyond the repository layout and file contents given above. If a question cannot be answered from the provided context alone, state that clearly and do not speculate.
-"""
+Additionally, the following semantically relevant code snippets were retrieved from the repository:
+{rag_context}"""
     else:
-        # Standard file context without RAG
-        repo_structure = []
-        file_contents_summary = []
-        for f in files[:20]:
-            repo_structure.append(f.name)
-            file_contents_summary.append(f"--- File: {f.name} ---\n{f.content[:1500]}")
-        structure_text = "\n".join(repo_structure)
-        contents_text = "\n\n".join(file_contents_summary)
-        system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
+        context_section = contents_text
+
+    system_prompt = f"""You are RepoSage Chat, an expert AI developer assistant.
 You are helping the user understand and work with their codebase. Use the code context provided below to answer questions, explain logic, write tests, or find issues.
 
 Here is the repository layout:
 {structure_text}
 
 Here is the code file content context:
-{contents_text}
+{context_section}
 
 Guidelines:
 - Provide clear, direct, and technically accurate explanations.
@@ -544,6 +521,15 @@ class SplitResponse(BaseModel):
     total_files: int
 
 
+class RagQueryRequest(BaseModel):
+    question: str
+
+
+class RagQueryResponse(BaseModel):
+    chunks: List[dict]
+    total_chunks: int
+
+
 # 🟢 Route: Split files into text chunks for RAG ingestion
 @app.post("/api/rag/split", response_model=SplitResponse)
 async def split_files_for_rag(request: SplitRequest):
@@ -559,6 +545,18 @@ async def split_files_for_rag(request: SplitRequest):
         chunks=chunks,
         total_chunks=len(chunks),
         total_files=len(request.files),
+    )
+
+
+# 🟢 Route: Query RAG chunks for a given question
+@app.post("/api/rag/query", response_model=RagQueryResponse)
+async def query_rag_chunks(request: RagQueryRequest):
+    from rag import query_chunks
+
+    chunks = query_chunks(request.question, n_results=5)
+    return RagQueryResponse(
+        chunks=chunks,
+        total_chunks=len(chunks),
     )
 
 
