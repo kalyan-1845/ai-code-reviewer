@@ -54,37 +54,62 @@ def _generate_chunk_id(file_name: str, chunk_index: int) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
+def _calculate_line_numbers(content: str, chunks: list[str]) -> list[tuple[int, int]]:
+    line_numbers = []
+    remaining = content
+    for chunk in chunks:
+        start_idx = remaining.find(chunk)
+        if start_idx == -1:
+            line_numbers.append((0, 0))
+            continue
+        pre = remaining[:start_idx]
+        start_line = pre.count("\n")
+        end_line = start_line + chunk.count("\n")
+        line_numbers.append((start_line, end_line))
+        remaining = remaining[start_idx + len(chunk):]
+    return line_numbers
+
+
 def split_file_content(
     file_name: str,
     content: str,
     chunk_size: Optional[int] = None,
     chunk_overlap: Optional[int] = None,
+    repo_url: Optional[str] = None,
 ) -> list[dict]:
     if not content or not content.strip():
         return []
 
     splitter = _make_splitter(file_name, chunk_size, chunk_overlap)
     chunks = splitter.split_text(content)
+    line_numbers = _calculate_line_numbers(content, chunks)
 
-    return [
-        {
+    results = []
+    for i, chunk in enumerate(chunks):
+        metadata = {
+            "source_file": file_name,
+            "fileName": file_name,
+            "chunk_index": i,
+            "total_chunks": len(chunks),
+            "language": _detect_language(file_name),
+            "start_line": line_numbers[i][0],
+            "end_line": line_numbers[i][1],
+        }
+        if repo_url:
+            metadata["repoUrl"] = repo_url
+        results.append({
             "chunk_id": _generate_chunk_id(file_name, i),
             "content": chunk,
-            "metadata": {
-                "source_file": file_name,
-                "chunk_index": i,
-                "total_chunks": len(chunks),
-                "language": _detect_language(file_name),
-            },
-        }
-        for i, chunk in enumerate(chunks)
-    ]
+            "metadata": metadata,
+        })
+    return results
 
 
 def split_files(
     files: list[dict],
     chunk_size: Optional[int] = None,
     chunk_overlap: Optional[int] = None,
+    repo_url: Optional[str] = None,
 ) -> list[dict]:
     all_chunks = []
     for file in files:
@@ -93,6 +118,7 @@ def split_files(
             content=file.get("content", ""),
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            repo_url=repo_url,
         )
         all_chunks.extend(chunks)
     return all_chunks

@@ -512,6 +512,7 @@ class SplitRequest(BaseModel):
     files: List[FileItem]
     chunk_size: Optional[int] = None
     chunk_overlap: Optional[int] = None
+    repo_url: Optional[str] = None
 
 
 class SplitResponse(BaseModel):
@@ -539,6 +540,7 @@ async def split_files_for_rag(request: SplitRequest):
         file_dicts,
         chunk_size=request.chunk_size,
         chunk_overlap=request.chunk_overlap,
+        repo_url=request.repo_url,
     )
     return SplitResponse(
         chunks=chunks,
