@@ -305,7 +305,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
 
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
-  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId } = req.body;
+  const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, useRag } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'Message is required.' });
@@ -333,7 +333,8 @@ app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
         model,
         temperature,
         maxTokens,
-        systemPrompt
+        systemPrompt,
+        useRag
       })
     });
 
@@ -353,7 +354,34 @@ app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
   }
 });
 
+// 🟢 Route: Proxy for RAG query — forwards to the AI engine
+app.post('/api/rag/query', requireApiKey, async (req, res) => {
+  const { question } = req.body;
+  if (!question) {
+    return res.status(400).json({ error: 'question is required.' });
+  }
 
+  const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+
+  try {
+    const aiResponse = await fetch(`${aiEngineUrl}/api/rag/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    });
+
+    if (aiResponse.ok) {
+      const data = await aiResponse.json();
+      return res.json(data);
+    } else {
+      const errText = await aiResponse.text();
+      throw new Error(errText || 'AI engine RAG query failed');
+    }
+  } catch (err) {
+    console.error('❌ RAG Query API Error:', err.message);
+    return res.status(502).json({ error: 'RAG query failed: AI Engine unavailable.' });
+  }
+});
 
 // 🟢 Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', async (req, res) => {
