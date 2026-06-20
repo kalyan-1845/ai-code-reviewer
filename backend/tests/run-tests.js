@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawnSync } from 'child_process';
 import { scanSecrets } from '../utils/secretsScanner.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,10 +104,30 @@ function runTests() {
   if (failed) {
     console.error("❌ Tests Failed!");
     process.exit(1);
-  } else {
-    console.log("🎉 All Tests Passed Successfully!");
-    process.exit(0);
   }
+
+  // Phase 2: Run node:test-based unit tests (newer style, e.g. repoReader.test.js).
+  // The secrets scanner tests above pre-date node:test support in this repo and
+  // are kept as-is for backward compatibility. New tests should be added as
+  // `*.test.js` files alongside this script and will be picked up automatically.
+  const nodeTestFiles = fs
+    .readdirSync(__dirname)
+    .filter((name) => name.endsWith('.test.js') && name !== 'run-tests.js');
+
+  if (nodeTestFiles.length > 0) {
+    console.log(`\n🧪 Running node:test suites: ${nodeTestFiles.join(', ')}`);
+    const result = spawnSync(
+      process.execPath,
+      ['--test', ...nodeTestFiles.map((f) => path.join(__dirname, f))],
+      { stdio: 'inherit' }
+    );
+    if (result.status !== 0) {
+      process.exit(result.status ?? 1);
+    }
+  }
+
+  console.log("🎉 All Tests Passed Successfully!");
+  process.exit(0);
 }
 
 runTests();
