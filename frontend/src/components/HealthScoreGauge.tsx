@@ -15,6 +15,7 @@ interface FileReview {
 interface Props {
   fileReviews: Record<string, FileReview>;
   isLoading?: boolean;
+  theme?: 'dark' | 'light';
 }
 
 function computeHealthScore(fileReviews: Record<string, FileReview>): number {
@@ -35,7 +36,7 @@ function getScoreColor(score: number): { text: string; bg: string; border: strin
   return { text: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)', border: 'rgba(239, 68, 68, 0.28)', label: 'Needs Work' };
 }
 
-function GaugeSvg({ score, size = 140 }: { score: number; size?: number }) {
+function GaugeSvg({ score, size = 140, theme = 'dark' }: { score: number; size?: number; theme?: 'dark' | 'light' }) {
   const strokeWidth = 12;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -43,6 +44,7 @@ function GaugeSvg({ score, size = 140 }: { score: number; size?: number }) {
   const center = size / 2;
 
   const gradientId = `health-gauge-${Math.random().toString(36).slice(2, 8)}`;
+  const trackStroke = theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.08)';
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -58,7 +60,7 @@ function GaugeSvg({ score, size = 140 }: { score: number; size?: number }) {
         cy={center}
         r={radius}
         fill="none"
-        stroke="rgba(255,255,255,0.06)"
+        stroke={trackStroke}
         strokeWidth={strokeWidth}
       />
       <circle
@@ -100,7 +102,7 @@ function GaugeSvg({ score, size = 140 }: { score: number; size?: number }) {
   );
 }
 
-export default function HealthScoreGauge({ fileReviews, isLoading = false }: Props) {
+export default function HealthScoreGauge({ fileReviews, isLoading = false, theme = 'dark' }: Props) {
   const score = computeHealthScore(fileReviews);
   const colors = getScoreColor(score);
 
@@ -131,14 +133,14 @@ export default function HealthScoreGauge({ fileReviews, isLoading = false }: Pro
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginTop: '16px' }}>
+      <div className="gauge-layout">
         <div style={{ flexShrink: 0 }}>
           {isLoading ? (
-            <div style={{ width: '140px', height: '140px', borderRadius: '50%', background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: '140px', height: '140px', borderRadius: '50%', background: 'var(--chart-track, rgba(255,255,255,0.03))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ color: 'var(--subtext-color, #9ca3af)', fontSize: '12px' }}>...</span>
             </div>
           ) : (
-            <GaugeSvg score={score} />
+            <GaugeSvg score={score} theme={theme} />
           )}
         </div>
 

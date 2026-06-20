@@ -80,7 +80,7 @@ export default function TotalIssuesKpiCard({ fileReviews, isLoading = false }: P
           </div>
         </div>
 
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+        <div className="kpi-grid" style={{ flex: 1 }}>
           {[
             { label: 'Bugs', count: counts.bugs, icon: Bug, color: '#ef4444' },
             { label: 'Security', count: counts.security, icon: ShieldAlert, color: '#f59e0b' },

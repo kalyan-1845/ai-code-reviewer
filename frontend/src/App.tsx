@@ -2855,7 +2855,7 @@ export default function App() {
               }}
             >
               <RepositorySummaryCard result={activeResult ?? analysisResult} />
-              <HealthScoreGauge fileReviews={(activeResult ?? analysisResult)?.analysis?.fileReviews || {}} />
+              <HealthScoreGauge fileReviews={(activeResult ?? analysisResult)?.analysis?.fileReviews || {}} theme={theme} />
               <TotalIssuesKpiCard fileReviews={(activeResult ?? analysisResult)?.analysis?.fileReviews || {}} />
               <RepositoryOverview
                 files={Object.keys(analysisResult.analysis.fileReviews).map((filePath) => {
@@ -3250,13 +3250,13 @@ export default function App() {
                               <span>Code Composition</span>
                               <span>{sumTotal.toLocaleString()} total lines</span>
                             </div>
-                            <div style={{ display: 'flex', height: '14px', borderRadius: '8px', overflow: 'hidden', gap: '1px' }}>
+                            <div className="chart-bar-track" style={{ height: '14px', borderRadius: '8px', gap: '1px' }}>
                               <div style={{ width: `${codePct}%`, background: '#22c55e', minWidth: codePct > 0 ? '4px' : '0' }} title={`Code: ${codePct}%`} />
                               <div style={{ width: `${commentPct}%`, background: '#3b82f6', minWidth: commentPct > 0 ? '4px' : '0' }} title={`Comments: ${commentPct}%`} />
-                              <div style={{ width: `${emptyPct}%`, background: 'rgba(255,255,255,0.08)', minWidth: emptyPct > 0 ? '4px' : '0' }} title={`Empty: ${emptyPct}%`} />
+                              <div style={{ width: `${emptyPct}%`, background: 'var(--chart-bar-empty)', minWidth: emptyPct > 0 ? '4px' : '0' }} title={`Empty: ${emptyPct}%`} />
                             </div>
                             <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
-                              {[['#22c55e', 'Code', codePct, sumCode], ['#3b82f6', 'Comments', commentPct, sumComments], ['rgba(255,255,255,0.2)', 'Empty', emptyPct, sumEmpty]].map(([color, label, pct, lines]) => (
+                              {[['#22c55e', 'Code', codePct, sumCode], ['#3b82f6', 'Comments', commentPct, sumComments], ['#94a3b8', 'Empty', emptyPct, sumEmpty]].map(([color, label, pct, lines]) => (
                                 <span key={String(label)} style={{ fontSize: '10px', color: 'var(--subtext-color)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                   <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: color as string, display: 'inline-block' }} />
                                   {String(label)} {String(pct)}% ({Number(lines).toLocaleString()})
@@ -3705,7 +3705,7 @@ export default function App() {
                                       width: "48px",
                                       height: "48px",
                                       borderRadius: "50%",
-                                      background: "rgba(255,255,255,0.05)",
+                                      background: "var(--chart-track)",
                                       border: `2px solid ${currentGrade.text}`,
                                       display: "flex",
                                       alignItems: "center",
@@ -3722,7 +3722,7 @@ export default function App() {
                                 {/* Line Composition Stacked Bar */}
                                 <div
                                   style={{
-                                    background: "rgba(255,255,255,0.02)",
+                                    background: "var(--chart-overlay)",
                                     border: "1px solid var(--border-color)",
                                     padding: "14px",
                                     borderRadius: "8px",
@@ -3757,7 +3757,7 @@ export default function App() {
                                   <div
                                     style={{
                                       height: "10px",
-                                      background: "rgba(255,255,255,0.05)",
+                                      background: "var(--chart-bar-bg)",
                                       borderRadius: "10px",
                                       overflow: "hidden",
                                       display: "flex",
@@ -3983,7 +3983,7 @@ export default function App() {
                                 >
                                   <div
                                     style={{
-                                      background: "rgba(255,255,255,0.02)",
+                                      background: "var(--chart-overlay)",
                                       border: "1px solid var(--border-color)",
                                       padding: "12px",
                                       borderRadius: "8px",
@@ -4012,7 +4012,7 @@ export default function App() {
                                   </div>
                                   <div
                                     style={{
-                                      background: "rgba(255,255,255,0.02)",
+                                      background: "var(--chart-overlay)",
                                       border: "1px solid var(--border-color)",
                                       padding: "12px",
                                       borderRadius: "8px",
@@ -4067,11 +4067,9 @@ export default function App() {
                                       </span>
                                     </div>
                                     <div
+                                      className="progress-track"
                                       style={{
                                         height: "6px",
-                                        background: "rgba(255,255,255,0.05)",
-                                        borderRadius: "10px",
-                                        overflow: "hidden",
                                       }}
                                     >
                                       <div
@@ -4101,11 +4099,9 @@ export default function App() {
                                       <span>{commentDensity}%</span>
                                     </div>
                                     <div
+                                      className="progress-track"
                                       style={{
                                         height: "6px",
-                                        background: "rgba(255,255,255,0.05)",
-                                        borderRadius: "10px",
-                                        overflow: "hidden",
                                       }}
                                     >
                                       <div
@@ -4120,7 +4116,7 @@ export default function App() {
                                     </div>
                                   </div>
                                 </div>
-                                <MetricsChart />
+                                <MetricsChart theme={theme} />
                               </div>
                             );
                           })()

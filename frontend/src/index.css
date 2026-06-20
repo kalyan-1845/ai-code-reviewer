@@ -15,6 +15,20 @@
   --subtext-color: #9ca3af;
   --title-color: #f3f4f6;
   --highlight-color: #c084fc;
+
+  /* Chart-specific tokens — Dark */
+  --chart-bg: #1e293b;
+  --chart-border: rgba(255, 255, 255, 0.05);
+  --chart-grid: #334155;
+  --chart-axis: #94a3b8;
+  --chart-tooltip-bg: #0f172a;
+  --chart-tooltip-border: rgba(255, 255, 255, 0.08);
+  --chart-tooltip-text: #f1f5f9;
+  --chart-tooltip-item: #e2e8f0;
+  --chart-track: rgba(255, 255, 255, 0.06);
+  --chart-overlay: rgba(255, 255, 255, 0.02);
+  --chart-bar-empty: rgba(255, 255, 255, 0.08);
+  --chart-bar-bg: rgba(255, 255, 255, 0.05);
 }
 
 [data-theme='light'] {
@@ -33,6 +47,20 @@
   --subtext-color: #64748b;
   --title-color: #0f172a;
   --highlight-color: #8b5cf6;
+
+  /* Chart-specific tokens — Light */
+  --chart-bg: #ffffff;
+  --chart-border: rgba(15, 23, 42, 0.08);
+  --chart-grid: #e2e8f0;
+  --chart-axis: #64748b;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: rgba(15, 23, 42, 0.12);
+  --chart-tooltip-text: #1e293b;
+  --chart-tooltip-item: #334155;
+  --chart-track: rgba(15, 23, 42, 0.06);
+  --chart-overlay: rgba(15, 23, 42, 0.03);
+  --chart-bar-empty: rgba(15, 23, 42, 0.08);
+  --chart-bar-bg: rgba(15, 23, 42, 0.05);
 }
 
 body {
@@ -67,6 +95,18 @@ h1, h2, h3, h4 {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(147, 51, 234, 0.6);
+}
+
+[data-theme='light'] ::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.6);
+}
+
+[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.35);
+}
+
+[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.55);
 }
 
 /* Micro-animations */
@@ -108,4 +148,130 @@ h1, h2, h3, h4 {
 @keyframes toast-slide-in {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════
+   Chart & Dashboard Responsive Utilities
+   ═══════════════════════════════════════════ */
+
+/* Chart container — theme-aware styling */
+.chart-container {
+  background-color: var(--chart-bg);
+  border: 1px solid var(--chart-border);
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Repository Overview: 2-col → 1-col on mobile */
+.repo-overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Sub-panel inside overview cards */
+.chart-sub-panel {
+  background: var(--chart-overlay);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  transition: background-color 0.3s ease;
+}
+
+/* Bar track backgrounds (stacked bars, progress bars) */
+.chart-bar-track {
+  background: var(--chart-bar-bg);
+  border-radius: 7px;
+  overflow: hidden;
+  display: flex;
+  width: 100%;
+  transition: background-color 0.3s ease;
+}
+
+/* Progress bar track (complexity, coverage bars) */
+.progress-track {
+  height: 6px;
+  background: var(--chart-track);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: background-color 0.3s ease;
+}
+
+/* KPI card 4-col grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+/* Gauge layout: horizontal by default, stacks on mobile */
+.gauge-layout {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+/* Summary pill row */
+.summary-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ═══════════════════════════════════════════
+   Responsive Breakpoints
+   ═══════════════════════════════════════════ */
+
+/* Tablet (≤ 768px) */
+@media (max-width: 768px) {
+  .repo-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .chart-container {
+    padding: 14px;
+  }
+
+  .gauge-layout {
+    gap: 16px;
+  }
+}
+
+/* Mobile (≤ 480px) */
+@media (max-width: 480px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .gauge-layout {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .chart-container {
+    padding: 12px;
+  }
+
+  .summary-pills {
+    justify-content: center;
+  }
+
+  .summary-pills > div {
+    min-width: 60px;
+  }
 }

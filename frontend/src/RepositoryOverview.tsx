@@ -121,7 +121,7 @@ const RepositoryOverview: React.FC<Props> = ({ files }) => {
         </div>
 
         {/* Summary stat pills */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="summary-pills">
           {[
             { label: 'Files',       value: files.length,                          color: '#60a5fa' },
             { label: 'Total Lines', value: totalStats.totalLines.toLocaleString(), color: '#22c55e' },
@@ -149,29 +149,11 @@ const RepositoryOverview: React.FC<Props> = ({ files }) => {
         </div>
       </div>
 
-      {/* ── Two Column Grid ──────────────────────── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '12px',
-          width: '100%',
-          boxSizing: 'border-box',
-        }}
-      >
+      {/* ── Two Column Grid (responsive → 1 col on mobile) ──────────────────────── */}
+      <div className="repo-overview-grid">
 
         {/* LEFT: File Type Distribution */}
-        <div
-          style={{
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
-            borderRadius: '10px',
-            padding: '14px',
-            minWidth: 0,
-            overflow: 'hidden',
-            boxSizing: 'border-box',
-          }}
-        >
+        <div className="chart-sub-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <h3
               style={{
@@ -192,14 +174,11 @@ const RepositoryOverview: React.FC<Props> = ({ files }) => {
 
           {/* Stacked Bar */}
           <div
+            className="chart-bar-track"
             style={{
               height: '14px',
               borderRadius: '7px',
-              overflow: 'hidden',
-              display: 'flex',
               marginBottom: '10px',
-              background: 'rgba(255,255,255,0.05)',
-              width: '100%',
             }}
           >
             {langStats.map((lang) => (
@@ -242,17 +221,7 @@ const RepositoryOverview: React.FC<Props> = ({ files }) => {
         </div>
 
         {/* RIGHT: Code vs Comment vs Empty */}
-        <div
-          style={{
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
-            borderRadius: '10px',
-            padding: '14px',
-            minWidth: 0,
-            overflow: 'hidden',
-            boxSizing: 'border-box',
-          }}
-        >
+        <div className="chart-sub-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <h3
               style={{
@@ -273,14 +242,11 @@ const RepositoryOverview: React.FC<Props> = ({ files }) => {
 
           {/* Stacked Bar */}
           <div
+            className="chart-bar-track"
             style={{
               height: '14px',
               borderRadius: '7px',
-              overflow: 'hidden',
-              display: 'flex',
               marginBottom: '10px',
-              background: 'rgba(255,255,255,0.05)',
-              width: '100%',
             }}
           >
             <div style={{ height: '100%', width: `${codePct}%`,    background: '#3b82f6', transition: 'width 0.6s ease-out' }} title={`Code: ${codePct}%`} />
