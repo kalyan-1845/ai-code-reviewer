@@ -108,8 +108,8 @@ const repoContexts = new Map();
 const CONTEXT_TTL = 30 * 60 * 1000; // 30 minutes
 const MAX_REPO_CONTEXTS = 100;
 
-// Webhook deduplication state (module scope to persist across requests)
-const reviewQueues = new Map(); // reviewKey -> [{ pullNumber, headSha, owner, repo }, ...]
+// Webhook deduplication and queuing state (module scope to persist across requests)
+const reviewQueues = new Map(); // reviewKey -> [{ owner, repo, pullNumber, headSha }, ...]
 const processedDeliveries = new Map();
 const DELIVERY_TTL = 60 * 60 * 1000; // 1 hour
 const MAX_DELIVERY_ENTRIES = 5000;
@@ -522,15 +522,9 @@ app.post('/api/webhook', async (req, res) => {
       const repo = payload.repository.name;
       const reviewKey = `${owner}/${repo}/#${pullNumber}`;
       
-      console.log(`📡 GitHub Webhook received: PR #${pullNumber} ${action} in ${owner}/${repo}`);
+      console.log(`📡 GitHub Webhook received: PR #${pullNumber} ${action} (${headSha.substring(0,7)}) in ${owner}/${repo}`);
       
-      if (!reviewQueues.has(reviewKey)) {
-        reviewQueues.set(reviewKey, []);
-        dispatchReview(owner, repo, pullNumber, headSha, reviewKey);
-      } else {
-        reviewQueues.get(reviewKey).push({ owner, repo, pullNumber, headSha });
-        console.log(`📥 Queued review for ${reviewKey}@${headSha.substring(0,7)} (${reviewQueues.get(reviewKey).length} waiting)`);
-      }
+      enqueueWebhookReview(owner, repo, pullNumber, headSha, reviewKey);
     }
   }
 
@@ -620,6 +614,33 @@ app.post('/api/issues/create', requireApiKey, async (req, res) => {
   }
 });
 
+// 🟢 Webhook review queuing — prevents race conditions from rapid webhook events
+function enqueueWebhookReview(owner, repo, pullNumber, headSha, reviewKey) {
+  if (!reviewQueues.has(reviewKey)) {
+    reviewQueues.set(reviewKey, []);
+    dispatchReview(owner, repo, pullNumber, headSha, reviewKey);
+  } else {
+    reviewQueues.get(reviewKey).push({ owner, repo, pullNumber, headSha });
+    console.log(`📥 Queued review for ${reviewKey}@${headSha.substring(0,7)} (${reviewQueues.get(reviewKey).length} waiting)`);
+  }
+}
+
+async function dispatchReview(owner, repo, pullNumber, headSha, reviewKey) {
+  try {
+    await runWebhookReview(owner, repo, pullNumber, headSha);
+  } catch (err) {
+    console.error(`❌ Async PR Review Error:`, err);
+  } finally {
+    const queue = reviewQueues.get(reviewKey);
+    if (queue && queue.length > 0) {
+      const next = queue.shift();
+      dispatchReview(next.owner, next.repo, next.pullNumber, next.headSha, reviewKey);
+    } else {
+      reviewQueues.delete(reviewKey);
+    }
+  }
+}
+
 // 🟢 Helper to execute Webhook PR review logic
 async function runWebhookReview(owner, repo, pullNumber, headSha) {
   const token = process.env.GITHUB_PAT;
@@ -631,7 +652,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   const octokit = new Octokit({ auth: token });
   console.log(`🔍 Fetching diff for PR #${pullNumber}...`);
 
-  // 1. Fetch Diff from GitHub
+  // 1. Fetch Diff from GitHub, pinned to the specific commit that triggered the event
   const { data: diff } = await octokit.rest.pulls.get({
     owner,
     repo,
@@ -729,6 +750,7 @@ Please review my feedback and suggestions below. Happy coding! 🚀`,
       owner,
       repo,
       pull_number: pullNumber,
+      commit_id: headSha,
       event: 'APPROVE',
       body: `## 🛡️ RepoSage AI Code Review Audit Completed!
 
