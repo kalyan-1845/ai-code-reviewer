@@ -139,7 +139,6 @@ If no issues are found, reply with: { "reviews": [] }`;
           model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content: reviewPrompt }],
           temperature: 0.2,
-          response_format: { type: 'json_object' }
         });
 
         const content = completion.choices[0].message.content;
@@ -157,13 +156,11 @@ If no issues are found, reply with: { "reviews": [] }`;
           }
         }
 
-        if (Array.isArray(issues)) {
+        if (issues.length > 0) {
           console.log(`✅ AI review returned ${issues.length} comments for ${file.path}`);
           for (const issue of issues) {
-            // Validate that the line number exists in our change list to prevent posting out of bounds
             const changeExists = file.changes.some(c => c.line === issue.line);
             if (changeExists) {
-              // Avoid duplicate comment on the same line if local secrets scanner already flagged it
               const alreadyFlagged = commentsToPost.some(c => c.path === file.path && c.line === issue.line);
               if (!alreadyFlagged) {
                 commentsToPost.push({
@@ -173,7 +170,7 @@ If no issues are found, reply with: { "reviews": [] }`;
                 });
               }
             } else {
-              console.warn(`⚠️ Warning: AI suggested line number ${issue.line} which is outside the PR changes for ${file.path}. Skipping.`);
+              console.warn(`⚠️ AI suggested line ${issue.line} which is outside the PR changes for ${file.path}. Skipping.`);
             }
           }
         } else {
