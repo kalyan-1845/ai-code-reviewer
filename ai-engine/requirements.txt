@@ -4,6 +4,7 @@ groq==0.18.0
 python-dotenv==1.0.1
 pydantic==2.10.6
 bleach==6.2.0
+tinycss2==1.4.0
 sentence-transformers==3.4.1
 langchain-text-splitters==0.3.6
 chromadb==1.5.9
