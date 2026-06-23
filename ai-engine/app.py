@@ -524,30 +524,31 @@ async def review_diff(request: ReviewDiffRequest):
         
         changes_text = "\n".join([f"Line {c.line}: {c.content}" for c in file.changes])
         
+        # FIXED: Prompt now explicitly requests a JSON object {"reviews": [...]}
         review_prompt = f"""You are a Senior Staff Engineer performing an automated Pull Request code review.
 Analyze the following code additions in the file "{file.path}". 
 Identify any logical bugs, security threats (API key leaks, hardcoded credentials, SQL injection, null references), naming/style issues, or performance optimization opportunities.
 
-You must answer strictly based on the provided code additions. Do not use any external knowledge, assumptions, or information beyond the code changes shown above. If you cannot identify any issues in the provided code, return an empty array.
+You must answer strictly based on the provided code additions. Do not use any external knowledge, assumptions, or information beyond the code changes shown above. If you cannot identify any issues in the provided code, return an empty array inside the reviews object.
 
 Code additions with line numbers:
 {changes_text}
 
-You MUST reply ONLY in a valid JSON array format. Do not wrap in markdown quotes, do not explain.
+You MUST reply ONLY in a valid JSON object format containing a "reviews" array. Do not wrap in markdown quotes, do not explain.
 Format your JSON precisely as:
-[
-  {{
-    "line": 12,
-    "type": "bug | security | optimization | style",
-    "comment": "### 🐞 Bug Title\\n\\nClear, constructive description of the issue.\\n\\n#### 💡 Actionable Suggestion\\n\\n```language\\n// corrected code\\n```"
-  }}
-]
-If no issues are found, reply with an empty array: []"""
+{{
+  "reviews": [
+    {{
+      "line": 12,
+      "type": "bug | security | optimization | style",
+      "comment": "### 🐞 Bug Title\\n\\nClear, constructive description of the issue.\\n\\n#### 💡 Actionable Suggestion\\n\\n```language\\n// corrected code\\n```"
+    }}
+  ]
+}}
+If no issues are found, reply with: {{ "reviews": [] }}"""
 
         try:
             # We specify response_format={"type": "json_object"} to enforce JSON output. 
-            # Note: Groq expects a schema or standard JSON. We ask for a JSON object in system instructions 
-            # but wrap the final prompt details to enforce a list or an object that holds the array list.
             completion = groq_client.chat.completions.create(
                 model=groq_model,
                 messages=[{"role": "user", "content": review_prompt}],
@@ -556,19 +557,20 @@ If no issues are found, reply with an empty array: []"""
             )
             content = completion.choices[0].message.content
             
-            # Groq's response_format type json_object requires the output to be a valid JSON object.
-            # An array [ ... ] is valid JSON, but some parser configurations prefer an object wrapper { "reviews": [ ... ] }.
-            # To handle both safely:
+            # FIXED: Parse the JSON object and reliably extract the "reviews" array
             data = json.loads(content)
             issues = []
-            if isinstance(data, list):
+            
+            if isinstance(data, dict):
+                # Safely get the 'reviews' array, fallback to searching just in case LLM hallucinates
+                issues = data.get("reviews")
+                if not isinstance(issues, list):
+                    for key, val in data.items():
+                        if isinstance(val, list):
+                            issues = val
+                            break
+            elif isinstance(data, list):
                 issues = data
-            elif isinstance(data, dict):
-                # Search for any array list value inside the dictionary
-                for key, val in data.items():
-                    if isinstance(val, list):
-                        issues = val
-                        break
             
             if isinstance(issues, list):
                 for issue in issues:
@@ -578,7 +580,7 @@ If no issues are found, reply with an empty array: []"""
                         comments.append({
                             "path": file.path,
                             "line": int(line_num),
-                            "body": f"<!-- RepoSage Review Comment -->\n{sanitize_ai_output(comment_body)}"
+                            "body": f"\n{sanitize_ai_output(comment_body)}"
                         })
         except Exception as e:
             print(f"⚠️ Error reviewing file {file.path} on Groq: {_redact_key(str(e), api_key)}")
