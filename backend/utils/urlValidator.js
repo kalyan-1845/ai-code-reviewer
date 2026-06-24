@@ -3,7 +3,13 @@ const GITHUB_URL_WITH_DOT_GIT = /^https:\/\/github\.com\/[a-zA-Z0-9._-]+\/[a-zA-
 
 export function isValidRepoUrl(url) {
   if (!url || typeof url !== 'string') return false;
-  return GITHUB_URL_PATTERN.test(url) || GITHUB_URL_WITH_DOT_GIT.test(url);
+  try {
+    const parsed = new URL(url);
+    const cleanUrl = parsed.origin + parsed.pathname;
+    return GITHUB_URL_PATTERN.test(cleanUrl) || GITHUB_URL_WITH_DOT_GIT.test(cleanUrl);
+  } catch (e) {
+    return false;
+  }
 }
 
 export function parseRepoUrl(url) {

@@ -48,6 +48,7 @@ const analyticsSchema = new mongoose.Schema({
   analyzedAt: {
     type: Date,
     default: Date.now,
+    expires: 2592000,
   },
 });
 

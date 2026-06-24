@@ -31,7 +31,7 @@ function getLangColor(ext: string, index: number): string {
   return LANG_COLORS[ext] || `hsl(${index * 47}, 65%, 55%)`;
 }
 
-const RepositoryOverview: React.FC<Props> = ({ files }) => {
+const RepositoryOverview: React.FC<Props> = ({ files = [] }) => {
 
   const totalStats = files.reduce(
     (acc, file) => ({

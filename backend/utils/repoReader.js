@@ -122,7 +122,7 @@ function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxD
  * Normalize an extensions array to lowercase, dot-prefixed.
  */
 function normalizeExtensions(input) {
-  const list = input ?? DEFAULT_EXTENSIONS;
+  const list = Array.isArray(input) ? input : DEFAULT_EXTENSIONS;
   return list.map((e) => {
     const lower = String(e).toLowerCase();
     return lower.startsWith('.') ? lower : `.${lower}`;

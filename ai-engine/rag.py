@@ -117,12 +117,21 @@ def cleanup_stale_chunks(current_files: set) -> dict:
     """
     collection = _get_collection()
     # Fetch all stored source_file values without retrieving embeddings
-    all_results = collection.get(include=["metadatas"])
-    stored_paths = {
-        m.get("source_file")
-        for m in (all_results.get("metadatas") or [])
-        if m.get("source_file")
-    }
+    # Using pagination to avoid OOM
+    offset = 0
+    batch_size = 1000
+    stored_paths = set()
+    while True:
+        results = collection.get(include=["metadatas"], limit=batch_size, offset=offset)
+        metadatas = results.get("metadatas")
+        if not metadatas:
+            break
+        for m in metadatas:
+            if m and m.get("source_file"):
+                stored_paths.add(m.get("source_file"))
+        if len(metadatas) < batch_size:
+            break
+        offset += batch_size
     stale_paths = stored_paths - current_files
     removed_count = 0
     for stale_path in stale_paths:

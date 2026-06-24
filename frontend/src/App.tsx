@@ -9,6 +9,8 @@ export function QuickFixButton({ text, onApply }: { text: string; onApply: (text
   const [applied, setApplied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -16,14 +18,17 @@ export function QuickFixButton({ text, onApply }: { text: string; onApply: (text
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, []);
 
   const handleApply = () => {
     onApply(text);
     setApplied(true);
     setOpen(false);
-    setTimeout(() => setApplied(false), 2000);
+    timeoutRef.current = setTimeout(() => setApplied(false), 2000);
   };
 
   return (
