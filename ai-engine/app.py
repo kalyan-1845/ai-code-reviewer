@@ -533,16 +533,18 @@ You must answer strictly based on the provided code additions. Do not use any ex
 Code additions with line numbers:
 {changes_text}
 
-You MUST reply ONLY in a valid JSON array format. Do not wrap in markdown quotes, do not explain.
+You MUST reply ONLY in a valid JSON object format. Do not wrap in markdown quotes, do not explain.
 Format your JSON precisely as:
-[
-  {{
-    "line": 12,
-    "type": "bug | security | optimization | style",
-    "comment": "### 🐞 Bug Title\\n\\nClear, constructive description of the issue.\\n\\n#### 💡 Actionable Suggestion\\n\\n```language\\n// corrected code\\n```"
-  }}
-]
-If no issues are found, reply with an empty array: []"""
+{{
+  "reviews": [
+    {{
+      "line": 12,
+      "type": "bug | security | optimization | style",
+      "comment": "### 🐞 Bug Title\\n\\nClear, constructive description of the issue.\\n\\n#### 💡 Actionable Suggestion\\n\\n```language\\n// corrected code\\n```"
+    }}
+  ]
+}}
+If no issues are found, reply with an empty array inside the object: {{ "reviews": [] }}"""
 
         try:
             # We specify response_format={"type": "json_object"} to enforce JSON output. 
