@@ -14,6 +14,11 @@ _language_separators = {
     "go": ["\nfunc ", "\ntype ", "\n    ", "\n\t", "\n", " ", ""],
     "rust": ["\nfn ", "\nstruct ", "\nenum ", "\nimpl ", "\n    ", "\n\t", "\n", " ", ""],
     "cpp": ["\nclass ", "\nvoid ", "\nint ", "\n    ", "\n\t", "\n", " ", ""],
+    "csharp": ["\nnamespace ", "\nclass ", "\npublic ", "\nprivate ", "\n    ", "\n\t", "\n", " ", ""],
+    "ruby": ["\nclass ", "\ndef ", "\nmodule ", "\n  ", "\n", " ", ""],
+    "swift": ["\nclass ", "\nstruct ", "\nfunc ", "\nextension ", "\n    ", "\n\t", "\n", " ", ""],
+    "kotlin": ["\nclass ", "\nfun ", "\nval ", "\nvar ", "\n    ", "\n\t", "\n", " ", ""],
+    "php": ["\nclass ", "\nfunction ", "\npublic ", "\nprivate ", "\n    ", "\n\t", "\n", " ", ""],
     "default": ["\n\n", "\n", " ", ""],
 }
 
@@ -30,6 +35,12 @@ _code_extensions = {
     ".c": "cpp",
     ".h": "cpp",
     ".hpp": "cpp",
+    ".cs": "csharp",
+    ".rb": "ruby",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".php": "php",
 }
 
 

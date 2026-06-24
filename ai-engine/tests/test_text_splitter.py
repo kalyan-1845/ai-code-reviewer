@@ -36,6 +36,22 @@ class TestLanguageDetection:
         assert _detect_language("util.c") == "cpp"
         assert _detect_language("header.h") == "cpp"
 
+    def test_detect_csharp(self):
+        assert _detect_language("app.cs") == "csharp"
+
+    def test_detect_ruby(self):
+        assert _detect_language("script.rb") == "ruby"
+
+    def test_detect_swift(self):
+        assert _detect_language("App.swift") == "swift"
+
+    def test_detect_kotlin(self):
+        assert _detect_language("main.kt") == "kotlin"
+        assert _detect_language("script.kts") == "kotlin"
+
+    def test_detect_php(self):
+        assert _detect_language("index.php") == "php"
+
     def test_detect_unknown_extension(self):
         assert _detect_language("readme.md") == "default"
         assert _detect_language("data.json") == "default"
@@ -175,7 +191,7 @@ class TestSplitFiles:
 class TestLanguageSeparators:
     def test_all_expected_languages_have_separators(self):
         expected_langs = ["python", "javascript", "typescript", "java",
-                         "go", "rust", "cpp", "default"]
+                         "go", "rust", "cpp", "csharp", "ruby", "swift", "kotlin", "php", "default"]
         for lang in expected_langs:
             assert lang in _language_separators, f"Missing separators for {lang}"
             assert isinstance(_language_separators[lang], list)
@@ -243,6 +259,31 @@ class TestMakeSplitter:
     def test_uses_cpp_separators_for_cpp_file(self):
         splitter = _make_splitter("main.cpp")
         expected_seps = _language_separators["cpp"]
+        assert splitter._separators == expected_seps
+
+    def test_uses_csharp_separators(self):
+        splitter = _make_splitter("app.cs")
+        expected_seps = _language_separators["csharp"]
+        assert splitter._separators == expected_seps
+
+    def test_uses_ruby_separators(self):
+        splitter = _make_splitter("script.rb")
+        expected_seps = _language_separators["ruby"]
+        assert splitter._separators == expected_seps
+
+    def test_uses_swift_separators(self):
+        splitter = _make_splitter("App.swift")
+        expected_seps = _language_separators["swift"]
+        assert splitter._separators == expected_seps
+
+    def test_uses_kotlin_separators(self):
+        splitter = _make_splitter("main.kt")
+        expected_seps = _language_separators["kotlin"]
+        assert splitter._separators == expected_seps
+
+    def test_uses_php_separators(self):
+        splitter = _make_splitter("index.php")
+        expected_seps = _language_separators["php"]
         assert splitter._separators == expected_seps
 
     def test_uses_default_separators_for_unknown_extension(self):
