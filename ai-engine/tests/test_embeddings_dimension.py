@@ -43,6 +43,7 @@ class TestGetEmbeddingDimension:
         assert dim == 384
 
     def test_caches_model_on_first_call(self):
+        import embeddings
         embeddings._model = None  # reset cache
         dim1 = get_embedding_dimension()
         model1 = _get_model()
