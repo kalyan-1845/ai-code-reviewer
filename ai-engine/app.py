@@ -152,10 +152,8 @@ def validate_system_prompt(prompt: str, max_len: int = 2000) -> str:
         escaped = re.escape(phrase)
         pattern = escaped.replace(r"\ ", r"\s+")
         if re.search(pattern, lower):
-            raise HTTPException(
-                status_code=400,
-                detail="System prompt contains prohibited directives and was rejected."
-            )
+            truncated = re.sub(pattern, "", truncated, flags=re.IGNORECASE)
+            lower = truncated.lower()
     return truncated
 app = FastAPI(title="RepoSage AI Engine", description="FastAPI microservice for repository analysis and documentation generation")
 
