@@ -3,10 +3,6 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['groq'] = MagicMock()
-sys.modules['chromadb'] = MagicMock()
-sys.modules['chromadb.config'] = MagicMock()
 
 import pytest
 from rag import delete_chunks_for_file, cleanup_stale_chunks

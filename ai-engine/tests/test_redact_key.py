@@ -8,10 +8,6 @@ class _MockSentenceTransformer:
     def encode(self, *args, **kwargs): pass
     def get_sentence_embedding_dimension(self): return 384
 
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['groq'] = MagicMock()
-sys.modules['chromadb'] = MagicMock()
-sys.modules['chromadb.config'] = MagicMock()
 
 import pytest
 from app import _redact_key
