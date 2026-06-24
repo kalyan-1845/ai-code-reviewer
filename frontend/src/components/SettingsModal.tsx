@@ -354,7 +354,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               Save
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );
