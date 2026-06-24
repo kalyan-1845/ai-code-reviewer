@@ -1,10 +1,6 @@
 # Mock heavy dependencies before importing rag
 import sys
 from unittest.mock import MagicMock, patch
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['groq'] = MagicMock()
-sys.modules['chromadb'] = MagicMock()
-sys.modules['chromadb.config'] = MagicMock()
 
 import pytest
 from rag import ingest_chunks
