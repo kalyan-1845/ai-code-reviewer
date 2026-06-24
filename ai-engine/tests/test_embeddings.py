@@ -188,3 +188,43 @@ class TestEmbedTexts:
             embeddings._model = None
             result = embeddings.embed_texts([])
             assert result == []
+
+    def test_embed_texts_raises_error_on_encode_failure(self):
+        mock_st, mock_model = make_mock_st()
+        mock_model.encode.side_effect = Exception("API timeout")
+        with patch.dict(sys.modules, {"sentence_transformers": mock_st}):
+            if "embeddings" in sys.modules:
+                del sys.modules["embeddings"]
+            import embeddings
+            embeddings._model = None
+            with pytest.raises(Exception, match="API timeout"):
+                embeddings.embed_texts(["test text"])
+
+    def test_embed_text_with_unicode_only_content(self):
+        result = embed_text("你好，世界！🌍")
+        assert isinstance(result, list)
+        assert len(result) == get_embedding_dimension()
+
+    def test_embed_text_with_extremely_long_text(self):
+        long_text = "test " * 10000
+        result = embed_text(long_text)
+        assert isinstance(result, list)
+        assert len(result) == get_embedding_dimension()
+
+    def test_embed_texts_with_duplicate_content_is_consistent(self):
+        result = embed_texts(["duplicate", "duplicate"])
+        assert len(result) == 2
+        assert result[0] == result[1]
+
+    def test_embed_texts_single_item_matches_embed_text(self):
+        text = "single item comparison"
+        single_res = embed_text(text)
+        batch_res = embed_texts([text])
+        assert len(batch_res) == 1
+        assert batch_res[0] == single_res
+
+    def test_embed_texts_handles_none_values(self):
+        # Depending on sentence_transformers it might throw or not. 
+        # We assume we test that it raises ValueError or similar if None is passed.
+        with pytest.raises(Exception):
+            embed_texts([None, "test"])
