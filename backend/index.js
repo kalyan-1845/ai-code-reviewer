@@ -1081,3 +1081,4 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
 });
+\n// TODO: Issue #403 - Enhancement [Backend]: Export HTML Report download relies on insecure API key passing\n
