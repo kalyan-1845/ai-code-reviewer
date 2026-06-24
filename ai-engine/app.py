@@ -641,3 +641,4 @@ async def query_rag_chunks(request: RagQueryRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+\n# TODO: Issue #396 - Bug [AI Engine]: README and Mermaid Diagram generation only analyzes the first 5 files\n
