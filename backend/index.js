@@ -490,6 +490,12 @@ app.post('/api/webhook', async (req, res) => {
     return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
   }
 
+  // Note: For enhanced security, consider validating the request IP against GitHub's meta IP ranges (https://api.github.com/meta).
+  const userAgent = req.headers['user-agent'] || '';
+  if (!userAgent.startsWith('GitHub-Hookshot/')) {
+    console.warn(`⚠️ Warning: Webhook payload received from non-GitHub user agent: ${userAgent}. IP validation skipped.`);
+  }
+
   const signature = req.headers['x-hub-signature-256'];
   if (!signature) {
     return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
