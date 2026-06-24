@@ -15,9 +15,6 @@ class _MockSentenceTransformer:
         import numpy as np
         return np.array([[0.1] * self._dim])
 
-_mock_st_module = MagicMock()
-_mock_st_module.SentenceTransformer = _MockSentenceTransformer
-sys.modules['sentence_transformers'] = _mock_st_module
 
 # Reset the cached model in embeddings.py before importing
 import embeddings
