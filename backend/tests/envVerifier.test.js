@@ -44,3 +44,19 @@ test('verifyHost returns default hostname for invalid inputs', () => {
   assert.equal(verifyHost(null), 'localhost');
   assert.equal(verifyHost(undefined), 'localhost');
 });
+
+test('verifyPort handles string numbers with leading/trailing whitespace', () => {
+  assert.equal(verifyPort('  8080  '), 8080);
+  assert.equal(verifyPort('\t3000\n'), 3000);
+});
+
+test('verifyPort throws for whitespace-only strings', () => {
+  assert.throws(() => verifyPort('   '), /non-numeric/);
+});
+
+test('verifyPort boundaries', () => {
+  assert.equal(verifyPort(0), 0);
+  assert.equal(verifyPort('0'), 0);
+  assert.equal(verifyPort(65535), 65535);
+  assert.equal(verifyPort('65535'), 65535);
+});
