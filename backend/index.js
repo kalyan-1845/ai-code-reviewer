@@ -1081,3 +1081,4 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
 });
+\n// TODO: Issue #402 - Enhancement [Backend]: Add Webhook secret verification payload validation\n
