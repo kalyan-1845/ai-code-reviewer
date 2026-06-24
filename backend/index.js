@@ -1081,3 +1081,4 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
 });
+\n// TODO: Issue #493 - Security: Unrestricted GitHub Issue Creation in /api/issues/create\n
