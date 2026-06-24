@@ -174,3 +174,33 @@ class TestClearAllVectors:
         with open(fresh_vectorstore) as f:
             data = json.load(f)
         assert len(data) == 0
+
+class TestComputeContentHash:
+    def test_compute_content_hash_deterministic(self):
+        import vectorstore as vs
+        hash1 = vs._compute_content_hash("hello world")
+        hash2 = vs._compute_content_hash("hello world")
+        assert hash1 == hash2
+
+    def test_compute_content_hash_different_inputs(self):
+        import vectorstore as vs
+        hash1 = vs._compute_content_hash("hello world")
+        hash2 = vs._compute_content_hash("hello world!")
+        assert hash1 != hash2
+
+    def test_compute_content_hash_empty_string(self):
+        import vectorstore as vs
+        hash1 = vs._compute_content_hash("")
+        assert isinstance(hash1, str)
+        assert len(hash1) == 64  # sha256 hex length
+
+    def test_compute_content_hash_unicode(self):
+        import vectorstore as vs
+        hash1 = vs._compute_content_hash("你好，世界 🌍")
+        assert len(hash1) == 64
+
+    def test_compute_content_hash_long_string(self):
+        import vectorstore as vs
+        long_str = "abc" * 100000
+        hash1 = vs._compute_content_hash(long_str)
+        assert len(hash1) == 64
