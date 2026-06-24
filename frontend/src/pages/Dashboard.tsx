@@ -1003,7 +1003,7 @@ export default function Dashboard() {
   const downloadHTMLReport = async () => {
     if (!analysisResult) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reports/html`, {
+      const tokenRes = await fetch(`${API_BASE_URL}/api/reports/token`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1014,17 +1014,20 @@ export default function Dashboard() {
           analysis: analysisResult.analysis,
         }),
       });
-      if (response.ok) {
-        const htmlBlob = await response.blob();
-        const element = document.createElement("a");
-        element.href = URL.createObjectURL(htmlBlob);
-        element.download = `${analysisResult.repoName}_AUDIT_REPORT.html`;
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
-      } else {
-        console.error("Failed to generate HTML report");
+      
+      if (!tokenRes.ok) {
+        console.error("Failed to generate HTML report token");
+        return;
       }
+      
+      const { token } = await tokenRes.json();
+      
+      const element = document.createElement("a");
+      element.href = `${API_BASE_URL}/api/reports/html/${token}`;
+      element.download = `${analysisResult.repoName}_AUDIT_REPORT.html`;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
     } catch (err) {
       console.error("Error exporting HTML report:", err);
     }
@@ -1033,7 +1036,7 @@ export default function Dashboard() {
   const downloadPDFReport = async () => {
     if (!analysisResult) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reports/pdf`, {
+      const tokenRes = await fetch(`${API_BASE_URL}/api/reports/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1044,17 +1047,20 @@ export default function Dashboard() {
           analysis: analysisResult.analysis
         })
       });
-      if (response.ok) {
-        const pdfBlob = await response.blob();
-        const element = document.createElement("a");
-        element.href = URL.createObjectURL(pdfBlob);
-        element.download = `${analysisResult.repoName}_AUDIT_REPORT.pdf`;
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
-      } else {
-        console.error("Failed to generate PDF report");
+      
+      if (!tokenRes.ok) {
+        console.error('Failed to generate PDF report token');
+        return;
       }
+      
+      const { token } = await tokenRes.json();
+      
+      const element = document.createElement("a");
+      element.href = `${API_BASE_URL}/api/reports/pdf/${token}`;
+      element.download = `${analysisResult.repoName}_AUDIT_REPORT.pdf`;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
     } catch (err) {
       console.error("Error exporting PDF report:", err);
     }

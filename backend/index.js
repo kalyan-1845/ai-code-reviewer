@@ -114,6 +114,10 @@ const processedDeliveries = new Map();
 const DELIVERY_TTL = 60 * 60 * 1000; // 1 hour
 const MAX_DELIVERY_ENTRIES = 5000;
 
+// Tokenized downloads
+const reportTokens = new Map();
+const REPORT_TOKEN_TTL = 15 * 60 * 1000; // 15 minutes
+
 // Evict oldest entry from a Map when over max size
 function evictLRU(map, maxSize) {
   if (map.size <= maxSize) return;
@@ -144,6 +148,15 @@ const dedupCleanupTimer = setInterval(() => {
   }
   while (processedDeliveries.size > MAX_DELIVERY_ENTRIES) {
     evictLRU(processedDeliveries, MAX_DELIVERY_ENTRIES);
+  }
+  
+  for (const [token, entry] of reportTokens) {
+    if (now - entry.timestamp > REPORT_TOKEN_TTL) {
+      reportTokens.delete(token);
+    }
+  }
+  while (reportTokens.size > 1000) {
+    evictLRU(reportTokens, 1000);
   }
 }, 60 * 1000);
 
@@ -751,12 +764,33 @@ Please review my feedback and suggestions below. Happy coding! 🚀`,
 
 
 
-// 🟢 Route: Export Review Report to HTML
-app.post('/api/reports/html', requireApiKey, (req, res) => {
+// 🟢 Route: Generate Token for Exporting Reports
+app.post('/api/reports/token', requireApiKey, (req, res) => {
   const { repoName, analysis } = req.body;
   if (!repoName || !analysis) {
     return res.status(400).json({ error: 'Repository name and analysis result are required.' });
   }
+  
+  const token = crypto.randomBytes(32).toString('hex');
+  reportTokens.set(token, {
+    repoName,
+    analysis,
+    timestamp: Date.now()
+  });
+  
+  res.json({ token });
+});
+
+// 🟢 Route: Export Review Report to HTML
+app.get('/api/reports/html/:token', (req, res) => {
+  const token = req.params.token;
+  const entry = reportTokens.get(token);
+  
+  if (!entry) {
+    return res.status(404).json({ error: 'Download link expired or invalid.' });
+  }
+  
+  const { repoName, analysis } = entry;
 
   let fileRows = '';
   
@@ -903,8 +937,15 @@ app.post('/api/reports/html', requireApiKey, (req, res) => {
 });
 
 // 🟢 Route: Export Review Report to PDF
-app.post('/api/reports/pdf', requireApiKey, (req, res) => {
-  const { repoName, analysis } = req.body;
+app.get('/api/reports/pdf/:token', (req, res) => {
+  const token = req.params.token;
+  const entry = reportTokens.get(token);
+  
+  if (!entry) {
+    return res.status(404).json({ error: 'Download link expired or invalid.' });
+  }
+  
+  const { repoName, analysis } = entry;
   if (!repoName || !analysis) {
     return res.status(400).json({ error: 'Repository name and analysis result are required.' });
   }
