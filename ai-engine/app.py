@@ -233,6 +233,9 @@ async def analyze_repository(request: AnalyzeRequest):
     # 1. Prepare global repository structure
     repo_structure = [f.name for f in files]
     structure_text = "\n".join(repo_structure)
+    
+    # Create a brief summary of all files to help generate accurate README and Mermaid diagrams
+    all_files_summary = "\n".join([f"--- File: {f.name} ---\n{f.content[:250]}..." for f in files])
 
     core_instructions = "You are a senior staff engineer and security analyst conducting a thorough code review. You must answer strictly based on the provided code context. Do not use any external knowledge, assumptions, or information beyond the files and repository structure given above. If a question cannot be answered from the provided context alone, state that clearly and do not speculate. You MUST follow the JSON output format specified below."
     
@@ -271,7 +274,10 @@ Additionally, you MUST construct a valid Mermaid.js flowchart (graph TD) that ou
 Here is the repository structure:
 {structure_text}
 
-Here is the contents of files for this batch:
+Here is a brief snippet of ALL files in the repository (use this context to generate the README and Mermaid Diagram):
+{all_files_summary}
+
+Here is the contents of files for THIS specific batch (use this for the fileReviews only):
 {contents_text}
 
 You MUST reply ONLY in a valid JSON format. Do not write markdown wrapping, do not write explanations before or after.
