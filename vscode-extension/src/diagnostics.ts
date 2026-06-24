@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { BackendResponse, ReviewItem } from "./api";
+import { clampLine, formatDiagnosticMessage } from "./utils";
 
 export class RepoSageDiagnostics {
   private _collection: vscode.DiagnosticCollection;
@@ -31,18 +32,15 @@ export class RepoSageDiagnostics {
       category: string
     ) => {
       for (const item of items) {
-        const line = Math.max(0, item.line - 1);
+        const line = clampLine(item.line);
         const range = new vscode.Range(line, 0, line, 65535);
         const diagnostic = new vscode.Diagnostic(
           range,
-          `[${category}] ${item.description}`,
+          formatDiagnosticMessage(category, item.description, item.suggestion),
           severity
         );
         diagnostic.source = "RepoSage";
         diagnostic.code = item.type;
-        if (item.suggestion) {
-          diagnostic.message += `\nSuggestion: ${item.suggestion}`;
-        }
         diagnostics.push(diagnostic);
       }
     };
