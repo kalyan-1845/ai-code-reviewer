@@ -14,7 +14,7 @@ export function mockAIReview(files, model = 'llama-3.3-70b-versatile') {
       bugs: [
         {
           type: "Null Pointer Risk",
-          line: 12,
+          line: Math.floor(Math.random() * 50) + 1,
           description: `Variables should be validated before use to prevent potential runtime crashes in ${file.name}.`,
           suggestion: "Add a standard null-check check (e.g. `if (!variable)` or `if variable is None`)."
         }
@@ -22,7 +22,7 @@ export function mockAIReview(files, model = 'llama-3.3-70b-versatile') {
       security: [
         {
           type: "Hardcoded API Key Check",
-          line: 5,
+          line: Math.floor(Math.random() * 20) + 1,
           description: "Potential hardcoded credentials detected. API keys should always be loaded from environment variables (.env).",
           suggestion: "Move the key to a `.env` file and load using standard environment managers."
         }
