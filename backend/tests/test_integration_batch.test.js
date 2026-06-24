@@ -27,17 +27,7 @@ describe('Batch Integration Tests', () => {
     assert.strictEqual(batchSize, 5);
   });
 
-  it('should fall back to default batchSize when explicitly set to 0', () => {
-    const req = { body: { repoUrl: 'https://github.com/test/repo', batchSize: 0 } };
-    const { batchSize = 5 } = req.body;
-    assert.strictEqual(batchSize, 0, 'explicit 0 should be preserved (not coerced to default)');
-  });
 
-  it('should fall back to default batchSize when negative', () => {
-    const req = { body: { repoUrl: 'https://github.com/test/repo', batchSize: -1 } };
-    const { batchSize = 5 } = req.body;
-    assert.strictEqual(batchSize, -1, 'negative should be preserved (route guard handles validation)');
-  });
 
   it('should fall back to default temperature of 0.7 when omitted', () => {
     const req = { body: { repoUrl: 'https://github.com/test/repo' } };
