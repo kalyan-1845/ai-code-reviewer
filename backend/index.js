@@ -1081,3 +1081,4 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
 });
+\n// TODO: Issue #504 - Performance: Inefficient Re-rendering of Review Findings Tree\n
