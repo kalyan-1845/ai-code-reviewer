@@ -77,6 +77,19 @@ def split_file_content(
     chunk_overlap: Optional[int] = None,
     repo_url: Optional[str] = None,
 ) -> list[dict]:
+    # 501: No File Size Limit on RAG Split
+    if len(content) > 10 * 1024 * 1024:
+        return []
+
+    if not content or not content.strip():
+        return []
+
+    file_name: str,
+    content: str,
+    chunk_size: Optional[int] = None,
+    chunk_overlap: Optional[int] = None,
+    repo_url: Optional[str] = None,
+) -> list[dict]:
     if not content or not content.strip():
         return []
 

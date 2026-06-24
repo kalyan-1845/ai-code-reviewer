@@ -71,6 +71,26 @@ const analyzeLimiter = rateLimit({
   keyGenerator: getRealClientIp,
   message: { error: 'Too many analyze requests. Please slow down and retry after 5 minutes.' }
 });
+// 494: Add issueLimiter
+const issueLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRealClientIp,
+  message: { error: 'Too many issue creation requests.' }
+});
+
+// 495: Add exportLimiter
+const exportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRealClientIp,
+  message: { error: 'Too many export requests.' }
+});
+
 const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -192,7 +212,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
     if (homoglyphCount / totalChars > 0.3) {
       throw new Error('System prompt contains an unusually high proportion of confusable Unicode characters.');
     }
-    const scriptRuns = [...new Set([...prompt].map(ch => {
+    const scriptRuns = [...new Set([...normalizeHomoglyphs(prompt)].map(ch => {
       const cp = ch.codePointAt(0);
       if (cp >= 0x0400 && cp <= 0x04FF) return 'cyrillic';
       if (cp >= 0x0370 && cp <= 0x03FF) return 'greek';
