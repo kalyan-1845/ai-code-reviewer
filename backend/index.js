@@ -102,6 +102,17 @@ function cleanupTempRepos() {
 function onShutdown() { cleanupTempRepos(); cleanupTimers(); process.exit(0); }
 process.on('SIGINT', onShutdown);
 process.on('SIGTERM', onShutdown);
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  cleanupTempRepos();
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+  cleanupTempRepos();
+  process.exit(1);
+});
+process.on('exit', cleanupTempRepos);
 
 // Session-isolated repository contexts for chat functionality (issue #59)
 const repoContexts = new Map();
