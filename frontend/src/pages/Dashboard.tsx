@@ -909,9 +909,14 @@ export default function Dashboard() {
         setLoadingStep(steps[currentStep]);
       }
     }, 1200);
-    const aiSettings = JSON.parse(
-      localStorage.getItem("reposage_ai_settings") || "{}"
-    );
+    let aiSettings = {};
+    try {
+      aiSettings = JSON.parse(
+        localStorage.getItem("reposage_ai_settings") || "{}"
+      );
+    } catch {
+      aiSettings = {};
+    }
 
     try {
       const response = await apiFetch("/api/analyze", {
