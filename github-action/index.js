@@ -6,16 +6,20 @@ import { scanSecretsInChanges } from './utils/secretsScanner.js';
 
 // 🟢 Helper to clean JSON response from LLM
 function cleanAndParseJSON(responseText) {
-  let cleaned = responseText.trim();
-  if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.substring(7);
-  } else if (cleaned.startsWith('```')) {
-    cleaned = cleaned.substring(3);
+  try {
+    let cleaned = responseText.trim();
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.substring(7);
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.substring(3);
+    }
+    if (cleaned.endsWith('```')) {
+      cleaned = cleaned.substring(0, cleaned.length - 3);
+    }
+    return JSON.parse(cleaned.trim());
+  } catch {
+    return { reviews: [] };
   }
-  if (cleaned.endsWith('```')) {
-    cleaned = cleaned.substring(0, cleaned.length - 3);
-  }
-  return JSON.parse(cleaned.trim());
 }
 
 async function run() {
