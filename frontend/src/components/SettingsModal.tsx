@@ -8,7 +8,6 @@ const DEFAULT_SETTINGS = {
 };
 
 interface SettingsModalProps {
-  theme?: "dark" | "light";
   onClose: () => void;
 }
 
