@@ -54,6 +54,12 @@ const sessionSchema = new mongoose.Schema({
   },
   // Tracks the last time this session was accessed via chat. This is the
   // field that gets updated on each chat request, NOT createdAt.
+  // Tracks which client created this session, used to prevent IDOR
+  // where one authenticated user accesses another user's session.
+  ownerToken: {
+    type: String,
+    index: true,
+  },
   lastAccessedAt: {
     type: Date,
     default: Date.now,

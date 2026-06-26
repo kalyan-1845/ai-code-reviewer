@@ -373,6 +373,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
             repoUrl,
             repoName,
             files: storedFiles,
+            ownerToken: req.clientId,
           });
           sessionPersisted = true;
         } catch (sessionErr) {
@@ -451,6 +452,12 @@ app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
     try {
       context = await Session.findOne({ sessionId });
       if (context) {
+        // Verify session ownership to prevent IDOR (issue #742):
+        // only the client that created the session may access it.
+        if (context.ownerToken && context.ownerToken !== req.clientId) {
+          console.warn(`⚠️ IDOR attempt: client ${req.clientId} tried to access session ${sessionId} owned by ${context.ownerToken}`);
+          return res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
+        }
         // Update lastAccessedAt for activity tracking. createdAt remains
         // unchanged so the original TTL (30 minutes from creation) is
         // preserved, preventing indefinite session extension (see issue #672).

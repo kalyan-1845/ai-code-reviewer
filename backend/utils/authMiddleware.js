@@ -56,7 +56,7 @@ export function createFrontendSessionCookie(res) {
   if (!validKey) return null;
 
   const payload = Buffer.from(
-    JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000 }),
+    JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000, uid: crypto.randomUUID() }),
   ).toString('base64url');
   const signature = signValue(payload, validKey);
   const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
@@ -72,7 +72,29 @@ export const requireApiKey = (req, res, next) => {
     ? req.headers['x-api-key'][0]
     : req.headers['x-api-key'];
 
-  if ((providedKey && safeEqual(providedKey, validKey)) || hasValidSessionCookie(req, validKey)) {
+  if (hasValidSessionCookie(req, validKey)) {
+    const cookieValue = getCookie(req, SESSION_COOKIE_NAME);
+    if (cookieValue) {
+      const [payload] = cookieValue.split('.');
+      if (payload) {
+        try {
+          const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+          req.clientId = session.uid || 'anonymous';
+        } catch {
+          req.clientId = 'anonymous';
+        }
+      } else {
+        req.clientId = 'anonymous';
+      }
+    } else {
+      req.clientId = 'anonymous';
+    }
+    next();
+    return;
+  }
+
+  if (providedKey && safeEqual(providedKey, validKey)) {
+    req.clientId = crypto.createHash('sha256').update(validKey).digest('hex');
     next();
     return;
   }
