@@ -61,3 +61,17 @@ export function countLinesInDiff(files) {
     return total + count;
   }, 0);
 }
+
+export function getAllChanges(files) {
+  const result = [];
+  if (!Array.isArray(files)) return result;
+  for (const file of files) {
+    if (Array.isArray(file.changes)) {
+      for (const c of file.changes) result.push({ ...c, file: file.path });
+    }
+    if (Array.isArray(file.deletions)) {
+      for (const d of file.deletions) result.push({ ...d, file: file.path, deleted: true });
+    }
+  }
+  return result;
+}
