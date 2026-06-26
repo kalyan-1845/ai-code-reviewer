@@ -630,8 +630,9 @@ export default function Dashboard() {
       <Settings size={15} />
     </button>;
 
+    const gssoLabel = localStorage.getItem("reposage_gssoc_label") || "gssoc26";
     const labels = isGssocLabelingEnabled
-      ? ["gssoc26", "good-first-issue", category]
+      ? [gssoLabel, "good-first-issue", category]
       : [category];
 
     try {
