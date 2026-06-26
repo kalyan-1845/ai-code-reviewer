@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 import mermaid from "mermaid";
-import DOMPurify from "dompurify";
+import { sanitizeMermaidOutput } from "../utils/sanitize";
 
 // Initialize Mermaid outside the component to avoid multiple initializations
 try {
@@ -178,10 +178,7 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
         }
 
         const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
-        const sanitized = DOMPurify.sanitize(renderedSvg, {
-          USE_PROFILES: { svg: true, svgFilters: true },
-          ALLOW_UNKNOWN_PROTOCOLS: false,
-        });
+        const sanitized = sanitizeMermaidOutput(renderedSvg);
         setSvg(sanitized);
       } catch (err: any) {
         console.error("Mermaid Render Error:", err);
@@ -193,6 +190,10 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
 
     renderChart();
   }, [chart]);
+
+  const svgDataUrl = svg
+    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+    : null;
 
   const downloadSVG = () => {
     if (!svg) return;
@@ -290,12 +291,19 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
           boxSizing: "border-box",
           width: "100%",
         }}
-        dangerouslySetInnerHTML={{
-          __html:
-            svg ||
-            '<span style="color:#9ca3af;font-size:12px;">Generating visual flowchart...</span>',
-        }}
-      />
+      >
+        {svgDataUrl ? (
+          <img
+            src={svgDataUrl}
+            alt={`Architecture diagram for ${repoName}`}
+            style={{ maxWidth: "100%", height: "auto" }}
+          />
+        ) : (
+          <span style={{ color: "#9ca3af", fontSize: "12px" }}>
+            Generating visual flowchart...
+          </span>
+        )}
+      </div>
     </div>
   );
 }
