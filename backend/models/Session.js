@@ -13,14 +13,15 @@ export function estimateSessionSize(files) {
 }
 
 // Each document stores the repository context for a single analysis session.
-// MongoDB automatically removes expired documents via the TTL index on createdAt
-// (expireAfterSeconds: 1800 = 30 minutes), which replaces the previous in-process
-// setInterval cleanup that ran on the repoContexts Map.
+// MongoDB automatically removes expired documents via a sliding-window TTL
+// index on lastAccessedAt (expireAfterSeconds: 86400 = 24 hours). Every chat
+// interaction updates lastAccessedAt, so the session lifetime extends with
+// active use. A secondary TTL index on absoluteExpiry enforces a hard 7-day
+// ceiling to prevent abandoned sessions from living forever.
 //
 // IMPORTANT: createdAt is set once on document creation and is NEVER updated.
-// Session activity tracking uses the separate lastAccessedAt field. This
-// prevents an attacker from keeping a session alive indefinitely by sending
-// periodic chat requests (see issue #672).
+// It is kept for audit purposes only; the slash command window is driven by
+// lastAccessedAt (see issues #672, #743).
 const sessionSchema = new mongoose.Schema({
   sessionId: {
     type: String,
@@ -58,23 +59,26 @@ const sessionSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  // Hard upper bound on session lifetime (24 hours after creation).
+  // Hard upper bound on session lifetime (7 days after creation).
   // A separate TTL index on this field ensures documents are cleaned up
-  // even if the session is actively used.
+  // even if the session is actively used, preventing abandoned sessions
+  // from living past this ceiling.
   absoluteExpiry: {
     type: Date,
-    default: () => new Date(Date.now() + 24 * 60 * 60 * 1000),
+    default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   },
 });
 
-// TTL index: MongoDB removes the document 30 minutes after createdAt.
-// createdAt is set once at creation and never updated, so a session
-// automatically expires 30 minutes after the analysis, regardless of
-// chat activity.
-sessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 1800 });
+// Primary TTL index on lastAccessedAt: MongoDB removes the document
+// 24 hours after the last access. Active use (chat, analysis) updates
+// lastAccessedAt, so the session lifetime extends with activity
+// (sliding-window expiry, see issue #743).
+sessionSchema.index({ lastAccessedAt: 1 }, { expireAfterSeconds: 86400 });
 
-// Secondary TTL index on absoluteExpiry enforces a maximum 24-hour
-// session lifetime even if the session is actively used.
+// Hard-ceiling TTL index on absoluteExpiry enforces a maximum 7-day
+// session lifetime even if the session is actively used. MongoDB uses
+// the index that expires the document first, so sessions are cleaned up
+// 24 hours after the last access but at most 7 days after creation.
 sessionSchema.index({ absoluteExpiry: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.model('Session', sessionSchema);

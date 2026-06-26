@@ -373,6 +373,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
             repoUrl,
             repoName,
             files: storedFiles,
+            lastAccessedAt: new Date(),
           });
           sessionPersisted = true;
         } catch (sessionErr) {
@@ -451,9 +452,9 @@ app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
     try {
       context = await Session.findOne({ sessionId });
       if (context) {
-        // Update lastAccessedAt for activity tracking. createdAt remains
-        // unchanged so the original TTL (30 minutes from creation) is
-        // preserved, preventing indefinite session extension (see issue #672).
+        // Update lastAccessedAt for the sliding-window TTL (see issue #743).
+        // Each interaction resets the 24-hour expiry countdown. The hard
+        // ceiling on absoluteExpiry (7 days) still limits total lifetime.
         await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() } });
       }
     } catch (sessionErr) {
