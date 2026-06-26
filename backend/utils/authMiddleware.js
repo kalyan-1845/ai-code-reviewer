@@ -61,7 +61,7 @@ export function createFrontendSessionCookie(res) {
   const signature = signValue(payload, validKey);
   const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
 
-  return `${SESSION_COOKIE_NAME}=${payload}.${signature}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secureFlag}`;
+  return `${SESSION_COOKIE_NAME}=${payload}.${signature}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secureFlag}`;
 }
 
 export const requireApiKey = (req, res, next) => {

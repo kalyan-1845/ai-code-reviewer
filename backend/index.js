@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import PDFDocument from 'pdfkit';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
@@ -90,6 +91,9 @@ const chatLimiter = rateLimit({
   message: { error: 'Too many chat requests. Please slow down and retry after 1 minute.' }
 });
 
+// Parse cookies for CSRF token validation
+app.use(cookieParser());
+
 // Capture raw body for webhook signature verification before JSON parsing
 app.use(express.json({
   verify: (req, _res, buf) => {
@@ -97,12 +101,55 @@ app.use(express.json({
   }
 }));
 
+// CSRF token endpoint: generates a random token and sets it as a non-httpOnly cookie
+// so the frontend can read it and include it in the X-CSRF-Token header.
+const CSRF_COOKIE_NAME = 'csrf-token';
+function generateCsrfToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// CSRF validation middleware for state-changing methods
+function csrfProtection(req, res, next) {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const headerToken = req.headers['x-csrf-token'];
+    const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
+    if (!headerToken || !cookieToken || headerToken !== cookieToken) {
+      // Allow session creation and CSRF token endpoints to function
+      if (req.path === '/api/session' || req.path === '/api/csrf-token') {
+        return next();
+      }
+      // Skip CSRF for webhook (uses HMAC signature verification)
+      if (req.path === '/api/webhook') {
+        return next();
+      }
+      return res.status(403).json({ error: 'CSRF validation failed.' });
+    }
+  }
+  next();
+}
+
+// Apply CSRF protection to all state-changing routes
+app.use(csrfProtection);
+
 app.post('/api/session', requireApiKey, (req, res) => {
   const sessionCookie = createFrontendSessionCookie(res);
   if (!sessionCookie) return;
 
-  res.setHeader('Set-Cookie', sessionCookie);
-  return res.json({ success: true });
+  const csrfToken = generateCsrfToken();
+  res.setHeader('Set-Cookie', [sessionCookie, `${CSRF_COOKIE_NAME}=${csrfToken}; HttpOnly=false; SameSite=Strict; Path=/`]);
+  return res.json({ success: true, csrfToken });
+});
+
+// CSRF token retrieval for clients that need a fresh token
+app.get('/api/csrf-token', requireApiKey, (req, res) => {
+  const csrfToken = generateCsrfToken();
+  res.cookie(CSRF_COOKIE_NAME, csrfToken, {
+    httpOnly: false,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+  });
+  res.json({ csrfToken });
 });
 
 // Ensure temp_repos folder exists
@@ -166,8 +213,16 @@ function cleanupTimers() {
   clearInterval(cacheMetricsTimer);
 }
 
+// Content-Type validation middleware for POST endpoints
+function requireJsonContentType(req, res, next) {
+  if (!req.is('application/json')) {
+    return res.status(415).json({ error: 'Content-Type must be application/json' });
+  }
+  next();
+}
+
 // 🟢 Route: GitHub Import & AI Review
-app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
+app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, async (req, res) => {
   let { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
      maxTokens = 2048, systemPrompt = '', batchSize = 5
    } = req.body;
@@ -439,7 +494,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
 });
 
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
-app.post('/api/chat', requireApiKey, chatLimiter, async (req, res) => {
+app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async (req, res) => {
   const { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, useRag } = req.body;
 
   if (!message) {
