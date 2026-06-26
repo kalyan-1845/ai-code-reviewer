@@ -31,6 +31,23 @@ class ReviewQueue {
     this._locks.set(key, next.catch(() => {}));
     return next;
   }
+
+  // Per-key mutex: ensures only one async operation runs at a time for a given key.
+  // Unlike enqueue(), this does not use a queue — it simply chains onto the previous
+  // operation for the same key. Useful for serializing database read-then-write
+  // operations to prevent lost updates (see issue #746).
+  async runExclusive(key, fn) {
+    const prev = this._locks.get(key) || Promise.resolve();
+    const next = prev.then(async () => {
+      try {
+        return await fn();
+      } finally {
+        this._locks.delete(key);
+      }
+    });
+    this._locks.set(key, next.catch(() => {}));
+    return next;
+  }
 }
 
 export default ReviewQueue;
