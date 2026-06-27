@@ -64,15 +64,19 @@
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "lint": "tsc --noEmit",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "test:unit": "mocha --require ts-node/register --timeout 10000 \"src/test/unit/**/*.test.ts\""
   },
   "devDependencies": {
+    "@types/chai": "^4.3.11",
     "@types/mocha": "^10.0.6",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.8",
+    "chai": "^4.4.1",
     "esbuild": "^0.25.3",
     "glob": "^10.3.10",
     "mocha": "^10.3.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }
 }
