@@ -2,6 +2,7 @@ import os
 import json
 import re
 import time
+import asyncio
 import unicodedata
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,8 @@ if not loaded:
 
 MAX_FILE_CHARS_PER_FILE = int(os.getenv("MAX_FILE_CHARS_PER_FILE", "1500"))
 MAX_CHAT_FILES = int(os.getenv("MAX_CHAT_FILES", "20"))
+# Maximum seconds to wait for a single LLM API response before returning 504 (#786)
+LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 
 def _redact_key(text: str, key: str) -> str:
     if not text or not key:
@@ -177,6 +180,24 @@ def validate_system_prompt(prompt: str, max_len: int = 2000) -> str:
                        f"Please remove it and try again."
             )
     return truncated
+async def _call_groq_with_timeout(**kwargs):
+    """Run a synchronous Groq completion in a thread-pool executor with a
+    configurable wall-clock timeout. Raises HTTP 504 if the LLM does not
+    respond within LLM_TIMEOUT_SECONDS seconds, freeing the FastAPI worker. (#786)"""
+    loop = asyncio.get_event_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: groq_client.chat.completions.create(**kwargs)),
+            timeout=LLM_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"LLM request timed out after {int(LLM_TIMEOUT_SECONDS)}s. "
+                   "Please retry or reduce the number of files.",
+        )
+
+
 app = FastAPI(title="RepoSage AI Engine", description="FastAPI microservice for repository analysis and documentation generation")
 
 # Restrict CORS to configured origins so the AI engine is not accessible from
@@ -415,7 +436,7 @@ You must obey the JSON output format above."""
 
         try:
             print(f"⏳ Processing batch {idx + 1}/{len(batches)} ({len(batch)} files)...")
-            completion = groq_client.chat.completions.create(
+            completion = await _call_groq_with_timeout(
                 model=groq_model,
                 messages=[
                     {"role": "system", "content": base_prompt},
@@ -566,7 +587,7 @@ Guidelines:
     print(f"📡 Forwarding repo chat request to Groq using model: {groq_model}")
 
     try:
-        completion = groq_client.chat.completions.create(
+        completion = await _call_groq_with_timeout(
             model=groq_model,
             messages=messages,
             temperature=request.temperature or 0.4,
@@ -657,7 +678,7 @@ If no issues are found, reply with: {{ "reviews": [] }}"""
 
         try:
             # We specify response_format={"type": "json_object"} to enforce JSON output. 
-            completion = groq_client.chat.completions.create(
+            completion = await _call_groq_with_timeout(
                 model=groq_model,
                 messages=[{"role": "user", "content": review_prompt}],
                 temperature=0.2,
