@@ -1042,6 +1042,7 @@ export default function Dashboard() {
                 <input
                   type="url"
                   required
+                  pattern="https://github\.com/.*"
                   placeholder="https://github.com/username/repo"
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
