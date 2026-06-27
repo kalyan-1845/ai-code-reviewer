@@ -10,11 +10,14 @@ export function mockAIReview(files, model = 'llama-3.3-70b-versatile') {
   }
 
   files.forEach(file => {
+    const totalLines = file.content ? file.content.split('\\n').length : 50;
+    const getRandomLine = () => Math.max(1, Math.floor(Math.random() * totalLines));
+
     reviews[file.name] = {
       bugs: [
         {
           type: "Null Pointer Risk",
-          line: 12,
+          line: getRandomLine(),
           description: `Variables should be validated before use to prevent potential runtime crashes in ${file.name}.`,
           suggestion: "Add a standard null-check check (e.g. `if (!variable)` or `if variable is None`)."
         }
@@ -22,7 +25,7 @@ export function mockAIReview(files, model = 'llama-3.3-70b-versatile') {
       security: [
         {
           type: "Hardcoded API Key Check",
-          line: 5,
+          line: getRandomLine(),
           description: "Potential hardcoded credentials detected. API keys should always be loaded from environment variables (.env).",
           suggestion: "Move the key to a `.env` file and load using standard environment managers."
         }
@@ -30,7 +33,7 @@ export function mockAIReview(files, model = 'llama-3.3-70b-versatile') {
       optimization: [
         {
           type: "Complexity Reduction",
-          line: 25,
+          line: getRandomLine(),
           description: "Avoid using nested iterations if time complexity grows quadratically. Consider using a Map/Dictionary lookup.",
           suggestion: "Implement a mapping cache instead of performing dual-nested loops."
         }
@@ -38,7 +41,7 @@ export function mockAIReview(files, model = 'llama-3.3-70b-versatile') {
       styling: [
         {
           type: "Naming Convention",
-          line: 8,
+          line: getRandomLine(),
           description: "CamelCase or snake_case format mismatch detected on function declaration.",
           suggestion: "Reformat variable or function definitions to conform to standard styling rules."
         }
