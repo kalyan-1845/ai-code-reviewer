@@ -5,7 +5,18 @@ function escapeHtml(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function escapeHtmlPreserveBackticks(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+    .replace(/`/g, "&#96;");
 }
 
 function renderMarkdown(md: string): string {
@@ -45,8 +56,9 @@ function renderMarkdown(md: string): string {
     } else if (line.trim() === "") {
       html += `<div class="spacer"></div>`;
     } else {
-      const formatted = escapeHtml(line).replace(
-        /`([^`]+)`/g,
+      const escaped = escapeHtmlPreserveBackticks(line);
+      const formatted = escaped.replace(
+        /&#96;([^&#96;]+)&#96;/g,
         "<code>$1</code>"
       );
       html += `<p>${formatted}</p>`;
@@ -75,44 +87,32 @@ function getWebviewContent(markdown: string, isLoading: boolean, error: string |
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${vscode.webview.cspSource} 'unsafe-inline'; img-src data: https:; font-src 'none';">
 <style>
-:root {
-  --bg: #1e1e1e;
-  --card: #2d2d2d;
-  --text: #d4d4d4;
-  --heading: #e0e0e0;
-  --accent: #569cd6;
-  --code-bg: #1e1e1e;
-  --code-text: #ce9178;
-  --border: #3c3c3c;
-  --error-bg: #3a1d1d;
-  --error-text: #f48771;
-  --error-border: #6b2a2a;
-}
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   padding: 16px;
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
   font-size: 13px;
   line-height: 1.6;
 }
-h1 { font-size: 16px; font-weight: 700; color: var(--heading); margin: 16px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
-h2 { font-size: 14px; font-weight: 600; color: var(--heading); margin: 12px 0 6px 0; }
-h3 { font-size: 13px; font-weight: 600; color: var(--heading); margin: 10px 0 4px 0; }
+h1 { font-size: 16px; font-weight: 700; color: var(--vscode-editor-foreground); margin: 16px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid var(--vscode-widget-border); }
+h2 { font-size: 14px; font-weight: 600; color: var(--vscode-editor-foreground); margin: 12px 0 6px 0; }
+h3 { font-size: 13px; font-weight: 600; color: var(--vscode-editor-foreground); margin: 10px 0 4px 0; }
 p { margin: 0 0 6px 0; }
 code {
-  background: var(--code-bg);
-  color: var(--code-text);
+  background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+  color: var(--vscode-textPreformat-foreground, #ce9178);
   padding: 1px 4px;
   border-radius: 3px;
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--vscode-editor-font-family, 'Cascadia Code', 'Fira Code', monospace);
   font-size: 12px;
 }
 pre {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
+  background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-widget-border);
   border-radius: 6px;
   padding: 12px;
   overflow-x: auto;
@@ -121,7 +121,7 @@ pre {
 pre code {
   background: none;
   padding: 0;
-  color: var(--code-text);
+  color: var(--vscode-textPreformat-foreground, #ce9178);
   line-height: 1.5;
 }
 li { margin-left: 16px; margin-bottom: 4px; }
@@ -133,21 +133,21 @@ li { margin-left: 16px; margin-bottom: 4px; }
   justify-content: center;
   padding: 40px 16px;
   gap: 12px;
-  color: var(--text);
+  color: var(--vscode-editor-foreground);
 }
 .spinner {
   width: 24px;
   height: 24px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
+  border: 3px solid var(--vscode-widget-border);
+  border-top-color: var(--vscode-textLink-foreground);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .error-message {
-  background: var(--error-bg);
-  border: 1px solid var(--error-border);
-  color: var(--error-text);
+  background: var(--vscode-inputValidation-errorBackground, #3a1d1d);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #6b2a2a);
+  color: var(--vscode-errorForeground, #f48771);
   padding: 12px;
   border-radius: 6px;
   font-size: 12px;
@@ -160,7 +160,7 @@ li { margin-left: 16px; margin-bottom: 4px; }
   justify-content: center;
   padding: 48px 16px;
   text-align: center;
-  color: #808080;
+  color: var(--vscode-descriptionForeground, #808080);
 }
 .empty-icon { font-size: 32px; margin-bottom: 12px; }
 .empty-state p { font-size: 12px; line-height: 1.5; }
