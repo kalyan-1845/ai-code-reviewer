@@ -86,6 +86,19 @@ def get_groq_model(model_name: Optional[str]) -> str:
         return "gemma2-9b-it"
     return default_model
 
+def sanitize_mermaid_code(mermaid_text: str) -> str:
+    """Sanitize mermaid diagram code to prevent XSS via prompt injection.
+    Strips HTML/XML tags and javascript: URIs, and validates the diagram type."""
+    if not mermaid_text:
+        return ""
+    dangerous = re.compile(r'<[^>]*>|javascript:|vbscript:|data:\s*text/html|on\w+\s*=', re.IGNORECASE)
+    if dangerous.search(mermaid_text):
+        return "graph TD\n    A[\"Diagram omitted: security concern\"]"
+    valid_start = re.compile(r'^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|gitgraph)\s', re.MULTILINE)
+    if not valid_start.search(mermaid_text):
+        return "graph TD\n    A[\"Diagram omitted: invalid format\"]"
+    return mermaid_text
+
 def sanitize_ai_output(text: str) -> str:
     if not text:
         return text
@@ -384,7 +397,8 @@ You must obey the JSON output format above."""
             # Merge results
             if is_first_batch:
                 if "mermaidDiagram" in batch_result:
-                    combined_result["mermaidDiagram"] = sanitize_ai_output(batch_result["mermaidDiagram"])
+                    sanitized = sanitize_ai_output(batch_result["mermaidDiagram"])
+                    combined_result["mermaidDiagram"] = sanitize_mermaid_code(sanitized)
                 if "generatedReadme" in batch_result:
                     combined_result["generatedReadme"] = sanitize_ai_output(batch_result["generatedReadme"])
             

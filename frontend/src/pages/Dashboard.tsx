@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 import mermaid from "mermaid";
-import DOMPurify from "dompurify";
+import { sanitizeMermaidOutput } from "../utils/sanitize";
 
 // Initialize Mermaid outside the component to avoid multiple initializations
 try {
@@ -50,46 +50,58 @@ try {
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 let sessionRequest: Promise<void> | null = null;
 
+let csrfToken: string | null = null;
+
 const ensureApiSession = async () => {
-  if (sessionRequest) {
-    try {
-      await sessionRequest;
-      return;
-    } catch {
+  if (!sessionRequest) {
+    sessionRequest = fetch(`${API_BASE_URL}/api/session`, {
+      method: "POST",
+      credentials: "include",
+    }).then(async (response) => {
+      if (response.status === 401) {
+        const apiKey = window.prompt("Enter the RepoSage backend API key:");
+        if (!apiKey) {
+          throw new Error("Backend API key is required to continue.");
+        }
+
+        const loginResponse = await fetch(`${API_BASE_URL}/api/session`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "x-api-key": apiKey,
+          },
+        });
+
+        if (!loginResponse.ok) {
+          throw new Error("Invalid backend API key.");
+        }
+        const loginData = await loginResponse.json();
+        if (loginData.csrfToken) {
+          csrfToken = loginData.csrfToken;
+        }
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Could not initialize a secure API session.");
+      }
+      const data = await response.json();
+      if (data.csrfToken) {
+        csrfToken = data.csrfToken;
+      }
+    }).catch((error) => {
       sessionRequest = null;
-    }
+      throw error;
+    });
   }
 
-  sessionRequest = fetch(`${API_BASE_URL}/api/session`, {
-    method: "POST",
-    credentials: "include",
-  }).then(async (response) => {
-    if (response.status === 401) {
-      const apiKey = window.prompt("Enter the RepoSage backend API key:");
-      if (!apiKey) {
-        throw new Error("Backend API key is required to continue.");
-      }
-
-      const loginResponse = await fetch(`${API_BASE_URL}/api/session`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "x-api-key": apiKey,
-        },
-      });
-
-      if (!loginResponse.ok) {
-        throw new Error("Invalid backend API key.");
-      }
-      return;
-    }
-
-    if (!response.ok) {
-      throw new Error("Could not initialize a secure API session.");
-    }
-  });
-
   return sessionRequest;
+};
+
+const getCsrfToken = (): string | null => {
+  if (csrfToken) return csrfToken;
+  const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]*)/);
+  return match ? match[1] : null;
 };
 
 const apiFetch = async (path: string, options: RequestInit = {}) => {
@@ -97,6 +109,13 @@ const apiFetch = async (path: string, options: RequestInit = {}) => {
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+  const method = (options.method || "GET").toUpperCase();
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const token = getCsrfToken();
+    if (token) {
+      headers.set("X-CSRF-Token", token);
+    }
   }
 
   return fetch(`${API_BASE_URL}${path}`, {
@@ -178,10 +197,7 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
         }
 
         const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
-        const sanitized = DOMPurify.sanitize(renderedSvg, {
-          USE_PROFILES: { svg: true, svgFilters: true },
-          ALLOW_UNKNOWN_PROTOCOLS: false,
-        });
+        const sanitized = sanitizeMermaidOutput(renderedSvg);
         setSvg(sanitized);
       } catch (err: any) {
         console.error("Mermaid Render Error:", err);
@@ -193,6 +209,10 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
 
     renderChart();
   }, [chart]);
+
+  const svgDataUrl = svg
+    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+    : null;
 
   const downloadSVG = () => {
     if (!svg) return;
@@ -290,12 +310,19 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
           boxSizing: "border-box",
           width: "100%",
         }}
-        dangerouslySetInnerHTML={{
-          __html:
-            svg ||
-            '<span style="color:#9ca3af;font-size:12px;">Generating visual flowchart...</span>',
-        }}
-      />
+      >
+        {svgDataUrl ? (
+          <img
+            src={svgDataUrl}
+            alt={`Architecture diagram for ${repoName}`}
+            style={{ maxWidth: "100%", height: "auto" }}
+          />
+        ) : (
+          <span style={{ color: "#9ca3af", fontSize: "12px" }}>
+            Generating visual flowchart...
+          </span>
+        )}
+      </div>
     </div>
   );
 }
