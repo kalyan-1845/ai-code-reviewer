@@ -28,6 +28,8 @@ export function QuickFixButton({ text, onApply }: { text: string; onApply: (text
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-haspopup="menu"
         style={{
           background: open ? "rgba(234,179,8,0.15)" : "transparent",
           border: "none",
