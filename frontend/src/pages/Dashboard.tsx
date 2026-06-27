@@ -3050,10 +3050,10 @@ export default function Dashboard() {
                             activeTab
                             ] as any[]
                           ).map((item: any, index: number) => {
-                            const itemKey = `${selectedFile}-${activeTab}-${index}`;
+                            const itemKey = `${selectedFile}-${activeTab}-${index}-${item.line || 'global'}`;
                             return (
                               <div
-                                key={index}
+                                key={itemKey}
                                 style={{
                                   padding: "12px 14px",
                                   borderRadius: "8px",
@@ -3618,7 +3618,7 @@ export default function Dashboard() {
                       ) : (
                         chatHistory.map((msg, index) => (
                           <div
-                            key={index}
+                            key={`chat-msg-${index}`}
                             style={{
                               display: "flex",
                               flexDirection: "column",
