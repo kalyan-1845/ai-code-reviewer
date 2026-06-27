@@ -669,6 +669,17 @@ class RagQueryResponse(BaseModel):
     total_chunks: int
 
 
+class PaginatedChunksRequest(BaseModel):
+    limit: Optional[int] = 50
+    offset: Optional[int] = 0
+    repo_url: Optional[str] = None
+
+
+class PaginatedChunksResponse(BaseModel):
+    chunks: List[dict]
+    total_chunks: int
+
+
 # 🟢 Route: Split files into text chunks for RAG ingestion
 @app.post("/api/rag/split", response_model=SplitResponse)
 async def split_files_for_rag(request: SplitRequest):
@@ -698,6 +709,15 @@ async def query_rag_chunks(request: RagQueryRequest):
         chunks=chunks,
         total_chunks=len(chunks),
     )
+
+
+# 🟢 Route: Get paginated RAG chunks
+@app.post("/api/rag/chunks", response_model=PaginatedChunksResponse)
+async def get_paginated_chunks(request: PaginatedChunksRequest):
+    from rag import get_chunks_paginated, get_collection_stats
+    chunks = get_chunks_paginated(limit=request.limit, offset=request.offset, repo_url=request.repo_url)
+    stats = get_collection_stats(repo_url=request.repo_url)
+    return PaginatedChunksResponse(chunks=chunks, total_chunks=stats["chunk_count"])
 
 
 if __name__ == "__main__":
