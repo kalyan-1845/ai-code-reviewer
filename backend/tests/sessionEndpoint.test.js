@@ -129,10 +129,10 @@ test('createFrontendSessionCookie includes HttpOnly flag', () => {
   assert.ok(cookie.includes('HttpOnly'), 'cookie should have HttpOnly flag');
 });
 
-test('createFrontendSessionCookie includes SameSite=Lax', () => {
+test('createFrontendSessionCookie includes SameSite=Strict', () => {
   const { res } = makeSessionReqRes();
   const cookie = createFrontendSessionCookie(res);
-  assert.ok(cookie.includes('SameSite=Lax'), 'cookie should have SameSite=Lax');
+  assert.ok(cookie.includes('SameSite=Strict'), 'cookie should have SameSite=Strict');
 });
 
 test('createFrontendSessionCookie includes Path=/', () => {

@@ -84,8 +84,9 @@ export const generateMarkdownReport = (repoName: string, analysis: AnalysisData)
     markdown += `## 📈 Code Metrics\n\n`;
     markdown += `| File Path | Total Lines | Code Lines | Comment Lines | Empty Lines | Functions | Complexity Score | Grade |\n`;
     markdown += `| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n`;
-    Object.keys(analysis.metrics).forEach(file => {
-      const m = analysis.metrics[file];
+    const metrics = analysis.metrics;
+    Object.keys(metrics).forEach(file => {
+      const m = metrics[file];
       markdown += `| ${file} | ${m.totalLines ?? 0} | ${m.codeLines ?? 0} | ${m.commentLines ?? 0} | ${m.emptyLines ?? 0} | ${m.functionCount ?? 0} | ${m.complexityScore ?? 0} | ${m.grade ?? 'A'} |\n`;
     });
     markdown += `\n`;
