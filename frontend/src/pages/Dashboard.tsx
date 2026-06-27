@@ -518,12 +518,12 @@ export default function Dashboard() {
               <code
                 key={cIdx}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
+                  background: "#1e1e1e",
                   padding: "2px 4px",
                   borderRadius: "4px",
                   fontFamily: "monospace",
                   fontSize: "11px",
-                  color: "#a855f7",
+                  color: "#d8b4fe",
                 }}
               >
                 {codePart}
@@ -3144,7 +3144,7 @@ export default function Dashboard() {
                                   <code
                                     style={{
                                       fontSize: "11px",
-                                      color: "#a855f7",
+                                      color: "#d8b4fe",
                                       wordBreak: "break-all",
                                     }}
                                   >
