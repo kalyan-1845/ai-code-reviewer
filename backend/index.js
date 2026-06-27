@@ -919,6 +919,10 @@ app.post('/api/reports/html', requireApiKey, (req, res) => {
     return res.status(400).json({ error: 'Repository name and analysis result are required.' });
   }
 
+  // Sanitize repoName to prevent path traversal attacks in the Content-Disposition header.
+  // Keep only word characters, dots, and hyphens to ensure safe filenames.
+  const safeRepoName = String(repoName).replace(/[^\w.-]+/g, '_');
+
   let fileRows = '';
   
   if (analysis && analysis.fileReviews) {
@@ -1059,7 +1063,7 @@ app.post('/api/reports/html', requireApiKey, (req, res) => {
   `;
   
   res.setHeader('Content-Type', 'text/html');
-  res.setHeader('Content-Disposition', `attachment; filename="${repoName}_AUDIT_REPORT.html"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${safeRepoName}_AUDIT_REPORT.html"`);
   return res.send(html);
 });
 
