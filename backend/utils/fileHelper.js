@@ -2,33 +2,30 @@ import fs from 'fs';
 import path from 'path';
 
 // 🟢 Helper to delete a folder recursively
-export function deleteFolderRecursive(directoryPath) {
-  if (fs.existsSync(directoryPath)) {
-    fs.readdirSync(directoryPath).forEach((file) => {
-      const curPath = path.join(directoryPath, file);
-      if (fs.lstatSync(curPath).isDirectory()) {
-        deleteFolderRecursive(curPath);
-      } else {
-        fs.unlinkSync(curPath);
-      }
-    });
-    fs.rmdirSync(directoryPath);
+export async function deleteFolderRecursive(directoryPath) {
+  try {
+    await fs.promises.rm(directoryPath, { recursive: true, force: true });
+  } catch (err) {
+    // Ignore errors if folder doesn't exist
   }
 }
 
 // 🟢 Helper to calculate folder size
-export function getFolderSize(dirPath) {
+export async function getFolderSize(dirPath) {
   let size = 0;
-  if (!fs.existsSync(dirPath)) return 0;
-  const files = fs.readdirSync(dirPath);
-  for (const file of files) {
-    const filePath = path.join(dirPath, file);
-    const stats = fs.statSync(filePath);
-    if (stats.isDirectory()) {
-      size += getFolderSize(filePath);
-    } else {
-      size += stats.size;
+  try {
+    const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    for (const file of files) {
+      const filePath = path.join(dirPath, file.name);
+      if (file.isDirectory()) {
+        size += await getFolderSize(filePath);
+      } else {
+        const stats = await fs.promises.stat(filePath);
+        size += stats.size;
+      }
     }
+  } catch (err) {
+    // Ignore errors
   }
   return size;
 }

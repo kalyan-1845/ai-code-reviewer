@@ -272,15 +272,15 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
     // Check repository size
     const maxRepoSizeMB = parseInt(process.env.MAX_REPO_SIZE_MB) || 100;
     const maxSizeBytes = maxRepoSizeMB * 1024 * 1024;
-    const repoSize = getFolderSize(clonePath);
+    const repoSize = await getFolderSize(clonePath);
     
     if (repoSize > maxSizeBytes) {
-      deleteFolderRecursive(clonePath);
+      await deleteFolderRecursive(clonePath);
       return res.status(413).json({ error: `Repository exceeds the maximum allowed size of ${maxRepoSizeMB}MB.` });
     }
   } catch (error) {
     console.error(`❌ Git Clone Error: ${error.message}`);
-    deleteFolderRecursive(clonePath);
+    await deleteFolderRecursive(clonePath);
     return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public and within size limits.' });
   }
 
@@ -290,7 +290,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
       const files = readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
       
       if (files.length === 0) {
-        deleteFolderRecursive(clonePath);
+        await deleteFolderRecursive(clonePath);
         return res.status(400).json({ error: 'No supportable source code files found in the repository.' });
       }
 
@@ -419,7 +419,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
       }
 
       // 5. Clean up folder
-      deleteFolderRecursive(clonePath);
+      await deleteFolderRecursive(clonePath);
       
       // 6. Return result
       return res.json({
@@ -433,7 +433,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
 
     } catch (err) {
       console.error(err);
-      deleteFolderRecursive(clonePath);
+      await deleteFolderRecursive(clonePath);
       return res.status(500).json({ error: 'An error occurred during repository analysis.' });
     }
 });
