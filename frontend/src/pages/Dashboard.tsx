@@ -1747,48 +1747,31 @@ export default function Dashboard() {
           {/* 2. Loading State */}
           {isLoading && (
             <div
-              className="glass-panel"
               style={{
                 flexGrow: 1,
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "40px",
-                gap: "20px",
+                gap: "16px",
+                boxSizing: "border-box",
               }}
             >
-              <div
-                className="spin-slow"
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  border: "4px solid rgba(168,85,247,0.1)",
-                  borderTopColor: "#a855f7",
-                  borderRadius: "50%",
-                }}
-              ></div>
-              <div style={{ textAlign: "center" }}>
-                <h3
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 600,
-                    margin: "0 0 6px 0",
-                    color: "#f3f4f6",
-                  }}
-                >
-                  AI Analyst is Reviewing Repository
-                </h3>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "13px",
-                    color: "#9ca3af",
-                    fontStyle: "italic",
-                  }}
-                >
-                  {loadingStep}
-                </p>
+              <div style={{ display: "flex", gap: "10px", marginBottom: "4px" }}>
+                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
+                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
+                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
+              </div>
+              <div style={{ display: "flex", gap: "16px", height: "120px" }}>
+                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
+                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
+                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
+              </div>
+              <div style={{ display: "flex", gap: "16px", flexGrow: 1 }}>
+                 <div className="skeleton" style={{ width: "260px", height: "400px" }}></div>
+                 <div className="skeleton" style={{ flexGrow: 1, height: "400px" }}></div>
+              </div>
+              <div style={{ textAlign: "center", marginTop: "10px" }}>
+                 <div className="spin-slow" style={{ width: "24px", height: "24px", border: "2px solid rgba(168,85,247,0.1)", borderTopColor: "#a855f7", borderRadius: "50%", margin: "0 auto 8px auto" }}></div>
+                 <p style={{ margin: 0, fontSize: "13px", color: "#9ca3af", fontStyle: "italic" }}>{loadingStep}</p>
               </div>
             </div>
           )}
