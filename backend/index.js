@@ -394,7 +394,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
         }
       }
       const totalFindings = totalBugs + totalSecurityIssues + totalOptimizations + totalStylingIssues;
-      const healthScore = Math.max(0, Math.round(100 - totalBugs * 5 - totalSecurityIssues * 3 - totalOptimizations * 1 - totalStylingIssues * 0.5));
+      const healthScore = Math.max(0, Math.round(100 - totalBugs * 3 - totalSecurityIssues * 15 - totalOptimizations * 1 - totalStylingIssues * 0.5));
 
       if (!reviewResult?._mock) {
         try {
