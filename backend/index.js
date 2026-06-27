@@ -202,6 +202,11 @@ const dedupCleanupTimer = setInterval(() => {
     const oldest = processedDeliveries.keys().next().value;
     if (oldest !== undefined) processedDeliveries.delete(oldest);
   }
+  for (const [shaKey, shaSet] of reviewedShas) {
+    if (shaSet.size === 0) {
+      reviewedShas.delete(shaKey);
+    }
+  }
 }, 60 * 1000);
 
 const cacheMetricsTimer = setInterval(() => {
