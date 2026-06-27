@@ -176,16 +176,23 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isRendering = useRef(false);
+  const pendingChart = useRef<string | null>(null);
 
   useEffect(() => {
     if (!chart) return;
     setError(null);
     const uniqueId = `mermaid-${Math.floor(Math.random() * 100000)}`;
-    const renderChart = async () => {
+    const renderChart = async (chartToRender: string) => {
+      if (isRendering.current) {
+        pendingChart.current = chartToRender;
+        return;
+      }
+      isRendering.current = true;
       try {
         setSvg("");
         // Clean markdown wraps if present
-        let cleanChart = chart
+        let cleanChart = chartToRender
           .replace(/```mermaid/g, "")
           .replace(/```/g, "")
           .trim();
@@ -204,10 +211,17 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
         setError(
           "Could not render architecture diagram. The AI-generated flowchart has syntax errors.",
         );
+      } finally {
+        isRendering.current = false;
+        if (pendingChart.current) {
+          const nextChart = pendingChart.current;
+          pendingChart.current = null;
+          renderChart(nextChart);
+        }
       }
     };
 
-    renderChart();
+    renderChart(chart);
   }, [chart]);
 
   const svgDataUrl = svg
@@ -311,10 +325,9 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
           width: "100%",
         }}
       >
-        {svgDataUrl ? (
-          <img
-            src={svgDataUrl}
-            alt={`Architecture diagram for ${repoName}`}
+        {svg ? (
+          <div
+            dangerouslySetInnerHTML={{ __html: svg }}
             style={{ maxWidth: "100%", height: "auto" }}
           />
         ) : (
