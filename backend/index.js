@@ -212,6 +212,27 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
       console.warn(`⚠️ System prompt contains non-Latin script characters: ${scriptRuns.join(', ')}`);
     }
   }
+
+  const DANGEROUS_PHRASES = [
+    'ignore all', 'ignore previous', 'ignore above',
+    'forget all', 'forget previous', 'you are not',
+    'override all', 'disregard', 'do not follow',
+    'new directive', 'system override', 'protocol change',
+    'roleplay mode', 'from now on', 'instead follow',
+    'real instruction', 'actual instruction', 'replace all',
+    'disobey', 'unauthorized', 'breach', 'bypass',
+    'your true purpose', 'you will now', 'ignore the above',
+    'ignore previous instructions', 'disregard all previous',
+    'forget your', 'you are programmed', 'override protocol',
+    'you have been', 'you must now', 'listen to me',
+  ];
+
+  const DANGEROUS_REGEXES = DANGEROUS_PHRASES.map(phrase => {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = escaped.split(/\s+/).join('\\s+');
+    return new RegExp(pattern, 'i');
+  });
+
   function validatePrompt(prompt) {
     if (!prompt) return '';
     const maxLen = parseInt(process.env.MAX_SYSTEM_PROMPT_LENGTH) || 2000;
@@ -224,24 +245,7 @@ app.post('/api/analyze', requireApiKey, analyzeLimiter, async (req, res) => {
     const homoglyphNormalized = normalizeHomoglyphs(normalized);
     const lower = homoglyphNormalized.toLowerCase();
     
-    const dangerous = [
-      'ignore all', 'ignore previous', 'ignore above',
-      'forget all', 'forget previous', 'you are not',
-      'override all', 'disregard', 'do not follow',
-      'new directive', 'system override', 'protocol change',
-      'roleplay mode', 'from now on', 'instead follow',
-      'real instruction', 'actual instruction', 'replace all',
-      'disobey', 'unauthorized', 'breach', 'bypass',
-      'your true purpose', 'you will now', 'ignore the above',
-      'ignore previous instructions', 'disregard all previous',
-      'forget your', 'you are programmed', 'override protocol',
-      'you have been', 'you must now', 'listen to me',
-    ];
-
-    for (const phrase of dangerous) {
-      const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const pattern = escaped.split(/\s+/).join('\\s+');
-      const regex = new RegExp(pattern, 'i');
+    for (const regex of DANGEROUS_REGEXES) {
       if (regex.test(lower)) {
         throw new Error('System prompt contains prohibited directives and was rejected.');
       }
