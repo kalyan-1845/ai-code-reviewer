@@ -24,6 +24,7 @@ import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import ReviewQueue from './utils/reviewQueue.js';
 import { verifyPort } from './utils/envVerifier.js';
 import { mockAIReview } from './utils/mockAIReview.js';
+import AnalysisCache from './utils/analysisCache.js';
 import Analytics from './models/Analytics.js';
 import Session, { estimateSessionSize } from './models/Session.js';
 import { connectDatabase, ensureConnection } from './config/db.js';
@@ -37,6 +38,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = verifyPort(process.env.PORT || 5000);
+
+// Initialize analysis cache with configurable TTL (default: 1 hour)
+const ANALYSIS_CACHE_TTL_MS = parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60') * 60 * 1000;
+const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
@@ -319,7 +324,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
     return res.status(400).json({ error: err.message });
   }
 
-  // Generate unique folder name
+  // Generate unique folder name (needed early for logging/caching)
   const parsed = parseRepoUrl(repoUrl);
   const repoName = parsed.repo;
   const uniqueId = crypto.randomUUID();
@@ -358,32 +363,44 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
         return res.status(400).json({ error: 'No supportable source code files found in the repository.' });
       }
 
-      console.log(`📁 Found ${files.length} valid source files. Sending to AI engine...`);
+      console.log(`📁 Found ${files.length} valid source files. Checking cache...`);
 
-      // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
-      // This is a perfect placeholder where contributors can connect the FastAPI server!
-      const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
-      
-      let reviewResult;
-      const baseUrl = aiEngineUrl.replace(/\/+$/, '');
-      try {
-        const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
-        }, 120000);
-        
-        if (aiResponse.ok) {
-          reviewResult = await aiResponse.json();
-          reviewResult._mock = false;
-        } else {
-          throw new Error('AI engine responded with error');
+      // 1.5. Check analysis cache to avoid redundant LLM calls for identical analyses
+      const cacheKey = analysisCache.generateKey(repoUrl, files, { model, language, company });
+      let reviewResult = analysisCache.get(cacheKey);
+      let cacheHit = false;
+
+      if (reviewResult) {
+        cacheHit = true;
+        console.log(`🎯 Using cached analysis result for this repository and configuration`);
+      } else {
+        // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
+        // This is a perfect placeholder where contributors can connect the FastAPI server!
+        const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+
+        const baseUrl = aiEngineUrl.replace(/\/+$/, '');
+        try {
+          const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
+          }, 120000);
+
+          if (aiResponse.ok) {
+            reviewResult = await aiResponse.json();
+            reviewResult._mock = false;
+          } else {
+            throw new Error('AI engine responded with error');
+          }
+        } catch (err) {
+          console.warn('⚠️ FastAPI engine not running, falling back to local Express review handler');
+          // Explicitly run local mock engine
+          reviewResult = mockAIReview(files, model);
+          reviewResult._mock = true;
         }
-    } catch (err) {
-        console.warn('⚠️ FastAPI engine not running, falling back to local Express review handler');
-        // Explicitly run local mock engine
-        reviewResult = mockAIReview(files, model);
-        reviewResult._mock = true;
+
+        // Cache the result for future identical analyses
+        analysisCache.set(cacheKey, reviewResult);
       }
 
       // 3. Inject Regex-based Secret Detections & Complexity Metrics into the analysis result
