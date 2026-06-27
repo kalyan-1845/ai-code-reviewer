@@ -410,7 +410,7 @@ export default function Dashboard() {
                 </code>
               </pre>
               <CopyToClipboardButton
-                text={codeContent}
+                textToCopy={codeContent}
                 style={{
                   position: "absolute",
                   top: "8px",
