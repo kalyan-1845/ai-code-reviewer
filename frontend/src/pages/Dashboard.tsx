@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useStore, ChatMessage } from '../store/useStore';
 import SettingsModal from "../components/SettingsModal";
 import { MetricsChart } from '../components/MetricsChart';
 import {
@@ -107,14 +108,14 @@ const apiFetch = async (path: string, options: RequestInit = {}) => {
 };
 
 // Define Types
-interface ReviewItem {
+export interface ReviewItem {
   type: string;
   line: number;
   description: string;
   suggestion: string;
 }
 
-interface FileReview {
+export interface FileReview {
   bugs: ReviewItem[];
   security: ReviewItem[];
   optimization: ReviewItem[];
@@ -128,7 +129,7 @@ interface AnalysisData {
   metrics?: Record<string, any>;
 }
 
-interface BackendResponse {
+export interface BackendResponse {
   success: boolean;
   repoName: string;
   filesReviewedCount: number;
@@ -363,10 +364,7 @@ export default function Dashboard() {
   const [loadingStep, setLoadingStep] = useState("");
 
   // Response & View State
-  const [analysisResult, setAnalysisResult] = useState<BackendResponse | null>(
-    null,
-  );
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const { analysisResult, setAnalysisResult, selectedFile, setSelectedFile, chatHistory, setChatHistory } = useStore();
   const [fileFilterQuery, setFileFilterQuery] = useState('');
   const [isClearHovered, setIsClearHovered] = useState(false);
   const [activeExtFilter, setActiveExtFilter] = useState('All');
@@ -670,18 +668,8 @@ export default function Dashboard() {
   >("audit");
   const [chatInput, setChatInput] = useState("");
   const CHAT_HISTORY_KEY = 'reposage_chat_history';
-  const [chatHistory, setChatHistory] = useState<
-    Array<{ role: "user" | "assistant"; content: string }>
-  >(() => {
-    try {
-      const saved = localStorage.getItem(CHAT_HISTORY_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
   const MAX_CHAT_HISTORY_LENGTH = 40;
-  const truncateChatHistory = (history: Array<{ role: "user" | "assistant"; content: string }>) => {
+  const truncateChatHistory = (history: ChatMessage[]) => {
     if (history.length > MAX_CHAT_HISTORY_LENGTH) {
       return history.slice(history.length - MAX_CHAT_HISTORY_LENGTH);
     }
