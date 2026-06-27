@@ -113,7 +113,7 @@ function csrfProtection(req, res, next) {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
     const headerToken = req.headers['x-csrf-token'];
     const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
-    if (!headerToken || !cookieToken || headerToken !== cookieToken) {
+    if (!headerToken || !cookieToken) {
       // Allow session creation and CSRF token endpoints to function
       if (req.path === '/api/session' || req.path === '/api/csrf-token') {
         return next();
@@ -122,6 +122,12 @@ function csrfProtection(req, res, next) {
       if (req.path === '/api/webhook') {
         return next();
       }
+      return res.status(403).json({ error: 'CSRF validation failed.' });
+    }
+    // Constant-time comparison to prevent timing attacks
+    const headerBuf = Buffer.from(String(headerToken));
+    const cookieBuf = Buffer.from(String(cookieToken));
+    if (headerBuf.length !== cookieBuf.length || !crypto.timingSafeEqual(headerBuf, cookieBuf)) {
       return res.status(403).json({ error: 'CSRF validation failed.' });
     }
   }
