@@ -7,7 +7,8 @@ export function verifyWebhookSignature(rawBody, signature, secret) {
   const digest = `sha256=${hmac.update(rawBody || '').digest('hex')}`;
   try {
     return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(digest));
-  } catch {
+  } catch (err) {
+    console.error("Webhook signature verification failed:", err);
     return false;
   }
 }

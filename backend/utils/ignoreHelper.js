@@ -54,6 +54,7 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
   if (fileList.length >= MAX_FILES) return fileList;
   const files = fs.readdirSync(dir);
   for (const file of files) {
+    if (fileList.length >= MAX_FILES) return fileList;
     const filePath = path.join(dir, file);
     let stat;
     try {

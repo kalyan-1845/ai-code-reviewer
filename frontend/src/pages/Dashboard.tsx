@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useStore, ChatMessage } from '../store/useStore';
 import SettingsModal from "../components/SettingsModal";
 import { MetricsChart } from '../components/MetricsChart';
+import CopyToClipboardButton from "../components/CopyToClipboardButton";
 import {
   Terminal,
   ShieldAlert,
@@ -12,6 +14,7 @@ import {
   AlertOctagon,
   AlertTriangle,
   Download,
+  FileDown,
   Layers,
   Code2,
   MessageSquare,
@@ -24,6 +27,7 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { handleMarkdownExport, handleHtmlExport } from "../utils/exportUtils";
 import mermaid from "mermaid";
 import { sanitizeMermaidOutput } from "../utils/sanitize";
 
@@ -31,7 +35,7 @@ import { sanitizeMermaidOutput } from "../utils/sanitize";
 try {
   mermaid.initialize({
     startOnLoad: false,
-    theme: "dark",
+    theme: window.matchMedia("(prefers-color-scheme: light)").matches ? "base" : "dark",
     securityLevel: "strict",
     themeVariables: {
       background: "#0f172a",
@@ -126,14 +130,14 @@ const apiFetch = async (path: string, options: RequestInit = {}) => {
 };
 
 // Define Types
-interface ReviewItem {
+export interface ReviewItem {
   type: string;
   line: number;
   description: string;
   suggestion: string;
 }
 
-interface FileReview {
+export interface FileReview {
   bugs: ReviewItem[];
   security: ReviewItem[];
   optimization: ReviewItem[];
@@ -147,7 +151,7 @@ interface AnalysisData {
   metrics?: Record<string, any>;
 }
 
-interface BackendResponse {
+export interface BackendResponse {
   success: boolean;
   repoName: string;
   filesReviewedCount: number;
@@ -327,54 +331,6 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
   );
 }
 
-interface CopyButtonProps {
-  text: string;
-  style?: React.CSSProperties;
-  showText?: boolean;
-}
-
-function CopyButton({ text, style, showText = false }: CopyButtonProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy text: ", err);
-    }
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      style={{
-        background: "transparent",
-        border: "none",
-        borderRadius: "4px",
-        padding: "4px 8px",
-        cursor: "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "6px",
-        justifyContent: "center",
-        color: copied ? "#22c55e" : "#9ca3af",
-        transition: "all 0.2s ease",
-        ...style,
-      }}
-      title={copied ? "Copied!" : "Copy Code"}
-    >
-      {copied ? <Check size={14} /> : <Copy size={14} />}
-      {showText && (
-        <span style={{ fontSize: "11px", fontWeight: 600 }}>
-          {copied ? "Copied!" : "Copy"}
-        </span>
-      )}
-    </button>
-  );
-}
 
 export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
@@ -390,10 +346,7 @@ export default function Dashboard() {
   const [loadingStep, setLoadingStep] = useState("");
 
   // Response & View State
-  const [analysisResult, setAnalysisResult] = useState<BackendResponse | null>(
-    null,
-  );
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const { analysisResult, setAnalysisResult, selectedFile, setSelectedFile, chatHistory, setChatHistory } = useStore();
   const [fileFilterQuery, setFileFilterQuery] = useState('');
   const [isClearHovered, setIsClearHovered] = useState(false);
   const [activeExtFilter, setActiveExtFilter] = useState('All');
@@ -545,12 +498,12 @@ export default function Dashboard() {
               <code
                 key={cIdx}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
+                  background: "#1e1e1e",
                   padding: "2px 4px",
                   borderRadius: "4px",
                   fontFamily: "monospace",
                   fontSize: "11px",
-                  color: "#a855f7",
+                  color: "#d8b4fe",
                 }}
               >
                 {codePart}
@@ -657,8 +610,9 @@ export default function Dashboard() {
       <Settings size={15} />
     </button>;
 
+    const gssoLabel = localStorage.getItem("reposage_gssoc_label") || "gssoc26";
     const labels = isGssocLabelingEnabled
-      ? ["gssoc26", "good-first-issue", category]
+      ? [gssoLabel, "good-first-issue", category]
       : [category];
 
     try {
@@ -697,18 +651,8 @@ export default function Dashboard() {
   >("audit");
   const [chatInput, setChatInput] = useState("");
   const CHAT_HISTORY_KEY = 'reposage_chat_history';
-  const [chatHistory, setChatHistory] = useState<
-    Array<{ role: "user" | "assistant"; content: string }>
-  >(() => {
-    try {
-      const saved = localStorage.getItem(CHAT_HISTORY_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
   const MAX_CHAT_HISTORY_LENGTH = 40;
-  const truncateChatHistory = (history: Array<{ role: "user" | "assistant"; content: string }>) => {
+  const truncateChatHistory = (history: ChatMessage[]) => {
     if (history.length > MAX_CHAT_HISTORY_LENGTH) {
       return history.slice(history.length - MAX_CHAT_HISTORY_LENGTH);
     }
@@ -717,6 +661,12 @@ export default function Dashboard() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [useRag, setUseRag] = useState(false);
+
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, isChatLoading]);
 
   const handleSendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -936,9 +886,14 @@ export default function Dashboard() {
         setLoadingStep(steps[currentStep]);
       }
     }, 1200);
-    const aiSettings = JSON.parse(
-      localStorage.getItem("reposage_ai_settings") || "{}"
-    );
+    let aiSettings = {};
+    try {
+      aiSettings = JSON.parse(
+        localStorage.getItem("reposage_ai_settings") || "{}"
+      );
+    } catch {
+      aiSettings = {};
+    }
 
     try {
       const response = await apiFetch("/api/analyze", {
@@ -1069,6 +1024,7 @@ export default function Dashboard() {
                 <input
                   type="url"
                   required
+                  pattern="https://github\.com/.*"
                   placeholder="https://github.com/username/repo"
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
@@ -1747,48 +1703,31 @@ export default function Dashboard() {
           {/* 2. Loading State */}
           {isLoading && (
             <div
-              className="glass-panel"
               style={{
                 flexGrow: 1,
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "40px",
-                gap: "20px",
+                gap: "16px",
+                boxSizing: "border-box",
               }}
             >
-              <div
-                className="spin-slow"
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  border: "4px solid rgba(168,85,247,0.1)",
-                  borderTopColor: "#a855f7",
-                  borderRadius: "50%",
-                }}
-              ></div>
-              <div style={{ textAlign: "center" }}>
-                <h3
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 600,
-                    margin: "0 0 6px 0",
-                    color: "#f3f4f6",
-                  }}
-                >
-                  AI Analyst is Reviewing Repository
-                </h3>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "13px",
-                    color: "#9ca3af",
-                    fontStyle: "italic",
-                  }}
-                >
-                  {loadingStep}
-                </p>
+              <div style={{ display: "flex", gap: "10px", marginBottom: "4px" }}>
+                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
+                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
+                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
+              </div>
+              <div style={{ display: "flex", gap: "16px", height: "120px" }}>
+                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
+                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
+                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
+              </div>
+              <div style={{ display: "flex", gap: "16px", flexGrow: 1 }}>
+                 <div className="skeleton" style={{ width: "260px", height: "400px" }}></div>
+                 <div className="skeleton" style={{ flexGrow: 1, height: "400px" }}></div>
+              </div>
+              <div style={{ textAlign: "center", marginTop: "10px" }}>
+                 <div className="spin-slow" style={{ width: "24px", height: "24px", border: "2px solid rgba(168,85,247,0.1)", borderTopColor: "#a855f7", borderRadius: "50%", margin: "0 auto 8px auto" }}></div>
+                 <p style={{ margin: 0, fontSize: "13px", color: "#9ca3af", fontStyle: "italic" }}>{loadingStep}</p>
               </div>
             </div>
           )}
@@ -1926,89 +1865,137 @@ export default function Dashboard() {
                   </span>
                 </div>
               )}
-              {/* Dashboard View Selection Tabs */}
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  onClick={() => setActiveDashboardView("audit")}
-                  style={{
-                    background:
-                      activeDashboardView === "audit"
-                        ? "rgba(59,130,246,0.1)"
-                        : "rgba(255,255,255,0.03)",
-                    border: "1px solid",
-                    borderColor:
-                      activeDashboardView === "audit"
-                        ? "rgba(59,130,246,0.4)"
-                        : "rgba(255,255,255,0.08)",
-                    color:
-                      activeDashboardView === "audit" ? "#60a5fa" : "#9ca3af",
-                    borderRadius: "6px",
-                    padding: "8px 16px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    transition: "all 0.2s ease-in-out",
-                  }}
-                >
-                  <Layers size={14} /> Code Audit Report
-                </button>
-                <button
-                  onClick={() => setActiveDashboardView("chat")}
-                  style={{
-                    background:
-                      activeDashboardView === "chat"
-                        ? "rgba(168,85,247,0.1)"
-                        : "rgba(255,255,255,0.03)",
-                    border: "1px solid",
-                    borderColor:
-                      activeDashboardView === "chat"
-                        ? "rgba(168,85,247,0.4)"
-                        : "rgba(255,255,255,0.08)",
-                    color:
-                      activeDashboardView === "chat" ? "#c084fc" : "#9ca3af",
-                    borderRadius: "6px",
-                    padding: "8px 16px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    transition: "all 0.2s ease-in-out",
-                  }}
-                >
-                  <MessageSquare size={14} /> AI Code Chatbot
-                </button>
-                <button
-                  onClick={() => setActiveDashboardView("diagram")}
-                  style={{
-                    background:
-                      activeDashboardView === "diagram"
-                        ? "rgba(34,197,94,0.1)"
-                        : "rgba(255,255,255,0.03)",
-                    border: "1px solid",
-                    borderColor:
-                      activeDashboardView === "diagram"
-                        ? "rgba(34,197,94,0.4)"
-                        : "rgba(255,255,255,0.08)",
-                    color:
-                      activeDashboardView === "diagram" ? "#4ade80" : "#9ca3af",
-                    borderRadius: "6px",
-                    padding: "8px 16px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    transition: "all 0.2s ease-in-out",
-                  }}
-                >
-                  <Sparkles size={14} /> Architecture Diagram
-                </button>
+              {/* Dashboard View Selection Tabs & Export Controls */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "100%" }}>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={() => setActiveDashboardView("audit")}
+                    style={{
+                      background:
+                        activeDashboardView === "audit"
+                          ? "rgba(59,130,246,0.1)"
+                          : "rgba(255,255,255,0.03)",
+                      border: "1px solid",
+                      borderColor:
+                        activeDashboardView === "audit"
+                          ? "rgba(59,130,246,0.4)"
+                          : "rgba(255,255,255,0.08)",
+                      color:
+                        activeDashboardView === "audit" ? "#60a5fa" : "#9ca3af",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                  >
+                    <Layers size={14} /> Code Audit Report
+                  </button>
+                  <button
+                    onClick={() => setActiveDashboardView("chat")}
+                    style={{
+                      background:
+                        activeDashboardView === "chat"
+                          ? "rgba(168,85,247,0.1)"
+                          : "rgba(255,255,255,0.03)",
+                      border: "1px solid",
+                      borderColor:
+                        activeDashboardView === "chat"
+                          ? "rgba(168,85,247,0.4)"
+                          : "rgba(255,255,255,0.08)",
+                      color:
+                        activeDashboardView === "chat" ? "#c084fc" : "#9ca3af",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                  >
+                    <MessageSquare size={14} /> AI Code Chatbot
+                  </button>
+                  <button
+                    onClick={() => setActiveDashboardView("diagram")}
+                    style={{
+                      background:
+                        activeDashboardView === "diagram"
+                          ? "rgba(34,197,94,0.1)"
+                          : "rgba(255,255,255,0.03)",
+                      border: "1px solid",
+                      borderColor:
+                        activeDashboardView === "diagram"
+                          ? "rgba(34,197,94,0.4)"
+                          : "rgba(255,255,255,0.08)",
+                      color:
+                        activeDashboardView === "diagram" ? "#4ade80" : "#9ca3af",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                  >
+                    <Sparkles size={14} /> Architecture Diagram
+                  </button>
+                </div>
+
+                {/* Export Controls */}
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={() => analysisResult && handleHtmlExport(analysisResult.repoName, analysisResult.analysis, apiFetch)}
+                    style={{
+                      background: "rgba(59, 130, 246, 0.1)",
+                      border: "1px solid rgba(59, 130, 246, 0.3)",
+                      color: "#60a5fa",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                    className="hover:bg-blue-500/20"
+                    title="Export the complete audit report as HTML"
+                  >
+                    <Download size={14} /> Export HTML
+                  </button>
+                  <button
+                    onClick={() => analysisResult && handleMarkdownExport(analysisResult.repoName, analysisResult.analysis)}
+                    style={{
+                      background: "rgba(168, 85, 247, 0.1)",
+                      border: "1px solid rgba(168, 85, 247, 0.3)",
+                      color: "#c084fc",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                    className="hover:bg-purple-500/20"
+                    title="Export the complete audit report as Markdown"
+                  >
+                    <FileDown size={14} /> Export Markdown
+                  </button>
+                </div>
               </div>
 
               <div
@@ -3077,10 +3064,10 @@ export default function Dashboard() {
                             activeTab
                             ] as any[]
                           ).map((item: any, index: number) => {
-                            const itemKey = `${selectedFile}-${activeTab}-${index}`;
+                            const itemKey = `${selectedFile}-${activeTab}-${index}-${item.line || 'global'}`;
                             return (
                               <div
-                                key={index}
+                                key={itemKey}
                                 style={{
                                   padding: "12px 14px",
                                   borderRadius: "8px",
@@ -3163,15 +3150,15 @@ export default function Dashboard() {
                                     >
                                       💡 AI Recommendation
                                     </span>
-                                    <CopyButton
-                                      text={item.suggestion}
+                                    <CopyToClipboardButton
+                                      textToCopy={item.suggestion}
                                       style={{ padding: "2px" }}
                                     />
                                   </div>
                                   <code
                                     style={{
                                       fontSize: "11px",
-                                      color: "#a855f7",
+                                      color: "#d8b4fe",
                                       wordBreak: "break-all",
                                     }}
                                   >
@@ -3404,8 +3391,8 @@ export default function Dashboard() {
                               Raw
                             </button>
                           </div>
-                          <CopyButton
-                            text={analysisResult.analysis.generatedReadme}
+                          <CopyToClipboardButton
+                            textToCopy={analysisResult.analysis.generatedReadme}
                             showText={true}
                             style={{
                               background: "rgba(168,85,247,0.1)",
@@ -3645,7 +3632,7 @@ export default function Dashboard() {
                       ) : (
                         chatHistory.map((msg, index) => (
                           <div
-                            key={index}
+                            key={`chat-msg-${index}`}
                             style={{
                               display: "flex",
                               flexDirection: "column",
@@ -3669,20 +3656,25 @@ export default function Dashboard() {
                               boxSizing: "border-box",
                             }}
                           >
-                            <span
-                              style={{
-                                fontSize: "9px",
-                                fontWeight: 700,
-                                color:
-                                  msg.role === "user" ? "#60a5fa" : "#c084fc",
-                                textTransform: "uppercase",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              {msg.role === "user"
-                                ? "You"
-                                : "RepoSage Assistant"}
-                            </span>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+                              <span
+                                style={{
+                                  fontSize: "9px",
+                                  fontWeight: 700,
+                                  color:
+                                    msg.role === "user" ? "#60a5fa" : "#c084fc",
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                {msg.role === "user"
+                                  ? "You"
+                                  : "RepoSage Assistant"}
+                              </span>
+                              <CopyToClipboardButton
+                                textToCopy={msg.content}
+                                style={{ padding: "2px" }}
+                              />
+                            </div>
                             <div
                               style={{
                                 fontSize: "12px",
@@ -3767,6 +3759,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                       )}
+                      <div ref={chatEndRef} />
                     </div>
 
                     {/* Chat Input form */}

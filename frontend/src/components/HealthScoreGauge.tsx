@@ -26,7 +26,7 @@ function computeHealthScore(fileReviews: Record<string, FileReview>): number {
     totalOptimizations += review.optimization?.length || 0;
     totalStylingIssues += review.styling?.length || 0;
   }
-  return Math.max(0, Math.round(100 - totalBugs * 5 - totalSecurityIssues * 3 - totalOptimizations * 1 - totalStylingIssues * 0.5));
+  return Math.max(0, Math.round(100 - totalBugs * 3 - totalSecurityIssues * 15 - totalOptimizations * 1 - totalStylingIssues * 0.5));
 }
 
 function getScoreColor(score: number): { text: string; bg: string; border: string; label: string } {

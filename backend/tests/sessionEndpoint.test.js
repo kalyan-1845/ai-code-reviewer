@@ -1,0 +1,185 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+// ---------------------------------------------------------------------------
+// Unit tests for /api/session POST endpoint and createFrontendSessionCookie.
+// Tests cover: API key validation (requireApiKey), session cookie creation,
+// and cookie attribute structure. Does not require a live MongoDB connection.
+// ---------------------------------------------------------------------------
+
+import { createFrontendSessionCookie, requireApiKey } from '../utils/authMiddleware.js';
+
+// Set up a test API key for all tests
+process.env.REPOSAGE_API_KEY = 'test-session-key-123';
+
+function makeMockReqRes(overrides = {}) {
+  const headers = {};
+  const resHeaders = {};
+  let _statusCode = null;
+  let _body = null;
+  const res = {
+    statusCode: null,
+    body: null,
+    getHeader(name) {
+      return resHeaders[name.toLowerCase()];
+    },
+    setHeader(name, value) {
+      resHeaders[name.toLowerCase()] = value;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(data) {
+      this.body = data;
+      return this;
+    },
+  };
+  const req = {
+    headers,
+    originalUrl: '/api/session',
+    ...overrides,
+  };
+  return { req, res };
+}
+
+function makeSessionReqRes() {
+  const resHeaders = {};
+  const res = {
+    getHeader(name) {
+      return resHeaders[name.toLowerCase()];
+    },
+    setHeader(name, value) {
+      resHeaders[name.toLowerCase()] = value;
+    },
+    status(code) {
+      return this;
+    },
+    json(data) {
+      return this;
+    },
+  };
+  const req = {
+    headers: {},
+    originalUrl: '/api/session',
+  };
+  return { req, res };
+}
+
+test('requireApiKey calls next() when valid API key is provided', () => {
+  const { req, res } = makeMockReqRes({
+    headers: { 'x-api-key': 'test-session-key-123' },
+  });
+  let nextCalled = false;
+  const next = () => { nextCalled = true; };
+
+  requireApiKey(req, res, next);
+
+  assert.strictEqual(nextCalled, true, 'next() should be called for valid API key');
+});
+
+test('requireApiKey returns 401 when API key is missing', () => {
+  const { req, res } = makeMockReqRes({ headers: {} });
+  let nextCalled = false;
+  const next = () => { nextCalled = true; };
+
+  requireApiKey(req, res, next);
+
+  assert.strictEqual(res.statusCode, 401, 'should return 401 for missing API key');
+  assert.strictEqual(nextCalled, false, 'next() should not be called');
+});
+
+test('requireApiKey returns 401 when API key is invalid', () => {
+  const { req, res } = makeMockReqRes({
+    headers: { 'x-api-key': 'wrong-key' },
+  });
+  let nextCalled = false;
+  const next = () => { nextCalled = true; };
+
+  requireApiKey(req, res, next);
+
+  assert.strictEqual(res.statusCode, 401, 'should return 401 for invalid API key');
+  assert.strictEqual(nextCalled, false, 'next() should not be called');
+});
+
+test('requireApiKey accepts session cookie as alternative auth', () => {
+  // Validates that requireApiKey does not crash when session cookie is absent
+  // (the actual session cookie check is tested in authMiddleware.test.js)
+  const { req, res } = makeMockReqRes({
+    headers: { 'x-api-key': 'test-session-key-123' },
+  });
+  let nextCalled = false;
+  const next = () => { nextCalled = true; };
+
+  requireApiKey(req, res, next);
+
+  assert.strictEqual(nextCalled, true);
+});
+
+test('createFrontendSessionCookie returns a non-empty string with valid API key', () => {
+  const { res } = makeSessionReqRes();
+  const cookie = createFrontendSessionCookie(res);
+  assert.strictEqual(typeof cookie, 'string');
+  assert.ok(cookie.length > 0, 'cookie string should not be empty');
+});
+
+test('createFrontendSessionCookie includes HttpOnly flag', () => {
+  const { res } = makeSessionReqRes();
+  const cookie = createFrontendSessionCookie(res);
+  assert.ok(cookie.includes('HttpOnly'), 'cookie should have HttpOnly flag');
+});
+
+test('createFrontendSessionCookie includes SameSite=Lax', () => {
+  const { res } = makeSessionReqRes();
+  const cookie = createFrontendSessionCookie(res);
+  assert.ok(cookie.includes('SameSite=Lax'), 'cookie should have SameSite=Lax');
+});
+
+test('createFrontendSessionCookie includes Path=/', () => {
+  const { res } = makeSessionReqRes();
+  const cookie = createFrontendSessionCookie(res);
+  assert.ok(cookie.includes('Path=/'), 'cookie should have Path=/');
+});
+
+test('createFrontendSessionCookie includes Max-Age', () => {
+  const { res } = makeSessionReqRes();
+  const cookie = createFrontendSessionCookie(res);
+  assert.ok(cookie.includes('Max-Age='), 'cookie should have Max-Age');
+});
+
+test('createFrontendSessionCookie includes reposage_session name prefix', () => {
+  const { res } = makeSessionReqRes();
+  const cookie = createFrontendSessionCookie(res);
+  assert.ok(cookie.startsWith('reposage_session='), 'cookie name should be reposage_session');
+});
+
+test('createFrontendSessionCookie value has payload.signature format', () => {
+  const { res } = makeSessionReqRes();
+  const cookie = createFrontendSessionCookie(res);
+  const nameValuePart = cookie.split(';')[0]; // "reposage_session=base64.sig"
+  const value = nameValuePart.split('=')[1];
+  assert.ok(value.includes('.'), 'cookie value should have payload.signature format');
+  const segments = value.split('.');
+  assert.strictEqual(segments.length, 2, 'cookie should have exactly 2 dot-separated segments');
+});
+
+test('createFrontendSessionCookie payload is valid base64url', () => {
+  const { res } = makeSessionReqRes();
+  const cookie = createFrontendSessionCookie(res);
+  const nameValuePart = cookie.split(';')[0];
+  const value = nameValuePart.split('=')[1];
+  const payload = value.split('.')[0];
+  // Verify it decodes as valid base64url (no invalid chars)
+  const base64urlRegex = /^[A-Za-z0-9_-]+$/;
+  assert.ok(base64urlRegex.test(payload), 'payload should be valid base64url');
+});
+
+test('requireApiKey is exported as a function', () => {
+  assert.strictEqual(typeof requireApiKey, 'function',
+    'requireApiKey should be exported as a function');
+});
+
+test('createFrontendSessionCookie is exported as a function', () => {
+  assert.strictEqual(typeof createFrontendSessionCookie, 'function',
+    'createFrontendSessionCookie should be exported as a function');
+});

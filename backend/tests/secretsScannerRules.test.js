@@ -32,6 +32,9 @@ const EXPECTED_RULE_TYPES = [
   'Twilio Auth Token',
   'JWT Token Check',
   'Generic API Key / Token',
+  'Hardcoded IPv4 Address',
+  'Ethereum (ETH) Wallet Address',
+  'Bitcoin (BTC) Wallet Address',
 ];
 
 // ---------------------------------------------------------------------------
@@ -42,8 +45,8 @@ test('rules is an array with at least one entry', () => {
   assert.ok(rules.length > 0, 'rules should not be empty');
 });
 
-test('rules has exactly 12 entries', () => {
-  assert.equal(rules.length, 12, 'rules array should have 12 entries');
+test('rules has exactly 15 entries', () => {
+  assert.equal(rules.length, 15, 'rules array should have 15 entries');
 });
 
 test('every rule has a type string', () => {
@@ -195,6 +198,51 @@ test('all expected rule types are present', () => {
 test('rules export covers at least 10 distinct secret categories', () => {
   const types = new Set(rules.map((r) => r.type));
   assert.ok(types.size >= 10, `Expected at least 10 distinct rule types, got ${types.size}`);
+});
+
+test('Hardcoded IPv4 Address rule exists and matches non-loopback IPs', () => {
+  const ipRule = rules.find((r) => r.type === 'Hardcoded IPv4 Address');
+  assert.ok(ipRule, 'IPv4 rule should exist');
+
+  ipRule.regex.lastIndex = 0;
+  assert.ok(ipRule.regex.test('192.168.1.100'), 'should match private network IP');
+
+  ipRule.regex.lastIndex = 0;
+  assert.ok(ipRule.regex.test('10.0.0.5'), 'should match 10.x.x.x IP');
+
+  ipRule.regex.lastIndex = 0;
+  assert.ok(!ipRule.regex.test('127.0.0.1'), 'should NOT match loopback 127.0.0.1');
+
+  ipRule.regex.lastIndex = 0;
+  assert.ok(!ipRule.regex.test('0.0.0.0'), 'should NOT match 0.0.0.0');
+
+  ipRule.regex.lastIndex = 0;
+  assert.ok(!ipRule.regex.test('255.255.255.255'), 'should NOT match broadcast 255.255.255.255');
+});
+
+test('Ethereum (ETH) Wallet Address rule exists and matches ETH format', () => {
+  const ethRule = rules.find((r) => r.type === 'Ethereum (ETH) Wallet Address');
+  assert.ok(ethRule, 'ETH wallet rule should exist');
+
+  ethRule.regex.lastIndex = 0;
+  assert.ok(ethRule.regex.test('0x' + 'aB3d' .repeat(10)), 'should match valid 42-char ETH address');
+
+  ethRule.regex.lastIndex = 0;
+  assert.ok(!ethRule.regex.test('0xDEAD'), 'should NOT match short hex string');
+});
+
+test('Bitcoin (BTC) Wallet Address rule exists and matches BTC formats', () => {
+  const btcRule = rules.find((r) => r.type === 'Bitcoin (BTC) Wallet Address');
+  assert.ok(btcRule, 'BTC wallet rule should exist');
+
+  btcRule.regex.lastIndex = 0;
+  assert.ok(btcRule.regex.test('1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2'), 'should match P2PKH address');
+
+  btcRule.regex.lastIndex = 0;
+  assert.ok(btcRule.regex.test('3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy'), 'should match P2SH address');
+
+  btcRule.regex.lastIndex = 0;
+  assert.ok(btcRule.regex.test('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'), 'should match Bech32 address');
 });
 
 test('each rule regex source is non-empty', () => {

@@ -113,6 +113,26 @@ def get_collection_stats(repo_url: Optional[str] = None) -> dict:
     }
 
 
+def get_chunks_paginated(
+    limit: int = 50,
+    offset: int = 0,
+    repo_url: Optional[str] = None,
+) -> list[dict]:
+    collection = _get_collection(repo_url)
+    results = collection.get(limit=limit, offset=offset)
+    chunks = []
+    documents = results.get("documents", [])
+    metadatas = results.get("metadatas", [])
+    ids = results.get("ids", [])
+    for i in range(len(documents)):
+        chunks.append({
+            "chunk_id": ids[i] if i < len(ids) else None,
+            "content": documents[i],
+            "metadata": metadatas[i] if i < len(metadatas) else {},
+        })
+    return chunks
+
+
 def delete_chunks_for_file(file_path: str, repo_url: Optional[str] = None) -> int:
     """Remove all ChromaDB chunks whose metadata contains the given file path.
 
