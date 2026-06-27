@@ -1,6 +1,7 @@
 import os
 import hashlib
 import threading
+import collections
 from sentence_transformers import SentenceTransformer
 
 _EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -8,9 +9,8 @@ _model = None
 
 _MAX_CACHE_SIZE = int(os.getenv("MAX_EMBEDDING_CACHE_SIZE", "10000"))
 _cache_enabled = os.getenv("EMBEDDING_CACHE_ENABLED", "true").lower() == "true"
-_embedding_cache = {}
+_embedding_cache = collections.OrderedDict()
 _cache_lock = threading.Lock()
-_cache_access_order = []
 
 
 def _compute_content_hash(content: str) -> str:
@@ -47,28 +47,25 @@ def get_or_compute_embedding(file_path: str, content: str) -> list[float]:
     with _cache_lock:
         cached = _embedding_cache.get(file_path)
         if cached is not None and cached["content_hash"] == content_hash:
+            _embedding_cache.move_to_end(file_path)
             return cached["embedding"]
     embedding = embed_text(content)
     with _cache_lock:
         _embedding_cache[file_path] = {"content_hash": content_hash, "embedding": embedding}
-        _cache_access_order.append(file_path)
+        _embedding_cache.move_to_end(file_path)
         if len(_embedding_cache) > _MAX_CACHE_SIZE:
-            oldest = _cache_access_order.pop(0)
-            _embedding_cache.pop(oldest, None)
+            _embedding_cache.popitem(last=False)
     return embedding
 
 
 def invalidate_cache_for_file(file_path: str) -> None:
     with _cache_lock:
         _embedding_cache.pop(file_path, None)
-        if file_path in _cache_access_order:
-            _cache_access_order.remove(file_path)
 
 
 def clear_embedding_cache() -> None:
     with _cache_lock:
         _embedding_cache.clear()
-        _cache_access_order.clear()
 
 
 def get_cache_stats() -> dict:
