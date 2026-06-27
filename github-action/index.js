@@ -4,7 +4,40 @@ import Groq from 'groq-sdk';
 import { parseDiff } from './utils/diffParser.js';
 import { scanSecretsInChanges } from './utils/secretsScanner.js';
 
-// 🟢 Helper to clean JSON response from LLM
+function globToRegex(pattern) {
+  let regexStr = '^';
+  let i = 0;
+  while (i < pattern.length) {
+    const ch = pattern[i];
+    if (ch === '*') {
+      if (i + 1 < pattern.length && pattern[i + 1] === '*') {
+        regexStr += '.*';
+        i += 2;
+        if (i < pattern.length && pattern[i] === '/') {
+          i++;
+        }
+      } else {
+        regexStr += '[^/]*';
+        i++;
+      }
+    } else if (ch === '?') {
+      regexStr += '[^/]';
+      i++;
+    } else if (ch === '.') {
+      regexStr += '\\.';
+      i++;
+    } else if (ch === '/') {
+      regexStr += '/';
+      i++;
+    } else {
+      regexStr += ch;
+      i++;
+    }
+  }
+  regexStr += '$';
+  return new RegExp(regexStr);
+}
+
 function cleanAndParseJSON(responseText) {
   let cleaned = responseText.trim();
   if (cleaned.startsWith('```json')) {
@@ -24,11 +57,23 @@ async function run() {
     const githubToken = core.getInput('github-token', { required: true });
     const groqApiKey = core.getInput('groq-api-key', { required: true });
     const excludePathsInput = core.getInput('exclude-paths') || '';
+    const includeExtensionsInput = core.getInput('include-extensions') || '';
+    const maxTokens = parseInt(core.getInput('max-tokens') || '4096', 10);
+    const autoApprove = core.getInput('auto-approve')?.toLowerCase() === 'true';
 
     const excludePatterns = excludePathsInput
       .split(',')
       .map(p => p.trim())
-      .filter(p => p.length > 0);
+      .filter(p => p.length > 0)
+      .map(p => globToRegex(p));
+
+    const includeExtensions = includeExtensionsInput
+      .split(',')
+      .map(e => e.trim().toLowerCase().replace(/^\./, ''))
+      .filter(e => e.length > 0);
+
+    const defaultExtensions = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'go', 'rs', 'cpp', 'h', 'cs', 'css', 'html', 'php', 'rb', 'sql'];
+    const validExtensions = includeExtensions.length > 0 ? includeExtensions : defaultExtensions;
 
     // 2. Initialize Clients
     const octokit = github.getOctokit(githubToken);
@@ -66,24 +111,14 @@ async function run() {
     let reviewedFilesCount = 0;
 
     for (const file of parsedFiles) {
-      // Skip files that match exclude-paths
-      const isExcluded = excludePatterns.some(pattern => {
-        // Simple glob match simulation
-        if (pattern.endsWith('/**')) {
-          const dir = pattern.replace('/**', '');
-          return file.path.startsWith(dir);
-        }
-        return file.path.includes(pattern) || file.path.endsWith(pattern);
-      });
+      const isExcluded = excludePatterns.some(regex => regex.test(file.path));
 
       if (isExcluded) {
         console.log(`⏭️ Skipping excluded file: ${file.path}`);
         continue;
       }
 
-      // Check if file contains supported code extensions
       const ext = file.path.split('.').pop()?.toLowerCase();
-      const validExtensions = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'go', 'rs', 'cpp', 'h', 'cs', 'css', 'html', 'php', 'rb', 'sql'];
       if (!ext || !validExtensions.includes(ext)) {
         console.log(`skip non-code file: ${file.path}`);
         continue;
@@ -142,6 +177,7 @@ If no issues are found, reply with: { "reviews": [] }`;
           model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content: reviewPrompt }],
           temperature: 0.2,
+          max_tokens: maxTokens,
         });
 
         const content = completion.choices[0].message.content;
@@ -207,11 +243,13 @@ Please review my feedback and suggestions below. Happy coding! 🚀
       });
     } else {
       console.log('🎉 No code issues or recommendations found. Posting positive review status...');
+
+      const reviewEvent = autoApprove ? 'APPROVE' : 'COMMENT';
       await octokit.rest.pulls.createReview({
         owner,
         repo,
         pull_number: pullNumber,
-        event: 'APPROVE',
+        event: reviewEvent,
         body: `## 🛡️ RepoSage AI Code Review Audit Completed!
 
 🧐 **I have professionally reviewed and checked all your changes** to ensure they meet our project's high quality standards.

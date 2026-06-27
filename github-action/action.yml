@@ -12,9 +12,21 @@ inputs:
     description: 'The Groq API key used for code analysis and review.'
     required: true
   exclude-paths:
-    description: 'Glob patterns to exclude from analysis (comma-separated).'
+    description: 'Glob patterns to exclude from analysis (comma-separated). Supports **, *, and ? wildcards.'
     required: false
     default: 'package-lock.json,yarn.lock,pnpm-lock.yaml,dist/**,build/**'
+  include-extensions:
+    description: 'Comma-separated list of file extensions to review. Overrides default list if provided.'
+    required: false
+    default: ''
+  max-tokens:
+    description: 'Maximum tokens for the AI model response.'
+    required: false
+    default: '4096'
+  auto-approve:
+    description: 'Whether to automatically approve PRs with no issues found.'
+    required: false
+    default: 'false'
 runs:
   using: 'node20'
   main: 'dist/index.js'
