@@ -1,9 +1,11 @@
 import os
 import json
 import re
+import time
 import unicodedata
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Set
 from groq import Groq
@@ -187,10 +189,43 @@ allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "x-api-key", "x-csrf-token"],
 )
+
+API_KEY = os.getenv("REPOSAGE_API_KEY") or os.getenv("GROQ_API_KEY") or ""
+
+RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_MAX_REQUESTS = 30
+_rate_limit_store: dict[str, list[float]] = {}
+
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    window = _rate_limit_store.get(client_ip, [])
+    window = [t for t in window if now - t < RATE_LIMIT_WINDOW_SECONDS]
+    if len(window) >= RATE_LIMIT_MAX_REQUESTS:
+        return JSONResponse(status_code=429, content={"error": "Rate limit exceeded. Try again later."})
+    window.append(now)
+    _rate_limit_store[client_ip] = window
+    response = await call_next(request)
+    return response
+
+app.middleware("http")(rate_limit_middleware)
+
+async def require_api_key(request: Request, call_next):
+    if request.url.path == "/" or request.url.path == "/docs" or request.url.path.startswith("/openapi"):
+        return await call_next(request)
+    if not API_KEY:
+        return await call_next(request)
+    provided = request.headers.get("x-api-key", "")
+    if not provided or provided != API_KEY:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized: Invalid or missing API Key."})
+    response = await call_next(request)
+    return response
+
+app.middleware("http")(require_api_key)
 
 # Initialize Groq client (supports GROQ_API_KEY and legacy VITE_GROQ_API_KEY)
 api_key = os.getenv("GROQ_API_KEY") or os.getenv("VITE_GROQ_API_KEY")
