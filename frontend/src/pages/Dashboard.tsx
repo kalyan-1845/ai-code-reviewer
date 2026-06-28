@@ -275,6 +275,16 @@ export default function Dashboard() {
   const [activeExtFilter, setActiveExtFilter] = useState('All');
   const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling' | 'metrics'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!apiError) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setApiError(null);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [apiError]);
+
   const [auditHistory, setAuditHistory] = useState<AuditHistoryEntry[]>(() => {
     try {
       const savedHistory = localStorage.getItem('reposage_audit_history');
