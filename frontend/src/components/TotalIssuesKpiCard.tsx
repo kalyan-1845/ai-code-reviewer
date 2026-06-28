@@ -71,7 +71,7 @@ export default function TotalIssuesKpiCard({ fileReviews, isLoading = false }: P
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '16px' }}>
-        <div style={{ textAlign: 'center', minWidth: '80px' }}>
+        <div role="status" aria-live="polite" style={{ textAlign: 'center', minWidth: '80px' }}>
           <div style={{ fontSize: '36px', fontWeight: 850, color: colors.text, lineHeight: 1 }}>
             {isLoading ? '...' : total}
           </div>
