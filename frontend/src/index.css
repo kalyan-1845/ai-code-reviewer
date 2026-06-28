@@ -213,6 +213,10 @@ h1, h2, h3, h4 {
 }
 
 /* Gauge layout: horizontal by default, stacks on mobile */
+.gauge-circle {
+  transition: stroke-dashoffset 1s ease-in-out;
+}
+
 .gauge-layout {
   display: flex;
   align-items: center;

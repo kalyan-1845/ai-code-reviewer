@@ -74,7 +74,7 @@ function GaugeSvg({ score, size = 140, theme = 'dark' }: { score: number; size?:
         strokeDashoffset={offset}
         strokeLinecap="round"
         transform={`rotate(-90 ${center} ${center})`}
-        style={{ transition: 'stroke-dashoffset 1s ease-in-out' }}
+        className="gauge-circle"
       />
       <text
         x={center}
