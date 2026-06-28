@@ -155,6 +155,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           >
             Temperature: {settings.temperature}
           </label>
+          <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#9ca3af", lineHeight: 1.4 }}>Controls randomness in output. Lower values (0.1) produce focused results, higher values (0.9) are more creative.</p>
 
           <input
             type="range"
