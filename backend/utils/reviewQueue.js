@@ -27,17 +27,26 @@ class ReviewQueue {
     const prev = this._locks.get(key) || Promise.resolve();
     const next = prev.then(async () => {
       const queue = this._queues.get(key);
-      if (!queue || queue.length === 0) return;
-      while (queue.length > 0) {
-        const item = queue.shift();
-        try {
-          await processor(item);
-        } catch (err) {
-          console.error(`Review processing failed for ${key}:`, err);
+      if (!queue || queue.length === 0) {
+        if (this._locks.get(key) === next) {
+          this._locks.delete(key);
         }
+        return;
       }
-      this._queues.delete(key);
-      this._locks.delete(key);
+      const item = queue.shift();
+      try {
+        await processor(item);
+      } catch (err) {
+        console.error(`Review processing failed for ${key}:`, err);
+      }
+      if (this._locks.get(key) === next) {
+        this._locks.delete(key);
+      }
+      if (queue.length > 0) {
+        this._processNext(key, processor);
+      } else {
+        this._queues.delete(key);
+      }
     });
     this._locks.set(key, next.catch(() => {}));
     return next;
@@ -53,11 +62,18 @@ class ReviewQueue {
       try {
         return await fn();
       } finally {
-        this._locks.delete(key);
+        if (this._locks.get(key) === next) {
+          this._locks.delete(key);
+        }
       }
     });
     this._locks.set(key, next.catch(() => {}));
     return next;
+  }
+
+  isNearCapacity(key) {
+    const queue = this._queues.get(key);
+    return queue && queue.length >= this._maxItemsPerQueue - 1;
   }
 }
 
