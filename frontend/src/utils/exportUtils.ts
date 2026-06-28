@@ -87,6 +87,7 @@ export const generateMarkdownReport = (repoName: string, analysis: AnalysisData)
     const metrics = analysis.metrics;
     Object.keys(metrics).forEach(file => {
       const m = metrics[file];
+      if (!m) return;
       markdown += `| ${file} | ${m.totalLines ?? 0} | ${m.codeLines ?? 0} | ${m.commentLines ?? 0} | ${m.emptyLines ?? 0} | ${m.functionCount ?? 0} | ${m.complexityScore ?? 0} | ${m.grade ?? 'A'} |\n`;
     });
     markdown += `\n`;
