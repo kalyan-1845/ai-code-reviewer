@@ -950,6 +950,7 @@ export default function Dashboard() {
                   pattern="https://github\.com/.*"
                   placeholder="https://github.com/username/repo"
                   value={repoUrl}
+                  readOnly={isLoading}
                   onChange={(e) => setRepoUrl(e.target.value)}
                   style={{
                     width: "100%",
