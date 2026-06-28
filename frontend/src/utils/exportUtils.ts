@@ -36,6 +36,7 @@ export const generateMarkdownReport = (repoName: string, analysis: AnalysisData)
   if (analysis && analysis.fileReviews) {
     Object.keys(analysis.fileReviews).forEach(file => {
       const review = analysis.fileReviews[file];
+      if (!review) return;
       const bugs = review.bugs || [];
       const security = review.security || [];
       const optimization = review.optimization || [];
