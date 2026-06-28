@@ -191,9 +191,9 @@ function cleanupTempRepos() {
     fs.rmSync(tempReposDir, { recursive: true, force: true });
   }
 }
-function onShutdown() { cleanupTempRepos(); cleanupTimers(); closeDatabase(); process.exit(0); }
-process.on('SIGINT', onShutdown);
-process.on('SIGTERM', onShutdown);
+async function onShutdown() { cleanupTempRepos(); cleanupTimers(); await closeDatabase(); process.exit(0); }
+process.on('SIGINT', () => onShutdown());
+process.on('SIGTERM', () => onShutdown());
 
 // Repository contexts for chat are now persisted in MongoDB via the Session model.
 // The Session collection uses a TTL index (expireAfterSeconds: 1800) so MongoDB
