@@ -269,6 +269,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               })
             }
             placeholder="Override default AI review instructions..."
+            aria-describedby="system-prompt-warning"
             style={{
               width: "100%",
               padding: "12px",
@@ -289,7 +290,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               color: "#9ca3af",
             }}
           >
-            <span>⚠️ Malicious prompts may override AI behavior. Use only trusted instructions.</span>
+            <span id="system-prompt-warning">⚠️ Malicious prompts may override AI behavior. Use only trusted instructions.</span>
             <span>{settings.systemPrompt.length}/2000</span>
           </div>
         </div>
