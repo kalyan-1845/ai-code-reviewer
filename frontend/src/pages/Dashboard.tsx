@@ -136,6 +136,8 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
     renderChart();
   }, [chart]);
 
+  if (!chart) return null;
+
   const svgDataUrl = svg
     ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
     : null;
