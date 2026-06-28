@@ -27,6 +27,8 @@ export function analyzeComplexity(fileContent, filePath) {
   const usesCStyleBlocks = cStyleExts.includes(ext);
   const usesHtmlBlocks = (ext === '.html');
   let inBlockComment = false;
+  let inPythonDocstring = false;
+  let docstringQuote = '';
 
   lines.forEach(line => {
     const trimmed = line.trim();
@@ -66,7 +68,32 @@ export function analyzeComplexity(fileContent, filePath) {
       else if (trimmed.startsWith('*')) {
         commentLines++;
       }
-    } else if (ext === '.py' || ext === '.rb') {
+      }
+    } else if (ext === '.py') {
+      if (inPythonDocstring) {
+        commentLines++;
+        if (trimmed.endsWith(docstringQuote) && (trimmed !== docstringQuote || trimmed.length === 3)) {
+          inPythonDocstring = false;
+        }
+        return;
+      }
+      
+      if (trimmed.startsWith('#')) {
+        commentLines++;
+      } else if (trimmed.startsWith('"""') && trimmed.endsWith('"""') && trimmed.length > 3) {
+        commentLines++;
+      } else if (trimmed.startsWith("'''") && trimmed.endsWith("'''") && trimmed.length > 3) {
+        commentLines++;
+      } else if (trimmed.startsWith('"""')) {
+        commentLines++;
+        inPythonDocstring = true;
+        docstringQuote = '"""';
+      } else if (trimmed.startsWith("'''")) {
+        commentLines++;
+        inPythonDocstring = true;
+        docstringQuote = "'''";
+      }
+    } else if (ext === '.rb') {
       if (trimmed.startsWith('#')) {
         commentLines++;
       }
@@ -94,7 +121,11 @@ export function analyzeComplexity(fileContent, filePath) {
 
     // --- Function Detection ---
     if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
-      if (trimmed.includes('function ') || trimmed.includes('=>') || /^\s*(?:async\s+)?\w+\s*\([^)]*\)\s*\{/g.test(trimmed)) {
+      if (
+        trimmed.includes('function ') || 
+        /(?:const|let|var)\s+\w+\s*=\s*(?:async\s+)?(?:\([^)]*\)|\w+)\s*=>/.test(trimmed) || 
+        /^\s*(?:async\s+)?\w+\s*\([^)]*\)\s*\{/.test(trimmed)
+      ) {
         functionCount++;
       }
     } else if (ext === '.py') {
