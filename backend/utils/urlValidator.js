@@ -1,9 +1,8 @@
-const GITHUB_URL_PATTERN = /^https:\/\/github\.com\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+(\/)?$/;
-const GITHUB_URL_WITH_DOT_GIT = /^https:\/\/github\.com\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+\.git(\/)?$/;
+const GITHUB_URL_PATTERN = /^https:\/\/github\.com\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+(\.git)?(\/)?$/;
 
 export function isValidRepoUrl(url) {
   if (!url || typeof url !== 'string') return false;
-  return GITHUB_URL_PATTERN.test(url) || GITHUB_URL_WITH_DOT_GIT.test(url);
+  return GITHUB_URL_PATTERN.test(url);
 }
 
 export function parseRepoUrl(url) {
