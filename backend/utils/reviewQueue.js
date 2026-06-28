@@ -1,7 +1,8 @@
 class ReviewQueue {
   constructor(maxQueues = 100, maxItemsPerQueue = 50) {
     this._queues = new Map();
-    this._locks = new Map();
+    this._queueLocks = new Map();
+    this._exclusiveLocks = new Map();
     this._maxQueues = maxQueues;
     this._maxItemsPerQueue = maxItemsPerQueue;
   }
@@ -24,7 +25,7 @@ class ReviewQueue {
   }
 
   async _processNext(key, processor) {
-    const prev = this._locks.get(key) || Promise.resolve();
+    const prev = this._queueLocks.get(key) || Promise.resolve();
     const next = prev.then(async () => {
       const queue = this._queues.get(key);
       if (!queue || queue.length === 0) return;
@@ -37,26 +38,27 @@ class ReviewQueue {
         }
       }
       this._queues.delete(key);
-      this._locks.delete(key);
+      this._queueLocks.delete(key);
     });
-    this._locks.set(key, next.catch(() => {}));
+    this._queueLocks.set(key, next.catch(() => {}));
     return next;
   }
 
   // Per-key mutex: ensures only one async operation runs at a time for a given key.
   // Unlike enqueue(), this does not use a queue — it simply chains onto the previous
-  // operation for the same key. Useful for serializing database read-then-write
-  // operations to prevent lost updates (see issue #746).
+  // operation for the same key. Uses its own _exclusiveLocks map to avoid
+  // cross-interference with queued operations. Useful for serializing database
+  // read-then-write operations to prevent lost updates (see issue #746).
   async runExclusive(key, fn) {
-    const prev = this._locks.get(key) || Promise.resolve();
+    const prev = this._exclusiveLocks.get(key) || Promise.resolve();
     const next = prev.then(async () => {
       try {
         return await fn();
       } finally {
-        this._locks.delete(key);
+        this._exclusiveLocks.delete(key);
       }
     });
-    this._locks.set(key, next.catch(() => {}));
+    this._exclusiveLocks.set(key, next.catch(() => {}));
     return next;
   }
 }
