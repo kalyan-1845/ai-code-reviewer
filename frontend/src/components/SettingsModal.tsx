@@ -95,6 +95,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         justifyContent: "center",
         alignItems: "center",
         zIndex: 9999,
+        transition: "background 0.3s ease",
       }}
     >
       <div
