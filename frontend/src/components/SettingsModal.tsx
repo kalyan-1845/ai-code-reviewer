@@ -207,6 +207,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               outline: "none",
             }}
           />
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize: "11px",
+              color: "#9ca3af",
+            }}
+          >
+            Recommended range: 512 – 8192
+          </div>
         </div>
 
         {/* Batch Size */}
