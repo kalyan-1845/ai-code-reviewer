@@ -163,7 +163,8 @@ app.post('/api/session', requireApiKey, (req, res) => {
   if (!sessionCookie) return;
 
   const csrfToken = generateCsrfToken();
-  res.setHeader('Set-Cookie', [sessionCookie, `${CSRF_COOKIE_NAME}=${csrfToken}; HttpOnly=false; SameSite=Strict; Path=/`]);
+  const csrfSecureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', [sessionCookie, `${CSRF_COOKIE_NAME}=${csrfToken}; HttpOnly=false; SameSite=Strict; Path=/${csrfSecureFlag}`]);
   return res.json({ success: true, csrfToken });
 });
 
