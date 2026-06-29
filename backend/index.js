@@ -919,14 +919,14 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         repoEntry.count = 0;
         repoEntry.windowStart = now;
       }
-      repoEntry.count++;
-      repoRequestCounts.set(repoKey, repoEntry);
-      if (repoEntry.count > REPO_MAX_REQUESTS) {
+      if (repoEntry.count >= REPO_MAX_REQUESTS) {
         console.warn(`⚠️ Rate limit exceeded for repository ${repoKey}`);
         return res.status(429).json({ error: 'Too many requests for this repository. Try again later.' });
       }
+      repoEntry.count++;
+      repoRequestCounts.set(repoKey, repoEntry);
 
-      reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
+      const enqueued = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
         try {
           await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
         } catch (error) {
@@ -941,6 +941,9 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           }
         }
       });
+      if (enqueued === undefined) {
+        return res.status(429).json({ error: 'Review queue full. Try again later.' });
+      }
     }
   }
 
