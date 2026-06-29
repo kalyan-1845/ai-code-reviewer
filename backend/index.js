@@ -147,6 +147,13 @@ function generateCsrfToken() {
     for (const [t, expiry] of csrfTokenStore) {
       if (now > expiry) csrfTokenStore.delete(t);
     }
+    // If the store still exceeds the cap (all tokens are still fresh),
+    // evict the oldest entries to prevent unbounded growth.
+    while (csrfTokenStore.size > 10000) {
+      const oldest = csrfTokenStore.keys().next();
+      if (oldest.done) break;
+      csrfTokenStore.delete(oldest.value);
+    }
   }
   return token;
 }
