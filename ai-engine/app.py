@@ -870,6 +870,7 @@ class RagQueryRequest(BaseModel):
 class RagQueryResponse(BaseModel):
     chunks: List[dict]
     total_chunks: int
+    rag_warning: Optional[str] = None
 
 
 class PaginatedChunksRequest(BaseModel):
@@ -936,9 +937,7 @@ async def query_rag_chunks(request: RagQueryRequest):
         total_chunks=len(chunks),
     )
     if is_fallback_active():
-        result_dict = result.model_dump()
-        result_dict["_rag_warning"] = "Embedding model is using deterministic fallback. RAG results may be inaccurate."
-        return result_dict
+        result.rag_warning = "Embedding model is using deterministic fallback. RAG results may be inaccurate."
     return result
 
 
