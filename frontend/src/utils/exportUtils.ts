@@ -123,7 +123,9 @@ export const handleHtmlExport = async (
         repoName,
         analysis: {
           fileReviews: analysis.fileReviews,
-          metrics: analysis.metrics
+          metrics: analysis.metrics,
+          generatedReadme: analysis.generatedReadme,
+          mermaidDiagram: analysis.mermaidDiagram,
         }
       })
     });
