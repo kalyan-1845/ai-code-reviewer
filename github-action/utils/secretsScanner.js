@@ -76,9 +76,9 @@ export const rules = [
   }
 ];
 
-const MAX_LINE_LENGTH = parseInt(process.env.SECRETS_MAX_LINE_LENGTH, 10) || 10000;
-const SCAN_TIMEOUT_MS = parseInt(process.env.SECRETS_SCAN_TIMEOUT_MS, 10) || 100;
-const MAX_CHANGES_PROCESSED = parseInt(process.env.SECRETS_MAX_CHANGES, 10) || 500;
+const MAX_LINE_LENGTH = (n => Number.isFinite(n) ? n : 10000)(parseInt(process.env.SECRETS_MAX_LINE_LENGTH, 10));
+const SCAN_TIMEOUT_MS = (n => Number.isFinite(n) ? n : 100)(parseInt(process.env.SECRETS_SCAN_TIMEOUT_MS, 10));
+const MAX_CHANGES_PROCESSED = (n => Number.isFinite(n) ? n : 500)(parseInt(process.env.SECRETS_MAX_CHANGES, 10));
 
 export function scanSecretsInChanges(changes) {
   const findings = [];

@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
 import vectorstore
+from embeddings import is_fallback_active
 
 # Load environment variables: prefer local .env, fall back to backend/.env
 env_paths = [
@@ -53,7 +54,7 @@ def sanitize_file_content(content: str) -> str:
         "you must now",
     ]
     for pattern in dangerous_patterns:
-        content = content.replace(pattern, f"[neutralized: {pattern}]")
+        content = re.sub(re.escape(pattern), f"[neutralized: {pattern}]", content, flags=re.IGNORECASE)
     lines = content.split("\n")
     truncated_lines = [line[:500] for line in lines]
     wrapped = "\n".join(truncated_lines)
@@ -127,7 +128,7 @@ def sanitize_mermaid_code(mermaid_text: str) -> str:
     Strips HTML/XML tags and javascript: URIs, and validates the diagram type."""
     if not mermaid_text:
         return ""
-    dangerous = re.compile(r'<[^>]*>|javascript:|vbscript:|data:\s*text/html|on\w+\s*=', re.IGNORECASE)
+    dangerous = re.compile(r'<[^>]*>|javascript:|vbscript:|data:\s*text/html|\bon\w+\s*=', re.IGNORECASE)
     if dangerous.search(mermaid_text):
         return "graph TD\n    A[\"Diagram omitted: security concern\"]"
     valid_start = re.compile(r'^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|gitgraph)\s', re.MULTILINE)
@@ -379,6 +380,14 @@ class ChatRequest(BaseModel):
 @app.get("/")
 def read_root():
     return {"status": "online", "model": "llama-3.3-70b-versatile via Groq"}
+
+# 🟢 Route: Health Check
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "embedding_model": "deterministic_fallback" if is_fallback_active() else "sentence-transformer"
+    }
 
 # 🟢 Route: Analyze Code Files and Generate Reviews & README
 @app.post("/analyze")
@@ -695,6 +704,8 @@ Guidelines:
         result = {"response": sanitize_ai_output(response_content), "truncatedFiles": truncated_files_info}
         if request.rag_sources:
             result["sources"] = request.rag_sources
+        if request.useRag and is_fallback_active():
+            result["_rag_warning"] = "Embedding model is using deterministic fallback. RAG results may be inaccurate."
         return result
         
     except Exception as e:
@@ -920,10 +931,15 @@ async def query_rag_chunks(request: RagQueryRequest):
     from rag import query_chunks
 
     chunks = query_chunks(request.question, n_results=5, repo_url=request.repo_url)
-    return RagQueryResponse(
+    result = RagQueryResponse(
         chunks=chunks,
         total_chunks=len(chunks),
     )
+    if is_fallback_active():
+        result_dict = result.model_dump()
+        result_dict["_rag_warning"] = "Embedding model is using deterministic fallback. RAG results may be inaccurate."
+        return result_dict
+    return result
 
 
 # 🟢 Route: Get paginated RAG chunks
@@ -938,3 +954,4 @@ async def get_paginated_chunks(request: PaginatedChunksRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+\n# TODO: Issue #395 - Bug [AI Engine]: `validate_system_prompt` fails to strip multiple occurrences of dangerous phrases\n

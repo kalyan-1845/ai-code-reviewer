@@ -23,7 +23,15 @@ class AnalysisCache {
    * Includes repoUrl, file hashes, model, language, and other params.
    */
   generateKey(repoUrl, files, params = {}) {
-    const { model = 'llama-3.3-70b-versatile', language = 'English', company = 'General' } = params;
+    const {
+      model = 'llama-3.3-70b-versatile',
+      language = 'English',
+      company = 'General',
+      systemPrompt = '',
+      temperature = 0.7,
+      maxTokens = 2048,
+      batchSize = 5,
+    } = params;
 
     // Create a hash of the files to ensure changes are detected
     const filesHash = crypto
@@ -36,7 +44,7 @@ class AnalysisCache {
       .digest('hex')
       .slice(0, 12);
 
-    const keyData = `${repoUrl}|${filesHash}|${model}|${language}|${company}`;
+    const keyData = `${repoUrl}|${filesHash}|${model}|${language}|${company}|${systemPrompt}|${temperature}|${maxTokens}|${batchSize}`;
     return crypto.createHash('sha256').update(keyData).digest('hex');
   }
 

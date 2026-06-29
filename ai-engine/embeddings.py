@@ -13,6 +13,7 @@ except Exception as exc:
 _EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 _FALLBACK_EMBEDDING_DIMENSION = 384
 _model = None
+_fallback_active = False
 
 _MAX_CACHE_SIZE = int(os.getenv("MAX_EMBEDDING_CACHE_SIZE", "10000"))
 _cache_enabled = os.getenv("EMBEDDING_CACHE_ENABLED", "true").lower() == "true"
@@ -62,10 +63,15 @@ class _DeterministicEmbeddingModel:
         return vector
 
 
+def is_fallback_active() -> bool:
+    return _fallback_active
+
+
 def _get_model():
-    global _model
+    global _model, _fallback_active
     if _model is None:
         if SentenceTransformer is None:
+            _fallback_active = True
             _model = _DeterministicEmbeddingModel()
         else:
             try:
@@ -75,12 +81,14 @@ def _get_model():
                     f"⚠️ Could not load embedding model '{_EMBEDDING_MODEL_NAME}': {exc}. "
                     "Using deterministic local fallback embeddings."
                 )
+                _fallback_active = True
                 _model = _DeterministicEmbeddingModel()
             except Exception as exc:
                 print(
                     f"⚠️ Embedding model '{_EMBEDDING_MODEL_NAME}' failed to initialize: {exc}. "
                     "Using deterministic local fallback embeddings."
                 )
+                _fallback_active = True
                 _model = _DeterministicEmbeddingModel()
     return _model
 
