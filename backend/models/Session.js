@@ -75,16 +75,10 @@ const sessionSchema = new mongoose.Schema({
   },
 });
 
-// Primary TTL index on lastAccessedAt: MongoDB removes the document
-// 24 hours after the last access. Active use (chat, analysis) updates
-// lastAccessedAt, so the session lifetime extends with activity
-// (sliding-window expiry, see issue #743).
-sessionSchema.index({ lastAccessedAt: 1 }, { expireAfterSeconds: 86400 });
-
-// Hard-ceiling TTL index on absoluteExpiry enforces a maximum 7-day
-// session lifetime even if the session is actively used. MongoDB uses
-// the index that expires the document first, so sessions are cleaned up
-// 24 hours after the last access but at most 7 days after creation.
+// Single TTL index on absoluteExpiry enforces the hard 7-day ceiling.
+// MongoDB allows at most one TTL index per collection, so the sliding
+// 24h inactivity window is handled in application code (update the
+// session's expiry on each access to extend it, capped at 7 days).
 sessionSchema.index({ absoluteExpiry: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.model('Session', sessionSchema);
