@@ -168,9 +168,19 @@ def sanitize_ai_output(text: str) -> str:
 # duplicated in backend/index.js. When modifying these definitions, update
 # both files to keep them in sync and prevent security bypasses.
 HOMOGLYPH_MAP = {
+    # Lowercase Cyrillic
     '\u0430': 'a', '\u0435': 'e', '\u043E': 'o', '\u0441': 'c', '\u0440': 'p',
     '\u0445': 'x', '\u0443': 'y', '\u0432': 'b', '\u043D': 'h', '\u043A': 'k',
-    '\u043C': 'm', '\u0438': 'i', '\u0428': 'W', '\u03BF': 'o', '\u03B5': 'e', '\u03B1': 'a'
+    '\u043C': 'm', '\u0438': 'i',
+    # Uppercase Cyrillic
+    '\u0410': 'A', '\u0412': 'B', '\u0415': 'E', '\u0421': 'C', '\u041D': 'H',
+    '\u041A': 'K', '\u041C': 'M', '\u041E': 'O', '\u0420': 'P', '\u0423': 'Y',
+    '\u0425': 'X',
+    # Cyrillic that looks like Latin W
+    '\u0428': 'W',
+    # Greek
+    '\u03BF': 'o', '\u03B5': 'e', '\u03B1': 'a',
+    '\u039F': 'O', '\u0395': 'E', '\u0391': 'A'
 }
 
 def normalize_homoglyphs(text: str) -> str:
