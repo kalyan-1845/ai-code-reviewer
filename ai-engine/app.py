@@ -53,8 +53,8 @@ def sanitize_file_content(content: str) -> str:
         "you will now",
         "you must now",
     ]
-    for pattern in dangerous_patterns:
-        content = re.sub(re.escape(pattern), f"[neutralized: {pattern}]", content, flags=re.IGNORECASE)
+    for i, pattern in enumerate(dangerous_patterns):
+        content = re.sub(re.escape(pattern), f"[INSTRUCTION_{i}_NEUTRALIZED]", content, flags=re.IGNORECASE)
     lines = content.split("\n")
     truncated_lines = [line[:500] for line in lines]
     wrapped = "\n".join(truncated_lines)
