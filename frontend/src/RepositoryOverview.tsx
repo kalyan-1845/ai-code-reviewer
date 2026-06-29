@@ -63,7 +63,7 @@ const RepositoryOverview: React.FC<Props> = ({ files }) => {
 
   const codePct    = Math.round((totalStats.codeLines    / safeTotal) * 100);
   const commentPct = Math.round((totalStats.commentLines / safeTotal) * 100);
-  const emptyPct   = 100 - codePct - commentPct;
+  const emptyPct   = Math.max(0, 100 - codePct - commentPct);
 
   return (
     <div
