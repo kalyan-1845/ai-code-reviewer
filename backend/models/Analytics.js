@@ -71,6 +71,7 @@ commitHash: {
   analyzedAt: {
     type: Date,
     default: Date.now,
+    expires: 2592000,
   },
 });
 

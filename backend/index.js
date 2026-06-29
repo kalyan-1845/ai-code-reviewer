@@ -41,7 +41,7 @@ const app = express();
 const PORT = verifyPort(process.env.PORT || 5000);
 
 // Initialize analysis cache with configurable TTL (default: 1 hour)
-const ANALYSIS_CACHE_TTL_MS = parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60') * 60 * 1000;
+const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
 const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
@@ -87,6 +87,15 @@ const analyzeLimiter = rateLimit({
   store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
   message: { error: 'Too many analyze requests. Please slow down and retry after 5 minutes.' }
 });
+const issueLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRealClientIp,
+  message: { error: 'Too many issue creation requests.' }
+});
+
 const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -189,7 +198,7 @@ function csrfProtection(req, res, next) {
     // Remove old token and rotate
     csrfTokenStore.delete(headerToken);
     const newToken = generateCsrfToken();
-    const csrfCookie = `${CSRF_COOKIE_NAME}=${newToken}; HttpOnly=false; SameSite=Strict; Path=/`;
+    const csrfCookie = `${CSRF_COOKIE_NAME}=${newToken}; SameSite=Strict; Path=/`;
     const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
     const existingCookies = res.getHeader('Set-Cookie') || [];
     const cookies = Array.isArray(existingCookies) ? existingCookies : [existingCookies];
@@ -208,7 +217,7 @@ app.post('/api/session', requireApiKey, (req, res) => {
   if (!sessionCookie) return;
 
   const csrfToken = generateCsrfToken();
-  const csrfCookie = `${CSRF_COOKIE_NAME}=${csrfToken}; HttpOnly=false; SameSite=Strict; Path=/`;
+  const csrfCookie = `${CSRF_COOKIE_NAME}=${csrfToken}; SameSite=Strict; Path=/`;
   const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader('Set-Cookie', [sessionCookie, csrfCookie + secureFlag]);
   return res.json({ success: true, csrfToken });
@@ -491,7 +500,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       }
 
       // 1.5. Check analysis cache to avoid redundant LLM calls for identical analyses
-      const cacheKey = analysisCache.generateKey(repoUrl, files, { model, language, company });
+      const cacheKey = analysisCache.generateKey(repoUrl, files, { model, language, company, systemPrompt: validatedPrompt, temperature, maxTokens, batchSize });
       let reviewResult = analysisCache.get(cacheKey);
       let cacheHit = false;
 
@@ -1677,3 +1686,4 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
 app.listen(PORT, () => {
   console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
 });
+\n// TODO: Issue #397 - Bug [Backend]: Temp folder leakage if Node process crashes during analysis\n

@@ -19,7 +19,7 @@ export default function SidebarLayout() {
       {/* Sidebar Navigation */}
       <aside style={{ 
         width: '260px', 
-        background: 'rgba(15, 23, 42, 0.6)', 
+        background: 'var(--panel-bg)', 
         borderRight: '1px solid rgba(255,255,255,0.05)',
         display: 'flex',
         flexDirection: 'column',
@@ -29,7 +29,7 @@ export default function SidebarLayout() {
           <div style={{ background: 'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)', padding: '8px', borderRadius: '8px' }}>
             <Sparkles size={20} style={{ color: 'white' }} />
           </div>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#f3f4f6' }}>RepoSage</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--title-color)' }}>RepoSage</h2>
         </div>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

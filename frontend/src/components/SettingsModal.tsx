@@ -79,6 +79,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     onClose();
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSave();
+  };
+
   const handleReset = () => {
     setSettings(DEFAULT_SETTINGS);
     localStorage.setItem(
@@ -119,9 +124,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           borderRadius: "12px",
           background: "var(--panel-bg)",
           color: "var(--text-color)",
-          border: "1px solid var(--border-color)",
+        border: "1px solid var(--border-color)",
         }}
       >
+        <form onSubmit={handleFormSubmit}>
         <div
           style={{
             display: "flex",
@@ -317,6 +323,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           }}
         >
           <button
+            type="button"
             onClick={handleReset}
             style={{
               background: "rgba(15, 23, 42, 0.6)",
@@ -338,6 +345,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             }}
           >
             <button
+              type="button"
               onClick={onClose}
               style={{
                 background: "rgba(15, 23, 42, 0.6)",
@@ -353,7 +361,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </button>
 
             <button
-              onClick={handleSave}
+              type="submit"
               style={{
                 background: "#2563eb",
                 color: "#ffffff",
@@ -368,6 +376,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </button>
           </div>
         </div>
+        </form>
       </div>
     </div>
   );

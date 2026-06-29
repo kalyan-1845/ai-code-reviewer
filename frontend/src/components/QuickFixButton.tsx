@@ -24,27 +24,63 @@ export function QuickFixButton({ text, onApply }: { text: string; onApply: (text
   };
 
   return (
-    <div ref={ref} className="relative inline-flex">
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className={`border-none rounded px-2 py-1 cursor-pointer inline-flex items-center justify-center transition-all duration-200 ease-in-out ${
-          open ? 'bg-yellow-500/15 text-yellow-500' : applied ? 'bg-transparent text-green-500' : 'bg-transparent text-gray-400 hover:text-gray-300'
-        }`}
+        style={{
+          border: 'none',
+          borderRadius: '6px',
+          padding: '4px 8px',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 0.2s ease-in-out',
+          background: open ? 'rgba(234,179,8,0.15)' : applied ? 'transparent' : 'transparent',
+          color: open ? 'rgb(234,179,8)' : applied ? 'rgb(34,197,94)' : 'rgb(156,163,175)',
+        }}
         title="Quick Fix"
       >
         {applied ? <Check size={14} /> : <Lightbulb size={14} />}
       </button>
       {open && (
-        <div className="absolute top-full right-0 mt-1 bg-slate-800 border border-white/10 rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.4)] min-w-[160px] z-[1000] overflow-hidden">
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          right: 0,
+          marginTop: '4px',
+          background: '#1e293b',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '6px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          minWidth: '160px',
+          zIndex: 1000,
+          overflow: 'hidden',
+        }}>
           <button
             type="button"
             onClick={handleApply}
-            className="flex items-center gap-2 w-full px-3 py-2 border-none bg-transparent hover:bg-white/5 text-gray-100 text-xs font-medium cursor-pointer text-left"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              width: '100%',
+              padding: '8px 12px',
+              border: 'none',
+              background: 'transparent',
+              color: '#f3f4f6',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
-            <Zap size={14} className="text-yellow-500" />
+            <Zap size={14} color="rgb(234,179,8)" />
             <span>Apply AI Fix</span>
           </button>
         </div>
