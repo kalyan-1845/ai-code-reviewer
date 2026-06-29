@@ -376,10 +376,9 @@ function cleanupTimers() {
     const homoglyphNormalized = normalizeHomoglyphs(normalized);
     const lower = homoglyphNormalized.toLowerCase();
     
-    for (const regex of DANGEROUS_REGEXES) {
-      if (regex.test(lower)) {
-        throw new Error('System prompt contains prohibited directives and was rejected.');
-      }
+    const found = DANGEROUS_REGEXES.filter(regex => regex.test(lower));
+    if (found.length > 0) {
+      throw new Error(`System prompt contains ${found.length} prohibited directive(s) and was rejected.`);
     }
     return normalized;
   }

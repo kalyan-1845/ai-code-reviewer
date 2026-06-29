@@ -220,15 +220,19 @@ def validate_system_prompt(prompt: str, max_len: int = 2000) -> str:
         "you have been", "you must now", "listen to me",
     ]
     
+    found = []
     for phrase in dangerous:
         pattern = r"\s+".join(re.escape(w) for w in phrase.split())
         if re.search(pattern, lower):
-            print(f"⚠️ System prompt rejected: contains prohibited directive '{phrase}'")
-            raise HTTPException(
-                status_code=422,
-                detail=f"System prompt rejected: contains prohibited directive '{phrase}'. "
-                       f"Please remove it and try again."
-            )
+            found.append(phrase)
+    if found:
+        details = "; ".join(f"'{p}'" for p in found)
+        print(f"⚠️ System prompt rejected: contains prohibited directives: {details}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"System prompt rejected: contains prohibited directive(s): {details}. "
+                   f"Please remove them and try again."
+        )
     return truncated
 async def _call_groq_with_timeout(**kwargs):
     """Run a synchronous Groq completion in a thread-pool executor with a
