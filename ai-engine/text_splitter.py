@@ -79,6 +79,8 @@ def split_file_content(
     chunk_overlap: Optional[int] = None,
     repo_url: Optional[str] = None,
 ) -> list[dict]:
+    if len(content) > 10 * 1024 * 1024:
+        return []
     if not content or not content.strip():
         return []
 

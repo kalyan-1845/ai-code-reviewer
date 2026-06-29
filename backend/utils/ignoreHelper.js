@@ -33,7 +33,7 @@ export function isIgnored(filePath, patterns, baseDir) {
         return true;
       }
     } else if (pattern.includes('*')) {
-      const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
+      const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*');
       try {
         if (new RegExp(`^${escaped}$`).test(relative)) return true;
       } catch { /* skip invalid pattern */ }

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { BackendResponse } from '../pages/Dashboard';
 
-export interface ChatMessage { role: "user" | "assistant" | "assistant"; content: string; sources?: { file: string; line: number }[]; }
+export interface ChatMessage { role: "user" | "assistant"; content: string; sources?: { file: string; line: number }[]; }
 
 interface GlobalState {
   analysisResult: BackendResponse | null;

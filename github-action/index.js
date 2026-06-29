@@ -40,17 +40,11 @@ function globToRegex(pattern) {
 
 function cleanAndParseJSON(responseText) {
   try {
-    let cleaned = responseText.trim();
-    if (cleaned.startsWith('```json')) {
-      cleaned = cleaned.substring(7);
-    } else if (cleaned.startsWith('```')) {
-      cleaned = cleaned.substring(3);
-    }
-    if (cleaned.endsWith('```')) {
-      cleaned = cleaned.substring(0, cleaned.length - 3);
-    }
-    return JSON.parse(cleaned.trim());
-  } catch {
+    const jsonMatch = responseText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    const jsonStr = jsonMatch ? jsonMatch[1].trim() : responseText.trim();
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    core.warning(`Failed to parse LLM JSON response: ${err.message}`);
     return { reviews: [] };
   }
 }
