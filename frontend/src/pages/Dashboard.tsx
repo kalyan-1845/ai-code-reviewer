@@ -118,13 +118,13 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
     if (!chart) return;
     setError(null);
     const uniqueId = `mermaid-${Math.floor(Math.random() * 100000)}`;
     const renderChart = async () => {
       try {
         setSvg("");
-        // Clean markdown wraps if present
         let cleanChart = chart
           .replace(/```mermaid/g, "")
           .replace(/```/g, "")
@@ -137,9 +137,11 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
         }
 
         const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
+        if (cancelled) return;
         const sanitized = sanitizeMermaidOutput(renderedSvg);
         setSvg(sanitized);
       } catch (err: any) {
+        if (cancelled) return;
         console.error("Mermaid Render Error:", err);
         setError(
           "Could not render architecture diagram. The AI-generated flowchart has syntax errors.",
@@ -148,6 +150,7 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
     };
 
     renderChart();
+    return () => { cancelled = true; };
   }, [chart]);
 
   const svgDataUrl = svg
