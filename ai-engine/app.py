@@ -270,7 +270,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "x-api-key", "x-csrf-token"],
 )
 
-API_KEY = os.getenv("REPOSAGE_API_KEY") or os.getenv("GROQ_API_KEY") or ""
+API_KEY = os.getenv("REPOSAGE_API_KEY") or ""
 
 RATE_LIMIT_WINDOW_SECONDS = 60
 RATE_LIMIT_MAX_REQUESTS = 30
