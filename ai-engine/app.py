@@ -265,8 +265,7 @@ async def _call_groq_with_timeout(**kwargs):
 app = FastAPI(title="RepoSage AI Engine", description="FastAPI microservice for repository analysis and documentation generation")
 
 def verify_api_key(x_api_key: str = Header(None)):
-    expected_key = os.getenv("API_KEY")
-    if expected_key and x_api_key != expected_key:
+    if API_KEY and x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
 # Restrict CORS to configured origins so the AI engine is not accessible from
