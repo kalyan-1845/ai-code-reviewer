@@ -40,7 +40,8 @@ export default function SidebarLayout() {
               textDecoration: 'none', fontSize: '13px', fontWeight: 600,
               background: location.pathname === '/dashboard' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
               color: location.pathname === '/dashboard' ? '#60a5fa' : '#9ca3af',
-              border: location.pathname === '/dashboard' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent'
+              border: location.pathname === '/dashboard' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
+              ariaCurrent: location.pathname === '/dashboard' ? 'page' : undefined
             }}
           >
             <LayoutDashboard size={16} /> Analytics Dashboard
@@ -64,7 +65,7 @@ export default function SidebarLayout() {
               fontSize: '13px', fontWeight: 600, color: '#9ca3af',
               background: 'rgba(255,255,255,0.03)',
             }}
-            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            aria-label={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             {theme === "dark" ? "Light Mode" : "Dark Mode"}

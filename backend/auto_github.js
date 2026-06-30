@@ -22,10 +22,11 @@ async function autoAssignAndMerge() {
   try {
     // 1. Check for 'assign me' in issues
     console.log('\n🔍 Checking for "assign me" comments on open issues...');
-    const { data: issues } = await octokit.rest.issues.listForRepo({
+    const issues = await octokit.paginate(octokit.rest.issues.listForRepo, {
       owner,
       repo,
-      state: 'open'
+      state: 'open',
+      per_page: 100
     });
 
     for (const issue of issues) {
@@ -58,10 +59,11 @@ async function autoAssignAndMerge() {
 
     // 2. Check for Open PRs
     console.log('\n🔍 Checking for open PRs to review and merge...');
-    const { data: prs } = await octokit.rest.pulls.list({
+    const prs = await octokit.paginate(octokit.rest.pulls.list, {
       owner,
       repo,
-      state: 'open'
+      state: 'open',
+      per_page: 100
     });
 
     if (prs.length === 0) {
@@ -74,16 +76,18 @@ async function autoAssignAndMerge() {
         
         // Example: To automatically merge if ready
         // Uncomment the lines below if you want script to blindly merge them (Use with caution!)
-        /*
         console.log(`   Merging PR #${pr.number}...`);
-        await octokit.rest.pulls.merge({
-          owner,
-          repo,
-          pull_number: pr.number,
-          merge_method: 'squash'
-        });
-        console.log(`✅ Merged PR #${pr.number}`);
-        */
+        try {
+          await octokit.rest.pulls.merge({
+            owner,
+            repo,
+            pull_number: pr.number,
+            merge_method: 'squash'
+          });
+          console.log(`✅ Merged PR #${pr.number}`);
+        } catch (e) {
+          console.error(`❌ Failed to merge PR #${pr.number}:`, e.message);
+        }
       }
       console.log('\n💡 Please review the above PRs manually on GitHub, or uncomment the merge code in this script to auto-merge them.');
     }

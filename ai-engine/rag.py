@@ -1,6 +1,7 @@
 import os
 import uuid
 import hashlib
+import threading
 from typing import Optional
 import chromadb
 from chromadb.config import Settings
@@ -12,22 +13,25 @@ _CHROMA_HOST = os.getenv("CHROMA_HOST", "")
 _CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 
 _client = None
+_client_lock = threading.Lock()
 
 
 def _get_client() -> chromadb.ClientAPI:
     global _client
     if _client is None:
-        if _CHROMA_HOST:
-            _client = chromadb.HttpClient(
-                host=_CHROMA_HOST,
-                port=_CHROMA_PORT,
-                settings=Settings(anonymized_telemetry=False),
-            )
-        else:
-            _client = chromadb.PersistentClient(
-                path=_PERSIST_DIR,
-                settings=Settings(anonymized_telemetry=False),
-            )
+        with _client_lock:
+            if _client is None:
+                if _CHROMA_HOST:
+                    _client = chromadb.HttpClient(
+                        host=_CHROMA_HOST,
+                        port=_CHROMA_PORT,
+                        settings=Settings(anonymized_telemetry=False),
+                    )
+                else:
+                    _client = chromadb.PersistentClient(
+                        path=_PERSIST_DIR,
+                        settings=Settings(anonymized_telemetry=False),
+                    )
     return _client
 
 
@@ -66,6 +70,10 @@ def ingest_chunks(
     ids: list[str],
     repo_url: Optional[str] = None,
 ) -> int:
+    if not chunks:
+        return 0
+    if not (len(chunks) == len(metadatas) == len(ids)):
+        raise ValueError("chunks, metadatas, and ids must have the same length")
     collection = _get_collection(repo_url)
     embeddings = embed_texts(chunks)
     collection.add(
@@ -82,6 +90,8 @@ def query_chunks(
     n_results: int = 5,
     repo_url: Optional[str] = None,
 ) -> list[dict]:
+    if not query_text or not query_text.strip():
+        return []
     collection = _get_collection(repo_url)
     query_embedding = embed_texts([query_text])
     results = collection.query(
@@ -183,7 +193,7 @@ def delete_repo_chunks(repo_url: str) -> int:
     them.  Returns the number of deleted chunks.
     """
     collection = _get_collection(repo_url)
-    all_ids = collection.get(limit=10**6)["ids"]
+    all_ids = collection.get()["ids"]
     if all_ids:
         collection.delete(ids=all_ids)
     return len(all_ids)

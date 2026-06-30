@@ -28,16 +28,18 @@ const THEME_COLORS = {
 
 interface MetricsChartProps {
   theme?: 'dark' | 'light';
-  sessionId?: string | null;
+  reviewId?: string | null;
 }
 
-export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sessionId }) => {
+export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', reviewId }) => {
   const colors = THEME_COLORS[theme];
   const [chartData, setChartData] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!reviewId) {
       setChartData(null);
       setError(null);
@@ -49,10 +51,12 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sess
 
     apiFetch(`/api/analytics/trends?reviewId=${encodeURIComponent(reviewId)}`)
       .then((res) => {
+        if (cancelled) return null;
         if (!res.ok) throw new Error("Failed to fetch analytics trends");
         return res.json();
       })
       .then((data) => {
+        if (cancelled || !data) return;
         const formatted = (data.trends || []).map((t: any) => ({
           month: t.date ? new Date(t.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "N/A",
           bugs: t.totalBugs || 0,
@@ -63,11 +67,13 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sess
         setLoading(false);
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error("MetricsChart fetch error:", err);
         setError(err.message);
         setChartData([]);
         setLoading(false);
       });
+    return () => { cancelled = true; };
   }, [reviewId]);
 
 

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -19,7 +19,7 @@ function escapeHtmlPreserveBackticks(text: string): string {
     .replace(/`/g, "&#96;");
 }
 
-function renderMarkdown(md: string): string {
+export function renderMarkdown(md: string): string {
   const lines = md.split("\n");
   let html = "";
   let inCodeBlock = false;

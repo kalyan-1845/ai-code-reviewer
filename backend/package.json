@@ -26,5 +26,12 @@
   "devDependencies": {
     "c8": "^11.0.0",
     "nodemon": "^3.1.9"
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "analytics_trends.json",
+      "temp_repos/*",
+      "temp_repos/**/*"
+    ]
   }
 }

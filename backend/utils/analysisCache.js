@@ -14,6 +14,7 @@ class AnalysisCache {
     this.ttlMs = ttlMs;
     this.maxEntries = 1000;
     this.cache = new Map();
+    this.pending = new Map();
     this.stats = { hits: 0, misses: 0, evictions: 0 };
     this._startSweeper();
   }
@@ -89,6 +90,29 @@ class AnalysisCache {
     const expiresAt = Date.now() + this.ttlMs;
     this.cache.set(key, { result, expiresAt });
     console.log(`💾 Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions)`);
+  }
+
+  /**
+   * Retrieve a cached analysis result or fetch it safely if missing/concurrent.
+   */
+  async getOrSet(key, fetcher) {
+    const cached = this.get(key);
+    if (cached) return cached;
+    
+    const existing = this.pending.get(key);
+    if (existing) return existing;
+    
+    const promise = fetcher().then(result => {
+        this.set(key, result);
+        this.pending.delete(key);
+        return result;
+    }).catch(err => {
+        this.pending.delete(key);
+        throw err;
+    });
+    
+    this.pending.set(key, promise);
+    return promise;
   }
 
   /**

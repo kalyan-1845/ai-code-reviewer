@@ -54,7 +54,39 @@ const getCsrfToken = (): string | null => {
   return match ? match[1] : null;
 };
 
-export const apiFetch = async (path: string, options: RequestInit = {}, timeoutMs = 60000) => {
+const refreshCsrfToken = async (): Promise<string | null> => {
+  const response = await fetch(`${API_BASE_URL}/api/csrf-token`, {
+    credentials: "include",
+  });
+  if (!response.ok) return null;
+  const data = await response.json().catch(() => ({}));
+  if (data.csrfToken) {
+    csrfToken = data.csrfToken;
+    return csrfToken;
+  }
+  const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]*)/);
+  csrfToken = match ? match[1] : null;
+  return csrfToken;
+};
+
+const isCsrfFailure = async (response: Response): Promise<boolean> => {
+  if (response.status !== 403) return false;
+  const clone = response.clone();
+  try {
+    const data = await clone.json();
+    return typeof data?.error === "string" && data.error.toLowerCase().includes("csrf");
+  } catch {
+    const text = await response.clone().text().catch(() => "");
+    return text.toLowerCase().includes("csrf");
+  }
+};
+
+export const apiFetch = async (
+  path: string,
+  options: RequestInit = {},
+  timeoutMs = 60000,
+  retryOnCsrfFailure = true
+): Promise<Response> => {
   await ensureApiSession();
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type")) {
@@ -83,6 +115,18 @@ export const apiFetch = async (path: string, options: RequestInit = {}, timeoutM
     if (match) {
       csrfToken = match[1];
     }
+    if (retryOnCsrfFailure && ["POST", "PUT", "PATCH", "DELETE"].includes(method) && await isCsrfFailure(response)) {
+      clearTimeout(timeoutId);
+      const refreshedToken = await refreshCsrfToken();
+      if (refreshedToken) {
+        const retryHeaders = new Headers(options.headers);
+        if (!retryHeaders.has("Content-Type")) {
+          retryHeaders.set("Content-Type", "application/json");
+        }
+        retryHeaders.set("X-CSRF-Token", refreshedToken);
+        return apiFetch(path, { ...options, headers: retryHeaders }, timeoutMs, false);
+      }
+    }
     return response;
   } catch (error: any) {
     if (error.name === 'AbortError') {
@@ -93,6 +137,12 @@ export const apiFetch = async (path: string, options: RequestInit = {}, timeoutM
     clearTimeout(timeoutId);
   }
 };
+export const getReviewHistory = async () => {
+  const response = await apiFetch("/api/review-history");
+  if (!response.ok) throw new Error("Failed to fetch review history");
+  return response.json();
+};
+
 export const getFixSuggestions = async (findingId: string) => {
   const response = await apiFetch(`/api/fix-suggestions/${findingId}`);
 

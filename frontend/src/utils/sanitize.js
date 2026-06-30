@@ -17,7 +17,7 @@ export function sanitizeForStorage(dirty) {
 }
 
 export function sanitizeMermaidOutput(svg) {
-  if (!svg) return '';
+  if (!svg || typeof svg !== 'string') return '';
   let sanitized = svg.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
   sanitized = sanitized.replace(/href\s*=\s*["']\s*javascript:/gi, 'href="#disabled"');
   sanitized = DOMPurify.sanitize(sanitized, {

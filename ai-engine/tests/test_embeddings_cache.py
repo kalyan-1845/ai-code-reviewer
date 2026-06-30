@@ -1,10 +1,13 @@
 import pytest
 from embeddings import (
     _embedding_cache,
+    _cache_access_order,
     _cache_enabled,
+    _MAX_CACHE_SIZE,
     get_or_compute_embedding,
     invalidate_cache_for_file,
     clear_embedding_cache,
+    get_cache_stats,
     embed_text,
 )
 
@@ -100,3 +103,142 @@ class TestGetOrComputeEmbedding:
         assert isinstance(result, list)
         assert len(result) > 0
         assert all(isinstance(v, (int, float)) for v in result)
+
+
+class TestInvalidateCacheForFile:
+    """Tests for invalidate_cache_for_file edge cases."""
+
+    def setup_method(self):
+        _embedding_cache.clear()
+        _cache_access_order.clear()
+
+    def teardown_method(self):
+        _embedding_cache.clear()
+        _cache_access_order.clear()
+
+    def test_invalidate_nonexistent_path_is_noop(self):
+        """Invalidating a path that was never cached should not raise."""
+        invalidate_cache_for_file("never_cached.py")
+        assert len(_embedding_cache) == 0
+
+    def test_invalidate_removes_from_both_cache_and_access_order(self):
+        """Invalidating should remove entry from both structures."""
+        get_or_compute_embedding("x.py", "x = 1")
+        assert "x.py" in _embedding_cache
+        assert "x.py" in _cache_access_order
+        invalidate_cache_for_file("x.py")
+        assert "x.py" not in _embedding_cache
+        assert "x.py" not in _cache_access_order
+
+    def test_invalidate_one_of_multiple_entries(self):
+        """Invalidating one entry should not affect others."""
+        get_or_compute_embedding("a.py", "x = 1")
+        get_or_compute_embedding("b.py", "y = 2")
+        get_or_compute_embedding("c.py", "z = 3")
+        assert len(_embedding_cache) == 3
+        invalidate_cache_for_file("b.py")
+        assert len(_embedding_cache) == 2
+        assert "a.py" in _embedding_cache
+        assert "c.py" in _embedding_cache
+        assert "b.py" not in _embedding_cache
+
+    def test_invalidate_twice_is_idempotent(self):
+        """Calling invalidate twice on the same path should not raise."""
+        get_or_compute_embedding("dup.py", "x = 1")
+        invalidate_cache_for_file("dup.py")
+        # Second call should also be a no-op
+        invalidate_cache_for_file("dup.py")
+        assert len(_embedding_cache) == 0
+
+    def test_invalidate_empty_string_path(self):
+        """Invalidating with empty string path should be a no-op."""
+        get_or_compute_embedding("a.py", "x = 1")
+        invalidate_cache_for_file("")
+        assert len(_embedding_cache) == 1
+
+
+class TestClearEmbeddingCache:
+    """Tests for clear_embedding_cache."""
+
+    def setup_method(self):
+        _embedding_cache.clear()
+        _cache_access_order.clear()
+
+    def teardown_method(self):
+        _embedding_cache.clear()
+        _cache_access_order.clear()
+
+    def test_clear_removes_all_entries(self):
+        """Clear should empty the entire cache."""
+        get_or_compute_embedding("a.py", "x = 1")
+        get_or_compute_embedding("b.py", "y = 2")
+        assert len(_embedding_cache) == 2
+        clear_embedding_cache()
+        assert len(_embedding_cache) == 0
+
+    def test_clear_resets_access_order_list(self):
+        """Clear should also empty the access order list."""
+        get_or_compute_embedding("a.py", "x = 1")
+        get_or_compute_embedding("b.py", "y = 2")
+        assert len(_cache_access_order) == 2
+        clear_embedding_cache()
+        assert len(_cache_access_order) == 0
+
+    def test_clear_on_empty_cache_is_noop(self):
+        """Clearing an already-empty cache should not raise."""
+        clear_embedding_cache()
+        assert len(_embedding_cache) == 0
+        assert len(_cache_access_order) == 0
+
+
+class TestGetCacheStats:
+    """Tests for get_cache_stats."""
+
+    def setup_method(self):
+        _embedding_cache.clear()
+        _cache_access_order.clear()
+
+    def teardown_method(self):
+        _embedding_cache.clear()
+        _cache_access_order.clear()
+
+    def test_stats_reflects_empty_cache(self):
+        """Stats should report zero size for empty cache."""
+        stats = get_cache_stats()
+        assert stats["size"] == 0
+        assert stats["max_size"] == _MAX_CACHE_SIZE
+        assert stats["enabled"] == _cache_enabled
+        assert stats["keys"] == []
+
+    def test_stats_reflects_populated_cache(self):
+        """Stats should report correct size and keys after population."""
+        get_or_compute_embedding("a.py", "x = 1")
+        get_or_compute_embedding("b.py", "y = 2")
+        stats = get_cache_stats()
+        assert stats["size"] == 2
+        assert set(stats["keys"]) == {"a.py", "b.py"}
+
+    def test_stats_reflects_cache_after_invalidation(self):
+        """Stats should update correctly after invalidating one entry."""
+        get_or_compute_embedding("a.py", "x = 1")
+        get_or_compute_embedding("b.py", "y = 2")
+        invalidate_cache_for_file("a.py")
+        stats = get_cache_stats()
+        assert stats["size"] == 1
+        assert "a.py" not in stats["keys"]
+        assert "b.py" in stats["keys"]
+
+    def test_stats_reflects_cache_after_clear(self):
+        """Stats should report zero after clearing the cache."""
+        get_or_compute_embedding("a.py", "x = 1")
+        get_or_compute_embedding("b.py", "y = 2")
+        clear_embedding_cache()
+        stats = get_cache_stats()
+        assert stats["size"] == 0
+        assert stats["keys"] == []
+
+    def test_stats_max_size_is_positive_integer(self):
+        """max_size should be a positive integer."""
+        stats = get_cache_stats()
+        assert isinstance(stats["max_size"], int)
+        assert stats["max_size"] > 0

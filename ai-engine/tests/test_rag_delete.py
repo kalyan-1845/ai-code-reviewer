@@ -4,9 +4,8 @@ import sys
 from unittest.mock import MagicMock, patch
 
 
-
 import pytest
-from rag import delete_chunks_for_file, cleanup_stale_chunks
+from rag import delete_chunks_for_file, cleanup_stale_chunks, delete_collection
 
 
 class TestDeleteChunksForFile:
@@ -159,3 +158,53 @@ class TestCleanupStaleChunks:
             assert "stale_paths" in result
             assert "removed_count" in result
             assert "remaining_count" in result
+
+
+class TestDeleteCollection:
+    def test_returns_true_when_collection_exists_and_is_deleted(self):
+        with patch('rag._get_client') as mock_get_client, \
+             patch('rag._collection_name') as mock_col_name:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            mock_col_name.return_value = "test_collection"
+
+            result = delete_collection("https://github.com/test/repo")
+
+            mock_client.delete_collection.assert_called_once_with("test_collection")
+            assert result is True
+
+    def test_returns_false_when_collection_does_not_exist(self):
+        with patch('rag._get_client') as mock_get_client, \
+             patch('rag._collection_name') as mock_col_name:
+            mock_client = MagicMock()
+            mock_client.delete_collection.side_effect = ValueError("Collection not found")
+            mock_get_client.return_value = mock_client
+            mock_col_name.return_value = "nonexistent_collection"
+
+            result = delete_collection("https://github.com/test/nonexistent")
+
+            assert result is False
+
+    def test_handles_non_string_repo_url_gracefully(self):
+        with patch('rag._get_client') as mock_get_client, \
+             patch('rag._collection_name') as mock_col_name:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            # Pass a non-string value; _collection_name should handle it
+            mock_col_name.return_value = "collection_from_none"
+
+            # Should not raise — function returns bool
+            result = delete_collection(None)
+            assert isinstance(result, bool)
+
+    def test_delete_collection_receives_correct_collection_name(self):
+        with patch('rag._get_client') as mock_get_client, \
+             patch('rag._collection_name') as mock_col_name:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            mock_col_name.return_value = "custom_collection_name"
+
+            delete_collection("https://github.com/org/project")
+
+            mock_col_name.assert_called_once_with("https://github.com/org/project")
+            mock_client.delete_collection.assert_called_once_with("custom_collection_name")

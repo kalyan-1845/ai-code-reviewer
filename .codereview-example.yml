@@ -1,0 +1,21 @@
+# AI Code Reviewer Configuration
+# Place this file as .codereview.yml in your repository root
+
+# Severity levels for different categories
+severity:
+  # Security issues trigger deployment failure
+  security: error
+  # Performance concerns are warnings but don't block
+  performance: warning
+  # Style issues are informational
+  style: info
+
+# Rules to suppress (ignore in reports)
+suppress:
+  - missing-trailing-comma
+  - line-length
+  - docstring-missing
+
+# Usage in CI/CD:
+# code-reviewer review --fail-on error src/
+# This will only fail on error-level findings

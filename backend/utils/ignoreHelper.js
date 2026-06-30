@@ -47,8 +47,8 @@ export function isIgnored(filePath, patterns, baseDir) {
 }
 
 // 🟢 Helper to recursively read files
-const MAX_DEPTH = 10;
-const MAX_FILES = 500;
+const MAX_DEPTH = 5;
+const MAX_FILES = 200;
 
 export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePatterns = [], depth = 0) {
   if (depth > MAX_DEPTH) return fileList;
@@ -78,7 +78,15 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
     }
 
     if (stat.isDirectory()) {
-      readFilesRecursively(filePath, fileList, baseDir, ignorePatterns, depth + 1);
+      try {
+        const realPath = fs.realpathSync(filePath);
+        const resolvedBase = fs.realpathSync(baseDir);
+        if (realPath.startsWith(resolvedBase)) {
+          readFilesRecursively(filePath, fileList, baseDir, ignorePatterns, depth + 1);
+        }
+      } catch (e) {
+        // Skip on error
+      }
     } else {
       // Analyze only source code files (Python, JS, TS, HTML, CSS, Go, Rust, Java, C++, PHP, Ruby, SQL)
       const ext = path.extname(file).toLowerCase();

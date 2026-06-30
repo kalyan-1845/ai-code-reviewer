@@ -15,6 +15,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const handleSaveRef = useRef<() => void>(() => {});
 
   const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -58,6 +59,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         onClose();
         return;
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        handleSaveRef.current();
+        return;
+      }
       trapFocus(e);
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -78,6 +83,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     );
     onClose();
   };
+  handleSaveRef.current = handleSave;
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +118,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         justifyContent: "center",
         alignItems: "center",
         zIndex: 9999,
+        transition: "background 0.3s ease",
       }}
     >
       <div
@@ -173,6 +180,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           >
             Temperature: {settings.temperature}
           </label>
+          <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#9ca3af", lineHeight: 1.4 }}>Controls randomness in output. Lower values (0.1) produce focused results, higher values (0.9) are more creative.</p>
 
           <input
             type="range"
@@ -227,6 +235,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               outline: "none",
             }}
           />
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize: "11px",
+              color: "#9ca3af",
+            }}
+          >
+            Recommended range: 512 – 8192
+          </div>
         </div>
 
         {/* Batch Size */}
@@ -289,6 +306,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               })
             }
             placeholder="Override default AI review instructions..."
+            aria-describedby="system-prompt-warning"
             style={{
               width: "100%",
               padding: "12px",
@@ -309,7 +327,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               color: "#9ca3af",
             }}
           >
-            <span>⚠️ Malicious prompts may override AI behavior. Use only trusted instructions.</span>
+            <span id="system-prompt-warning">⚠️ Malicious prompts may override AI behavior. Use only trusted instructions.</span>
             <span>{settings.systemPrompt.length}/2000</span>
           </div>
         </div>

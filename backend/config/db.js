@@ -43,7 +43,6 @@ export async function ensureConnection() {
     reconnectAttempts++;
     console.log(`🔄 Reconnecting to MongoDB (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
     try {
-      connectionPromise = null;
       await connectDatabase();
       if (isConnected) {
         reconnectAttempts = 0;

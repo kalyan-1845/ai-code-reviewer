@@ -1,7 +1,8 @@
 class ReviewQueue {
   constructor(maxQueues = 100, maxItemsPerQueue = 50) {
     this._queues = new Map();
-    this._locks = new Map();
+    this._queueLocks = new Map();
+    this._exclusiveLocks = new Map();
     this._maxQueues = maxQueues;
     this._maxItemsPerQueue = maxItemsPerQueue;
   }
@@ -24,12 +25,12 @@ class ReviewQueue {
   }
 
   async _processNext(key, processor) {
-    const prev = this._locks.get(key) || Promise.resolve();
+    const prev = this._queueLocks.get(key) || Promise.resolve();
     const next = prev.then(async () => {
       const queue = this._queues.get(key);
       if (!queue || queue.length === 0) {
-        if (this._locks.get(key) === next) {
-          this._locks.delete(key);
+        if (this._queueLocks.get(key) === next) {
+          this._queueLocks.delete(key);
         }
         return;
       }
@@ -41,12 +42,12 @@ class ReviewQueue {
           console.error(`Review processing failed for ${key}:`, err);
         }
       }
-      if (this._locks.get(key) === next) {
-        this._locks.delete(key);
+      if (this._queueLocks.get(key) === next) {
+        this._queueLocks.delete(key);
       }
       this._queues.delete(key);
     });
-    this._locks.set(key, next.catch(err => {
+    this._queueLocks.set(key, next.catch(err => {
       console.error(`ReviewQueue processing error for "${key}":`, err);
     }));
     return next;
@@ -57,17 +58,17 @@ class ReviewQueue {
   // operation for the same key. Useful for serializing database read-then-write
   // operations to prevent lost updates (see issue #746).
   async runExclusive(key, fn) {
-    const prev = this._locks.get(key) || Promise.resolve();
+    const prev = this._exclusiveLocks.get(key) || Promise.resolve();
     const next = prev.then(async () => {
       try {
         return await fn();
       } finally {
-        if (this._locks.get(key) === next) {
-          this._locks.delete(key);
+        if (this._exclusiveLocks.get(key) === next) {
+          this._exclusiveLocks.delete(key);
         }
       }
     });
-    this._locks.set(key, next.catch(err => {
+    this._exclusiveLocks.set(key, next.catch(err => {
       console.error(`ReviewQueue exclusive processing error for "${key}":`, err);
     }));
     return next;
