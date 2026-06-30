@@ -629,22 +629,26 @@ export default function Dashboard() {
   }, [chatHistory, isChatLoading]);
 
   useEffect(() => {
+    let cancelled = false;
     const loadHistory = async () => {
       try {
         const response = await apiFetch('/api/review-history');
         if (!response.ok) throw new Error("Failed to fetch");
         const history = await response.json();
 
-        if (history) {
-        setAuditHistory(history);
+        if (!cancelled && history) {
+          setAuditHistory(history);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load review history", err);
+        }
       }
-    } catch (err) {
-      console.error("Failed to load review history", err);
-    }
-  };
+    };
 
-  loadHistory();
-}, []);
+    loadHistory();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
