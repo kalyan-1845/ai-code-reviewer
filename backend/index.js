@@ -797,6 +797,8 @@ if (reviewResult?.fileReviews) {
 
   analysis: reviewResult,
 
+  _mock: reviewResult?._mock,
+
   repositoryHealth,
 
   prSummary,
