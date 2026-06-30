@@ -567,7 +567,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
 
       // 3. Inject Regex-based Secret Detections & Complexity Metrics into the analysis result
       if (reviewResult && reviewResult.fileReviews) {
-        reviewResult.metrics = {};
+        if (!reviewResult.metrics) reviewResult.metrics = {};
         
         files.forEach(file => {
           // Calculate complexity metrics
