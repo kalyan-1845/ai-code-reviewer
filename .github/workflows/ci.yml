@@ -100,6 +100,7 @@ jobs:
           pytest --cov=./ --cov-report=xml tests/ -v
 
       - name: Upload coverage reports to Codecov
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
