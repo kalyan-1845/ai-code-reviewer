@@ -122,6 +122,7 @@ class AnalysisCache {
     this._stopSweeper();
     const size = this.cache.size;
     this.cache.clear();
+    this._startSweeper();
     console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
   }
 
