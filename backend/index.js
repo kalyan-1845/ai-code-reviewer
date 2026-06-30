@@ -1381,6 +1381,16 @@ app.post('/api/reports/html', requireApiKey, exportLimiter, (req, res) => {
     });
   }
 
+  const readmeSection = analysis.generatedReadme ? `
+    <h2 style="margin-top: 30px; color: #a855f7;">📖 Generated README</h2>
+    <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; margin-top: 10px; color: #e2e8f0; line-height: 1.7; font-size: 13px; white-space: pre-wrap;">${escapeHtml(analysis.generatedReadme)}</div>
+  ` : '';
+
+  const mermaidSection = analysis.mermaidDiagram ? `
+    <h2 style="margin-top: 30px; color: #a855f7;">📊 Repository Structure Diagram</h2>
+    <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; margin-top: 10px; font-family: monospace; color: #c084fc; font-size: 12px; white-space: pre-wrap; overflow-x: auto;">${escapeHtml(analysis.mermaidDiagram)}</div>
+  ` : '';
+
   const html = `
     <!DOCTYPE html>
     <html lang="en">
@@ -1460,6 +1470,10 @@ app.post('/api/reports/html', requireApiKey, exportLimiter, (req, res) => {
           font-size: 12px;
           white-space: pre-wrap;
         }
+        h2 {
+          border-bottom: 1px solid rgba(168,85,247,0.15);
+          padding-bottom: 8px;
+        }
       </style>
     </head>
     <body>
@@ -1470,6 +1484,9 @@ app.post('/api/reports/html', requireApiKey, exportLimiter, (req, res) => {
           <strong>Report Timestamp:</strong> ${new Date().toLocaleString()}<br>
           <strong>Audited with:</strong> RepoSage GSSoC '26 Audit Engine
         </div>
+        ${readmeSection}
+        ${mermaidSection}
+        <h2 style="margin-top: 30px; color: #a855f7;">🔍 Findings</h2>
         <table>
           <thead>
             <tr>
