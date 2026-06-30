@@ -111,7 +111,16 @@ const exportLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
-  message: { error: 'Too many export requests. Please slow down and retry after 1 minute.' }
+  message: { error: 'Too many HTML export requests. Please slow down and retry after 1 minute.' }
+});
+
+const pdfExportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
+  message: { error: 'Too many PDF export requests. Please slow down and retry after 1 minute.' }
 });
 
 // Parse cookies for CSRF token validation
@@ -1499,7 +1508,7 @@ app.post('/api/reports/html', requireApiKey, exportLimiter, (req, res) => {
 });
 
 // 🟢 Route: Export Review Report to PDF
-app.post('/api/reports/pdf', requireApiKey, exportLimiter, (req, res) => {
+app.post('/api/reports/pdf', requireApiKey, pdfExportLimiter, (req, res) => {
   const { repoName, analysis } = req.body;
   if (!repoName || !analysis) {
     return res.status(400).json({ error: 'Repository name and analysis result are required.' });
