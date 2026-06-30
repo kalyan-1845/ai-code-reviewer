@@ -14,7 +14,11 @@ function getConfiguredApiKey(res) {
 }
 
 function getSessionSecret() {
-  return process.env.SESSION_SECRET || process.env.REPOSAGE_API_KEY;
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (!process.env.REPOSAGE_API_KEY) {
+    console.error('SECURITY WARNING: SESSION_SECRET not set; sessions are not persisted across restarts');
+  }
+  return crypto.randomBytes(32).toString('hex');
 }
 
 function signValue(value, secret) {
