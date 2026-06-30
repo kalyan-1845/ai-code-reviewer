@@ -29,9 +29,7 @@ class ReviewQueue {
     const next = prev.then(async () => {
       const queue = this._queues.get(key);
       if (!queue || queue.length === 0) {
-        if (this._queueLocks.get(key) === next) {
-          this._queueLocks.delete(key);
-        }
+        this._queueLocks.delete(key);
         return;
       }
       while (queue.length > 0) {
@@ -42,9 +40,7 @@ class ReviewQueue {
           console.error(`Review processing failed for ${key}:`, err);
         }
       }
-      if (this._queueLocks.get(key) === next) {
-        this._queueLocks.delete(key);
-      }
+      this._queueLocks.delete(key);
       this._queues.delete(key);
     });
     this._queueLocks.set(key, next.catch(err => {

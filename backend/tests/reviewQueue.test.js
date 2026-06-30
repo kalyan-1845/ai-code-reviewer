@@ -5,7 +5,7 @@ import ReviewQueue from '../utils/reviewQueue.js';
 test('ReviewQueue constructor initializes empty queues and locks', () => {
   const queue = new ReviewQueue();
   assert.deepEqual(queue._queues, new Map(), 'queues should be an empty Map');
-  assert.deepEqual(queue._locks, new Map(), 'locks should be an empty Map');
+  assert.deepEqual(queue._queueLocks, new Map(), 'queueLocks should be an empty Map');
 });
 
 test('enqueue creates a queue for a new key and stores the item', async () => {
@@ -146,7 +146,7 @@ test('_processNext clears queue and locks after draining', async () => {
 
   // After all processing, both queue and lock should be cleared
   assert.ok(!queue._queues.has('key1'), 'queue should be deleted after draining');
-  assert.ok(!queue._locks.has('key1'), 'lock should be deleted after draining');
+  assert.ok(!queue._queueLocks.has('key1'), 'lock should be deleted after draining');
 });
 
 test('enqueue on an already-processing key appends to the queue', async () => {
