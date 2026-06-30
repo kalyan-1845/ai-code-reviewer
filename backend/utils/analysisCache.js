@@ -153,6 +153,26 @@ class AnalysisCache {
   }
 
   /**
+   * Invalidate all cache entries by repo URL.
+   * Iterates the cache and removes entries whose key matches the given repo URL.
+   */
+  invalidateByRepoUrl(repoUrl) {
+    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+    let removed = 0;
+    for (const [key] of this.cache) {
+      const keyStr = key;
+      if (keyStr.includes(normalized)) {
+        this.cache.delete(key);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
+    }
+    return removed;
+  }
+
+  /**
    * Set custom TTL (in milliseconds).
    */
   setTtl(ttlMs) {

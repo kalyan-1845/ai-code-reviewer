@@ -981,6 +981,18 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     return res.status(400).json({ error: `Unsupported webhook event: ${event}` });
   }
 
+  if (event === 'push') {
+    const owner = payload.repository?.owner?.login;
+    const repo = payload.repository?.name;
+    if (owner && repo) {
+      const repoUrl = `https://github.com/${owner}/${repo}`;
+      const removed = analysisCache.invalidateByRepoUrl(repoUrl);
+      if (removed > 0) {
+        console.log(`📡 Push event invalidated ${removed} cache entries for ${repoUrl}`);
+      }
+    }
+  }
+
   if (event === 'pull_request') {
     const deliveryId = req.headers['x-github-delivery'];
     if (!deliveryId || typeof deliveryId !== 'string') {
@@ -1127,6 +1139,16 @@ app.post('/api/issues/create', requireApiKey, async (req, res) => {
     console.error('❌ Create GitHub Issue Error:', err.message);
     return res.status(500).json({ error: `Failed to create issue: ${err.message}` });
   }
+});
+
+// 🟢 Route: Invalidate analysis cache by repo URL
+app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
+  const { repoUrl } = req.body;
+  if (!repoUrl) {
+    return res.status(400).json({ error: 'repoUrl is required.' });
+  }
+  const removed = analysisCache.invalidateByRepoUrl(repoUrl);
+  res.json({ success: true, removed, stats: analysisCache.getStats() });
 });
 
 // Webhook review queueing uses ReviewQueue from reviewQueue.js (per-key mutex)
