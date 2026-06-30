@@ -21,7 +21,7 @@ export const rules = [
   },
   {
     type: "Database Connection Credentials",
-    regex: /(mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/|mysql:\/\/)[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
+    regex: /(mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/|mysql:\/\/)([a-zA-Z0-9_]+?):([a-zA-Z0-9_]+?)@/gi,
     description: "Database connection credentials detected directly in code. Exposes the database tables to global read/write breaches."
   },
   {
@@ -36,7 +36,7 @@ export const rules = [
   },
   {
     type: "Common Environment Credential",
-    regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token)\s*=\s*(['"])([^\n]*?)\1/gi,
+    regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token)\s*=\s*(['"])([^\n]{0,256}?)\1/gi,
     description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
   },
   {
@@ -51,12 +51,12 @@ export const rules = [
   },
   {
     type: "JWT Token Check",
-    regex: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]{10,}\b/g,
+    regex: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]+\b/g,
     description: "Potential hardcoded JSON Web Token (JWT) detected. Exposing JWT credentials allows authentication bypass or identity impersonation."
   },
   {
     type: "Generic API Key / Token",
-    regex: /(?:api_key|apikey|secret_key|auth_token|client_secret)\b\s*[:=]\s*(['"])([A-Za-z0-9-_]{16,64})\1/gi,
+    regex: /(?:api_key|apikey|secret_key|auth_token|client_secret)\b\s*[:=]\s*['"][A-Za-z0-9-_]{16,64}['"]/gi,
     description: "Potential hardcoded Generic API Key or Token detected. This can lead to unauthorized service integration access."
   },
   {
@@ -76,7 +76,7 @@ export const rules = [
   }
 ];
 
-const MAX_LINE_LENGTH = (n => Number.isFinite(n) ? n : 10000)(parseInt(process.env.SECRETS_MAX_LINE_LENGTH, 10));
+const MAX_LINE_LENGTH = (n => Number.isFinite(n) ? n : 2000)(parseInt(process.env.SECRETS_MAX_LINE_LENGTH, 10));
 const SCAN_TIMEOUT_MS = (n => Number.isFinite(n) ? n : 100)(parseInt(process.env.SECRETS_SCAN_TIMEOUT_MS, 10));
 
 export function scanSecrets(fileContent) {

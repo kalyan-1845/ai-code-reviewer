@@ -119,6 +119,8 @@ def split_files(
 ) -> list[dict]:
     all_chunks = []
     for file in files:
+        if not isinstance(file, dict):
+            continue
         if not file.get("name") or not file.get("content"):
             continue
         chunks = split_file_content(

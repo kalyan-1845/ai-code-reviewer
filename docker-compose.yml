@@ -24,6 +24,7 @@ services:
     environment:
       - PORT=8000
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       - CHROMA_HOST=${CHROMA_HOST:-chromadb}
       - CHROMA_PORT=${CHROMA_PORT:-8000}
@@ -45,6 +46,7 @@ services:
     environment:
       - PORT=5000
       - AI_ENGINE_URL=http://ai-engine:8000
+      - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
       - GITHUB_PAT=${GITHUB_PAT}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}

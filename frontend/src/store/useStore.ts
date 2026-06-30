@@ -17,7 +17,7 @@ export const useStore = create<GlobalState>((set) => ({
   setAnalysisResult: (result) => set({ analysisResult: result }),
   selectedFile: null,
   setSelectedFile: (file) => set({ selectedFile: file }),
-  chatHistory: (() => { try { const saved = localStorage.getItem('reposage_chat_history'); return saved ? JSON.parse(saved) : []; } catch { return []; } })(),
+  chatHistory: (() => { try { const saved = localStorage.getItem('reposage_chat_history'); if (saved) { const parsed = JSON.parse(saved); return Array.isArray(parsed) ? parsed : []; } return []; } catch { return []; } })(),
   setChatHistory: (updater) => set((state) => {
     const updated = typeof updater === 'function' ? updater(state.chatHistory) : updater;
     try { localStorage.setItem("reposage_chat_history", JSON.stringify(updated)); } catch {}

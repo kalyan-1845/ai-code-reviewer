@@ -300,3 +300,87 @@ class TestMakeSplitter:
         splitter = _make_splitter("test.ts")
         expected_seps = _language_separators["typescript"]
         assert splitter._separators == expected_seps
+
+
+class TestSplitFileContentEdgeCases:
+    def test_content_with_unicode_characters(self):
+        content = "# Hello in multiple languages\n# 中文注释\n#希腊语注释\ndef greet():\n    print('你好')  # chinese greeting"
+        result = split_file_content("unicode.py", content)
+        assert len(result) >= 1
+        assert all(isinstance(chunk['content'], str) for chunk in result)
+
+    def test_content_with_emoji_and_special_characters(self):
+        content = "x = 1  # 🎉 celebrate\ny = 2  # 💡 idea\nz = x + y  # 🚀 launch"
+        result = split_file_content("emoji.js", content)
+        assert len(result) >= 1
+        assert '🎉' in result[0]['content']
+
+    def test_content_with_only_newlines(self):
+        result = split_file_content("newlines.py", "\n\n\n")
+        assert result == []
+
+    def test_content_with_only_single_newline(self):
+        result = split_file_content("single_newline.py", "\n")
+        assert result == []
+
+    def test_content_with_tab_and_space_whitespace(self):
+        content = "\t\t\n    \n\t"
+        result = split_file_content("tabs.py", content)
+        assert result == []
+
+
+class TestSplitFilesEdgeCases:
+    def test_files_list_containing_null_values(self):
+        files = [
+            {"name": "a.py", "content": "x = 1"},
+            None,
+            {"name": "b.py", "content": "y = 2"},
+        ]
+        result = split_files(files)
+        # Should skip the null entry and process the valid ones
+        assert len(result) == 2
+
+    def test_files_with_null_name_and_valid_content(self):
+        files = [
+            {"name": None, "content": "x = 1"},
+        ]
+        result = split_files(files)
+        # null name is falsy, so the entry is skipped
+        assert len(result) == 0
+
+    def test_files_with_null_content_and_valid_name(self):
+        files = [
+            {"name": "null_content.py", "content": None},
+        ]
+        result = split_files(files)
+        # null content is falsy, so the entry is skipped
+        assert len(result) == 0
+
+    def test_files_with_empty_string_name_and_content(self):
+        files = [
+            {"name": "", "content": "x = 1"},
+            {"name": "valid.py", "content": ""},
+        ]
+        result = split_files(files)
+        # empty name -> skip, empty content -> skip
+        assert len(result) == 0
+
+    def test_files_with_mixed_valid_and_invalid_entries(self):
+        files = [
+            {"name": "good.py", "content": "x = 1\ny = 2\nz = 3"},
+            {"content": "y = 1"},
+            None,
+            {"name": "also_good.py"},
+            {"name": "great.js", "content": "const z = 99;"},
+        ]
+        result = split_files(files)
+        # Only the two fully valid entries should produce chunks
+        assert len(result) == 2
+
+    def test_split_files_respects_custom_chunk_size(self):
+        files = [
+            {"name": "big.py", "content": "\n".join([f"x_{i} = {i}" for i in range(100)])},
+        ]
+        result_small = split_files(files, chunk_size=100)
+        result_large = split_files(files, chunk_size=2000)
+        assert len(result_small) > len(result_large)

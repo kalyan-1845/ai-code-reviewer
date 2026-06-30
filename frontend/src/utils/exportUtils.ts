@@ -36,6 +36,7 @@ export const generateMarkdownReport = (repoName: string, analysis: AnalysisData)
   if (analysis && analysis.fileReviews) {
     Object.keys(analysis.fileReviews).forEach(file => {
       const review = analysis.fileReviews[file];
+      if (!review) return;
       const bugs = review.bugs || [];
       const security = review.security || [];
       const optimization = review.optimization || [];
@@ -87,6 +88,7 @@ export const generateMarkdownReport = (repoName: string, analysis: AnalysisData)
     const metrics = analysis.metrics;
     Object.keys(metrics).forEach(file => {
       const m = metrics[file];
+      if (!m) return;
       markdown += `| ${file} | ${m.totalLines ?? 0} | ${m.codeLines ?? 0} | ${m.commentLines ?? 0} | ${m.emptyLines ?? 0} | ${m.functionCount ?? 0} | ${m.complexityScore ?? 0} | ${m.grade ?? 'A'} |\n`;
     });
     markdown += `\n`;
@@ -123,7 +125,9 @@ export const handleHtmlExport = async (
         repoName,
         analysis: {
           fileReviews: analysis.fileReviews,
-          metrics: analysis.metrics
+          metrics: analysis.metrics,
+          generatedReadme: analysis.generatedReadme,
+          mermaidDiagram: analysis.mermaidDiagram,
         }
       })
     });

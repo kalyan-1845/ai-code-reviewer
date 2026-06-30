@@ -1,0 +1,42 @@
+# .reposageignore - Exclude files/folders from RepoSage analysis
+# Supports glob patterns like .gitignore format
+# Lines starting with # are comments
+
+# Build artifacts and dependencies
+node_modules/
+dist/
+build/
+coverage/
+.out/
+
+# Configuration files with secrets
+.env
+.env.local
+.env.production
+*.key
+*.pem
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Documentation (optional - uncomment to skip)
+# docs/
+# *.md
+
+# Test files (optional - uncomment to skip)
+# test/
+# tests/
+# *.test.*
+# *.spec.*

@@ -3,45 +3,17 @@ import github from '@actions/github';
 import Groq from 'groq-sdk';
 import { parseDiff } from './utils/diffParser.js';
 import { scanSecretsInChanges } from './utils/secretsScanner.js';
-
-function globToRegex(pattern) {
-  let regexStr = '^';
-  let i = 0;
-  while (i < pattern.length) {
-    const ch = pattern[i];
-    if (ch === '*') {
-      if (i + 1 < pattern.length && pattern[i + 1] === '*') {
-        regexStr += '.*';
-        i += 2;
-        if (i < pattern.length && pattern[i] === '/') {
-          i++;
-        }
-      } else {
-        regexStr += '[^/]*';
-        i++;
-      }
-    } else if (ch === '?') {
-      regexStr += '[^/]';
-      i++;
-    } else if (ch === '.') {
-      regexStr += '\\.';
-      i++;
-    } else if (ch === '/') {
-      regexStr += '/';
-      i++;
-    } else {
-      regexStr += ch;
-      i++;
-    }
-  }
-  regexStr += '$';
-  return new RegExp(regexStr);
-}
+import { globToRegex } from './utils/globToRegex.js';
 
 function cleanAndParseJSON(responseText) {
   try {
     const jsonMatch = responseText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    const jsonStr = jsonMatch ? jsonMatch[1].trim() : responseText.trim();
+    let jsonStr = jsonMatch ? jsonMatch[1].trim() : responseText.trim();
+    if (!jsonMatch) {
+      const objMatch = jsonStr.match(/\{[\s\S]*\}/);
+      const arrMatch = jsonStr.match(/\[[\s\S]*\]/);
+      jsonStr = (arrMatch && (!objMatch || objMatch[0].length >= arrMatch[0].length) ? arrMatch[0] : objMatch ? objMatch[0] : jsonStr);
+    }
     return JSON.parse(jsonStr);
   } catch (err) {
     core.warning(`Failed to parse LLM JSON response: ${err.message}`);
@@ -107,6 +79,8 @@ async function run() {
 
     const commentsToPost = [];
     let reviewedFilesCount = 0;
+    let successfulReviewsCount = 0;
+    let failedReviewsCount = 0;
 
     for (const file of parsedFiles) {
       const isExcluded = excludePatterns.some(regex => regex.test(file.path));
@@ -181,6 +155,7 @@ If no issues are found, reply with: { "reviews": [] }`;
 
         const content = completion.choices[0].message.content;
         let parsed = cleanAndParseJSON(content);
+        successfulReviewsCount++;
         
         let issues = [];
         if (Array.isArray(parsed)) {
@@ -216,6 +191,7 @@ If no issues are found, reply with: { "reviews": [] }`;
         }
 
       } catch (err) {
+        failedReviewsCount++;
         core.error(`❌ Groq review request failed for ${file.path}: ${err.message}`);
       }
     }
@@ -240,7 +216,7 @@ Please review my feedback and suggestions below. Happy coding! 🚀
 ⭐ **Support RepoSage!** If you find this AI helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!`,
         comments: commentsToPost
       });
-    } else {
+    } else if (reviewedFilesCount > 0 && successfulReviewsCount > 0 && failedReviewsCount === 0) {
       console.log('🎉 No code issues or recommendations found. Posting positive review status...');
 
       const reviewEvent = autoApprove ? 'APPROVE' : 'COMMENT';
@@ -270,6 +246,11 @@ Please review my feedback and suggestions below. Happy coding! 🚀
       } catch (err) {
         console.warn('⚠️ Could not add gssoc:approved label:', err.message);
       }
+    } else {
+      core.setFailed(
+        `Review incomplete: ${successfulReviewsCount} file review(s) succeeded and ${failedReviewsCount} failed.`
+      );
+      return;
     }
 
     console.log('✅ RepoSage AI Pull Request Review completed successfully.');

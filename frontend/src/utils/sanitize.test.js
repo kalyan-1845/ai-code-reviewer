@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeHTML, sanitizeForStorage, sanitizeAuditEntry, sanitizeJSON } from './sanitize.js';
+import { sanitizeHTML, sanitizeForStorage, sanitizeAuditEntry, sanitizeJSON, sanitizeMermaidOutput } from './sanitize.js';
 
 describe('sanitizeHTML', () => {
   it('strips all tags when ALLOWED_TAGS is empty', () => {
@@ -105,5 +105,40 @@ describe('sanitizeJSON', () => {
   it('returns empty string for null/undefined', () => {
     expect(sanitizeJSON(null)).toBe('');
     expect(sanitizeJSON(undefined)).toBe('');
+  });
+});
+
+describe('sanitizeMermaidOutput', () => {
+  it('returns empty string for null/undefined', () => {
+    expect(sanitizeMermaidOutput(null)).toBe('');
+    expect(sanitizeMermaidOutput(undefined)).toBe('');
+  });
+
+  it('removes inline event handlers from SVG', () => {
+    const svg = '<svg><path d="M0 0" onmouseover="steal()"/></svg>';
+    const result = sanitizeMermaidOutput(svg);
+    expect(result).not.toContain('onmouseover');
+  });
+
+  it('sanitizes href javascript: in SVG', () => {
+    const svg = '<svg><a href="javascript:alert(1)"><text>click</text></a></svg>';
+    const result = sanitizeMermaidOutput(svg);
+    expect(result).not.toContain('javascript:');
+  });
+
+  it('preserves valid SVG elements and attributes', () => {
+    const svg = '<svg viewBox="0 0 100 100"><g><path d="M0 0" fill="blue"/><circle cx="10" cy="10" r="5"/></g></svg>';
+    const result = sanitizeMermaidOutput(svg);
+    expect(result).toContain('<svg');
+    expect(result).toContain('<path');
+    expect(result).toContain('<circle');
+    expect(result).toContain('fill="blue"');
+  });
+
+  it('blocks script tags in SVG', () => {
+    const svg = '<svg><script>evil()</script><path d="M0 0"/></svg>';
+    const result = sanitizeMermaidOutput(svg);
+    expect(result).not.toContain('<script>');
+    expect(result).toContain('<path');
   });
 });
