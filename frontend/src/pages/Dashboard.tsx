@@ -894,7 +894,7 @@ export default function Dashboard() {
       const data: BackendResponse = await response.json();
       setAnalysisResult(data);
       setSessionId(
-        data.sessionPersisted !== false ? data.sessionId ?? null : null
+        data.sessionPersisted === true ? data.sessionId ?? null : null
       );
       persistAuditHistory(data);
       setChatHistory([]);
