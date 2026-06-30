@@ -41,8 +41,8 @@ export default function SidebarLayout() {
               background: location.pathname === '/dashboard' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
               color: location.pathname === '/dashboard' ? '#60a5fa' : '#9ca3af',
               border: location.pathname === '/dashboard' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
-              ariaCurrent: location.pathname === '/dashboard' ? 'page' : undefined
             }}
+            aria-current={location.pathname === '/dashboard' ? 'page' : undefined}
           >
             <LayoutDashboard size={16} /> Analytics Dashboard
           </Link>
