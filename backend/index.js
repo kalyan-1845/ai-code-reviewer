@@ -1119,22 +1119,13 @@ app.post('/api/issues/create', requireApiKey, async (req, res) => {
     }
   }
 
-  try {
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(repoUrl);
-    } catch {
-      return res.status(400).json({ error: 'Invalid GitHub repository URL.' });
-    }
-    if (parsedUrl.hostname !== 'github.com') {
-      return res.status(400).json({ error: 'URL must be a github.com repository.' });
-    }
-    const pathParts = parsedUrl.pathname.replace(/\.git$/, '').replace(/\/$/, '').split('/').filter(Boolean);
-    if (pathParts.length < 2) {
-      return res.status(400).json({ error: 'Invalid GitHub repository URL structure.' });
-    }
-    const [owner, repo] = pathParts;
+  if (!isValidRepoUrl(repoUrl)) {
+    return res.status(400).json({ error: 'Invalid GitHub repository URL. Must be https://github.com/owner/repo.' });
+  }
+  const parsed = parseRepoUrl(repoUrl);
+  const { owner, repo } = parsed;
 
+  try {
     const octokit = new Octokit({ auth: token });
     
     console.log(`🤖 Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
@@ -1152,7 +1143,6 @@ app.post('/api/issues/create', requireApiKey, async (req, res) => {
       issueUrl: response.data.html_url,
       number: response.data.number
     });
-
   } catch (err) {
     console.error('❌ Create GitHub Issue Error:', err.message);
     return res.status(500).json({ error: `Failed to create issue: ${err.message}` });
