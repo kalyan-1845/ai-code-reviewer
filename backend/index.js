@@ -118,12 +118,29 @@ const exportLimiter = rateLimit({
 // Parse cookies for CSRF token validation
 app.use(cookieParser());
 
-// Capture raw body for webhook signature verification before JSON parsing
+// Raw body capture for webhook signature verification.
+// This runs BEFORE express.json() so the stream is consumed here for the
+// webhook route; all other routes fall through to express.json() below.
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/api/webhook') {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      req.rawBody = Buffer.concat(chunks);
+      try {
+        req.body = JSON.parse(req.rawBody.toString('utf-8'));
+      } catch {
+        return res.status(400).json({ error: 'Invalid webhook payload' });
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+});
+
 app.use(express.json({
   limit: process.env.JSON_BODY_LIMIT || '5mb',
-  verify: (req, _res, buf) => {
-    req.rawBody = buf;
-  }
 }));
 
 // CSRF token endpoint: generates a random token and sets it as a non-httpOnly cookie
