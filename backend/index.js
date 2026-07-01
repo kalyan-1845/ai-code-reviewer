@@ -23,6 +23,7 @@ import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import ReviewQueue from './utils/reviewQueue.js';
 import { scanFileContentForWarnings } from './utils/sanitizeFileContent.js';
+import { DANGEROUS_PHRASES } from './shared/dangerousPhrases.js';
 import { verifyPort } from './utils/envVerifier.js';
 import { mockAIReview } from './utils/mockAIReview.js';
 import AnalysisCache from './utils/analysisCache.js';
@@ -355,8 +356,8 @@ function cleanupTimers() {
 }
 
   // NOTE: This HOMOGLYPH_MAP, DANGEROUS_PHRASES list, and validation logic is
-  // duplicated in ai-engine/app.py. When modifying these definitions, update
-  // both files to keep them in sync and prevent security bypasses.
+  // now sourced from backend/shared/dangerousPhrases.js as the single source of
+  // truth. The ai-engine/app.py list should be kept in sync manually.
   const HOMOGLYPH_MAP = {
     // Lowercase Cyrillic
     '\u0430': 'a', '\u0435': 'e', '\u043E': 'o', '\u0441': 'c', '\u0440': 'p',
@@ -395,20 +396,6 @@ function cleanupTimers() {
       console.warn(`⚠️ System prompt contains non-Latin script characters: ${scriptRuns.join(', ')}`);
     }
   }
-
-  const DANGEROUS_PHRASES = [
-    'ignore all', 'ignore previous', 'ignore above',
-    'forget all', 'forget previous', 'you are not',
-    'override all', 'disregard', 'do not follow',
-    'new directive', 'system override', 'protocol change',
-    'roleplay mode', 'from now on', 'instead follow',
-    'real instruction', 'actual instruction', 'replace all',
-    'disobey', 'unauthorized', 'breach', 'bypass',
-    'your true purpose', 'you will now', 'ignore the above',
-    'ignore previous instructions', 'disregard all previous',
-    'forget your', 'you are programmed', 'override protocol',
-    'you have been', 'you must now', 'listen to me',
-  ];
 
   const DANGEROUS_REGEXES = DANGEROUS_PHRASES.map(phrase => {
     const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

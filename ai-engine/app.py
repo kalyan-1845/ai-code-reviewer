@@ -3,6 +3,7 @@ import json
 import re
 import time
 import asyncio
+import uuid
 import unicodedata
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, Header, Depends, Request
@@ -38,23 +39,51 @@ MAX_CHAT_FILES = int(os.getenv("MAX_CHAT_FILES", "20"))
 # Maximum seconds to wait for a single LLM API response before returning 504 (#786)
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 
+# Single source of truth for dangerous patterns — keep in sync with
+# backend/shared/dangerousPhrases.js
+DANGEROUS_PATTERNS = [
+    "ignore all previous instructions",
+    "ignore all instructions",
+    "ignore previous",
+    "ignore above",
+    "forget all previous",
+    "forget previous",
+    "you are not",
+    "you will now",
+    "you must now",
+    "from now on",
+    "override all",
+    "system override",
+    "new directive",
+    "protocol change",
+    "disregard all",
+    "disregard",
+    "do not follow",
+    "roleplay mode",
+    "instead follow",
+    "real instruction",
+    "actual instruction",
+    "replace all",
+    "disobey",
+    "unauthorized",
+    "breach",
+    "bypass",
+    "your true purpose",
+    "you are programmed",
+    "override protocol",
+    "you have been",
+    "listen to me",
+    "disable all",
+]
+
+def _neutralize_pattern(content: str, pattern: str) -> str:
+    """Replace a dangerous pattern with a non-deterministic placeholder."""
+    token = f"__NEUTRALIZED_{uuid.uuid4().hex[:8]}__"
+    return re.sub(re.escape(pattern), token, content, flags=re.IGNORECASE)
+
 def sanitize_file_content(content: str) -> str:
-    dangerous_patterns = [
-        "ignore all previous instructions",
-        "ignore all instructions",
-        "forget all previous",
-        "you are now",
-        "from now on",
-        "override all",
-        "system override",
-        "new directive",
-        "protocol change",
-        "disregard all",
-        "you will now",
-        "you must now",
-    ]
-    for i, pattern in enumerate(dangerous_patterns):
-        content = re.sub(re.escape(pattern), f"[INSTRUCTION_{i}_NEUTRALIZED]", content, flags=re.IGNORECASE)
+    for pattern in DANGEROUS_PATTERNS:
+        content = _neutralize_pattern(content, pattern)
     lines = content.split("\n")
     truncated_lines = [line[:500] for line in lines]
     wrapped = "\n".join(truncated_lines)
@@ -164,9 +193,8 @@ def sanitize_ai_output(text: str) -> str:
 
     return text
 
-# NOTE: This HOMOGLYPH_MAP, dangerous phrases list, and validation logic is
-# duplicated in backend/index.js. When modifying these definitions, update
-# both files to keep them in sync and prevent security bypasses.
+# NOTE: This HOMOGLYPH_MAP and dangerous phrases list (DANGEROUS_PATTERNS)
+# should be kept in sync with backend/shared/dangerousPhrases.js.
 HOMOGLYPH_MAP = {
     # Lowercase Cyrillic
     '\u0430': 'a', '\u0435': 'e', '\u043E': 'o', '\u0441': 'c', '\u0440': 'p',
@@ -215,23 +243,9 @@ def validate_system_prompt(prompt: str, max_len: int = 2000) -> str:
     
     homoglyph_normalized = normalize_homoglyphs(truncated)
     lower = homoglyph_normalized.lower()
-
-    dangerous = [
-        "ignore all", "ignore previous", "ignore above",
-        "forget all", "forget previous", "you are not",
-        "override all", "disregard", "do not follow",
-        "new directive", "system override", "protocol change",
-        "roleplay mode", "from now on", "instead follow",
-        "real instruction", "actual instruction", "replace all",
-        "disobey", "unauthorized", "breach", "bypass",
-        "your true purpose", "you will now", "ignore the above",
-        "ignore previous instructions", "disregard all previous",
-        "forget your", "you are programmed", "override protocol",
-        "you have been", "you must now", "listen to me",
-    ]
     
     found = []
-    for phrase in dangerous:
+    for phrase in DANGEROUS_PATTERNS:
         pattern = r"\s+".join(re.escape(w) for w in phrase.split())
         if re.search(pattern, lower):
             found.append(phrase)
