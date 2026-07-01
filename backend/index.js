@@ -643,6 +643,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       }
 
       // 4. Ingest files into RAG vector store for semantic search (non-fatal)
+      let ragStatus = 'skipped';
       try {
         const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
         const splitResp = await fetchWithTimeout(`${baseUrl}/api/rag/split`, {
@@ -652,14 +653,59 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
         }, 30000);
         if (splitResp.ok) {
           const { chunks } = await splitResp.json();
-          await fetchWithTimeout(`${baseUrl}/api/rag/ingest`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
-            body: JSON.stringify({ repo_url: repoUrl, chunks })
-          }, 60000);
+          // Retry ingest up to 3 times with exponential backoff
+          let ingestOk = false;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const ingestResp = await fetchWithTimeout(`${baseUrl}/api/rag/ingest`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+                body: JSON.stringify({ repo_url: repoUrl, chunks })
+              }, 60000);
+              if (ingestResp.ok) {
+                ingestOk = true;
+                // Post-ingestion verification: check chunks are stored
+                try {
+                  const verifyResp = await fetchWithTimeout(`${baseUrl}/api/rag/chunks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+                    body: JSON.stringify({ repo_url: repoUrl, limit: 1, offset: 0 })
+                  }, 10000);
+                  if (verifyResp.ok) {
+                    const verifyData = await verifyResp.json();
+                    if (verifyData.total_chunks > 0) {
+                      ragStatus = 'verified';
+                    } else {
+                      console.warn('⚠️ RAG post-ingestion verification: zero chunks found');
+                      ragStatus = 'stored_unverified';
+                    }
+                  } else {
+                    ragStatus = 'stored_unverified';
+                  }
+                } catch (verifyErr) {
+                  ragStatus = 'stored_unverified';
+                }
+                break;
+              } else {
+                throw new Error(`Ingest responded with ${ingestResp.status}`);
+              }
+            } catch (ingestErr) {
+              if (attempt < 3) {
+                const delay = Math.pow(2, attempt) * 1000;
+                console.warn(`⚠️ RAG ingest attempt ${attempt} failed, retrying in ${delay}ms:`, ingestErr.message);
+                await new Promise(r => setTimeout(r, delay));
+              } else {
+                console.error(`❌ RAG ingest failed after 3 attempts:`, ingestErr.message);
+                ragStatus = 'failed';
+              }
+            }
+          }
+        } else {
+          ragStatus = 'split_failed';
         }
       } catch (ragErr) {
         console.warn('⚠️ RAG ingestion failed (non-fatal):', ragErr.message);
+        ragStatus = 'failed';
       }
 
       // 5. Compute and persist analytics
@@ -824,6 +870,8 @@ if (reviewResult?.fileReviews) {
   chatAvailable: sessionPersisted,
 
   sessionPersisted,
+
+  ragStatus,
 
   ...(fileWarnings.length > 0
       ? { warnings: fileWarnings }

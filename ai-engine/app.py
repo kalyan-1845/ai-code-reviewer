@@ -942,24 +942,14 @@ async def split_files_for_rag(request: SplitRequest):
     )
 
 
-# 🟢 Route: Ingest chunks into ChromaDB for RAG
-_ingest_locks: dict[str, asyncio.Lock] = {}
-
-async def _get_ingest_lock(repo_url: str) -> asyncio.Lock:
-    if repo_url not in _ingest_locks:
-        _ingest_locks[repo_url] = asyncio.Lock()
-    return _ingest_locks[repo_url]
-
+# 🟢 Route: Ingest chunks into ChromaDB for RAG (uses upsert for cross-worker safety)
 @app.post("/api/rag/ingest", response_model=IngestionResponse)
 async def ingest_chunks_route(request: IngestRequest):
-    from rag import ingest_chunks, delete_repo_chunks
-    lock = await _get_ingest_lock(request.repo_url)
-    async with lock:
-        delete_repo_chunks(request.repo_url)
-        texts = [c.content for c in request.chunks]
-        metadatas = [c.metadata for c in request.chunks]
-        ids = [c.chunk_id for c in request.chunks]
-        count = ingest_chunks(texts, metadatas, ids, repo_url=request.repo_url)
+    from rag import upsert_chunks
+    texts = [c.content for c in request.chunks]
+    metadatas = [c.metadata for c in request.chunks]
+    ids = [c.chunk_id for c in request.chunks]
+    count = upsert_chunks(texts, metadatas, ids, repo_url=request.repo_url)
     return IngestionResponse(ingested_count=count)
 
 
