@@ -348,15 +348,8 @@ const dedupCleanupTimer = setInterval(() => {
 
 const cacheMetricsTimer = setInterval(() => {
   const stats = analysisCache.getStats();
-  console.log(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES} reviewedShas=${reviewedShas.size} exclusiveLocks=${reviewQueue._exclusiveLocks.size} entries=${stats.size}/${stats.maxEntries} mock=${stats.mockCount} avgAge=${stats.avgAgeMs}ms hitRate=${stats.hitRate}`);
+  console.log(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES} entries=${stats.size}/${stats.maxEntries} mock=${stats.mockCount} avgAge=${stats.avgAgeMs}ms hitRate=${stats.hitRate}`);
 }, 5 * 60 * 1000);
-
-// Periodic sweeper for stale exclusive locks to prevent unbounded memory growth
-const EXCLUSIVE_LOCK_CLEANUP_INTERVAL = 5 * 60 * 1000;
-const EXCLUSIVE_LOCK_TTL = 30 * 60 * 1000;
-const exclusiveLockCleanupTimer = setInterval(() => {
-  reviewQueue.cleanupStaleExclusiveLocks(EXCLUSIVE_LOCK_TTL);
-}, EXCLUSIVE_LOCK_CLEANUP_INTERVAL);
 
 // Proactive AI Engine health probe — when the engine recovers, clear mock cache entries
 const AI_ENGINE_HEALTH_INTERVAL = 30000;
@@ -382,7 +375,6 @@ const aiEngineHealthTimer = setInterval(async () => {
 function cleanupTimers() {
   clearInterval(dedupCleanupTimer);
   clearInterval(cacheMetricsTimer);
-  clearInterval(exclusiveLockCleanupTimer);
   clearInterval(aiEngineHealthTimer);
 }
 
