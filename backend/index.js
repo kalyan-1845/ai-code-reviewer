@@ -1073,8 +1073,21 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       repoEntry.count++;
       repoRequestCounts.set(repoKey, repoEntry);
 
-      // Blacklist SHA only AFTER successful enqueue — not before (#1368)
-      const enqueued = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
+      const enqueuePromise = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
+        try {
+          await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
+        } catch (error) {
+          console.error(`❌ Webhook review failed for ${headSha}:`, error.message);
+          const shaSet = reviewedShas.get(shaKey);
+          if (shaSet) {
+            shaSet.delete(headSha);
+            if (shaSet.size === 0) {
+              reviewedShas.delete(shaKey);
+            }
+          }
+        }
+      });
+      if (enqueuePromise) {
         if (!reviewedShas.has(shaKey)) {
           reviewedShas.set(shaKey, new Set());
         }
@@ -1089,22 +1102,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           }
         }, 3600000);
         shaTimeout.unref();
-
-        try {
-          await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
-        } catch (error) {
-          console.error(`❌ Webhook review failed for ${headSha}:`, error.message);
-          // Remove SHA from reviewedShas so it can be retried on next delivery
-          const shaSet = reviewedShas.get(shaKey);
-          if (shaSet) {
-            shaSet.delete(headSha);
-            if (shaSet.size === 0) {
-              reviewedShas.delete(shaKey);
-            }
-          }
-        }
-      });
-      if (enqueued === undefined) {
+      } else {
         return res.status(429).json({ error: 'Review queue full. Try again later.' });
       }
     }
