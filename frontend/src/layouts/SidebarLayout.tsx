@@ -35,6 +35,7 @@ export default function SidebarLayout() {
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <Link 
             to="/dashboard" 
+            aria-current={location.pathname === '/dashboard' ? 'page' : undefined}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '8px',
               textDecoration: 'none', fontSize: '13px', fontWeight: 600,
@@ -42,7 +43,6 @@ export default function SidebarLayout() {
               color: location.pathname === '/dashboard' ? '#60a5fa' : '#9ca3af',
               border: location.pathname === '/dashboard' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
             }}
-            aria-current={location.pathname === '/dashboard' ? 'page' : undefined}
           >
             <LayoutDashboard size={16} /> Analytics Dashboard
           </Link>
