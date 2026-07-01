@@ -1,10 +1,12 @@
 class ReviewQueue {
-  constructor(maxQueues = 100, maxItemsPerQueue = 50) {
+  constructor(maxQueues = 100, maxItemsPerQueue = 50, exclusiveLockTtlMs = 30 * 60 * 1000) {
     this._queues = new Map();
     this._queueLocks = new Map();
     this._exclusiveLocks = new Map();
+    this._exclusiveLocksTimestamps = new Map();
     this._maxQueues = maxQueues;
     this._maxItemsPerQueue = maxItemsPerQueue;
+    this._exclusiveLockTtlMs = exclusiveLockTtlMs;
   }
 
   async enqueue(key, item, processor) {
@@ -59,15 +61,29 @@ class ReviewQueue {
       try {
         return await fn();
       } finally {
-        if (this._exclusiveLocks.get(key) === next) {
+        const current = this._exclusiveLocks.get(key);
+        if (current === wrappedPromise) {
           this._exclusiveLocks.delete(key);
+          this._exclusiveLocksTimestamps.delete(key);
         }
       }
     });
-    this._exclusiveLocks.set(key, next.catch(err => {
+    const wrappedPromise = next.catch(err => {
       console.error(`ReviewQueue exclusive processing error for "${key}":`, err);
-    }));
+    });
+    this._exclusiveLocks.set(key, wrappedPromise);
+    this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });
     return next;
+  }
+
+  cleanupStaleExclusiveLocks(maxAgeMs) {
+    const now = Date.now();
+    for (const [key, entry] of this._exclusiveLocksTimestamps) {
+      if (now - entry.createdAt > maxAgeMs) {
+        this._exclusiveLocks.delete(key);
+        this._exclusiveLocksTimestamps.delete(key);
+      }
+    }
   }
 }
 

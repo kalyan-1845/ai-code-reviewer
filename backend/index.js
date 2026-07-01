@@ -346,12 +346,20 @@ const dedupCleanupTimer = setInterval(() => {
 }, 60 * 1000);
 
 const cacheMetricsTimer = setInterval(() => {
-  console.log(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES}`);
+  console.log(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES} exclusiveLocks=${reviewQueue._exclusiveLocks.size}`);
 }, 5 * 60 * 1000);
+
+// Periodic sweeper for stale exclusive locks to prevent unbounded memory growth
+const EXCLUSIVE_LOCK_CLEANUP_INTERVAL = 5 * 60 * 1000;
+const EXCLUSIVE_LOCK_TTL = 30 * 60 * 1000;
+const exclusiveLockCleanupTimer = setInterval(() => {
+  reviewQueue.cleanupStaleExclusiveLocks(EXCLUSIVE_LOCK_TTL);
+}, EXCLUSIVE_LOCK_CLEANUP_INTERVAL);
 
 function cleanupTimers() {
   clearInterval(dedupCleanupTimer);
   clearInterval(cacheMetricsTimer);
+  clearInterval(exclusiveLockCleanupTimer);
 }
 
   // NOTE: This HOMOGLYPH_MAP, DANGEROUS_PHRASES list, and validation logic is
@@ -845,6 +853,10 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
     return res.status(400).json({ error: 'Message is required.' });
   }
 
+  if (!sessionId) {
+    return res.status(400).json({ error: 'sessionId is required for chat.' });
+  }
+
   let validatedPrompt;
   try {
     validatedPrompt = validatePrompt(systemPrompt);
@@ -877,25 +889,22 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
   // lost-update race conditions when multiple messages arrive concurrently
   // for the same session (see issue #746).
   try {
-    await reviewQueue.runExclusive(sessionId || '__no_session__', async () => {
+    await reviewQueue.runExclusive(sessionId, async () => {
       let context = null;
-      if (sessionId) {
-        try {
-          context = await Session.findOne({ sessionId });
-          if (context) {
-            // Update lastAccessedAt for activity tracking. createdAt remains
-            // unchanged so the original TTL (30 minutes from creation) is
-            // preserved, preventing indefinite session extension (see issue #672).
-            await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $min: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
-          }
-        } catch (sessionErr) {
-          console.warn('⚠️ Failed to retrieve session from MongoDB:', sessionErr.message);
+      try {
+        context = await Session.findOne({ sessionId });
+        if (context) {
+          // Update lastAccessedAt for activity tracking. createdAt remains
+          // unchanged so the original TTL (30 minutes from creation) is
+          // preserved, preventing indefinite session extension (see issue #672).
+          await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $min: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
         }
+      } catch (sessionErr) {
+        console.warn('⚠️ Failed to retrieve session from MongoDB:', sessionErr.message);
       }
 
       if (!context) {
-        const hint = !sessionId ? 'sessionId is missing from the request' : 'session expired or not found';
-        res.status(400).json({ error: `No repository is currently active or ${hint}. Please analyze a repository first.` });
+        res.status(400).json({ error: `No repository is currently active or session expired or not found. Please analyze a repository first.` });
         return;
       }
 
