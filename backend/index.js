@@ -40,9 +40,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = verifyPort(process.env.PORT || 5000);
 
-// Initialize analysis cache with configurable TTL (default: 1 hour)
+// Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
-const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
+const ANALYSIS_CACHE_MOCK_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 120)(parseInt(process.env.ANALYSIS_CACHE_MOCK_TTL_SECONDS || '120', 10)) * 1000;
+const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, ANALYSIS_CACHE_MOCK_TTL_MS);
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
@@ -346,12 +347,43 @@ const dedupCleanupTimer = setInterval(() => {
 }, 60 * 1000);
 
 const cacheMetricsTimer = setInterval(() => {
-  console.log(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES}`);
+  const stats = analysisCache.getStats();
+  console.log(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES} reviewedShas=${reviewedShas.size} exclusiveLocks=${reviewQueue._exclusiveLocks.size} entries=${stats.size}/${stats.maxEntries} mock=${stats.mockCount} avgAge=${stats.avgAgeMs}ms hitRate=${stats.hitRate}`);
 }, 5 * 60 * 1000);
+
+// Periodic sweeper for stale exclusive locks to prevent unbounded memory growth
+const EXCLUSIVE_LOCK_CLEANUP_INTERVAL = 5 * 60 * 1000;
+const EXCLUSIVE_LOCK_TTL = 30 * 60 * 1000;
+const exclusiveLockCleanupTimer = setInterval(() => {
+  reviewQueue.cleanupStaleExclusiveLocks(EXCLUSIVE_LOCK_TTL);
+}, EXCLUSIVE_LOCK_CLEANUP_INTERVAL);
+
+// Proactive AI Engine health probe — when the engine recovers, clear mock cache entries
+const AI_ENGINE_HEALTH_INTERVAL = 30000;
+let aiEngineHealthy = true;
+
+const aiEngineHealthTimer = setInterval(async () => {
+  const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
+  try {
+    const resp = await fetchWithTimeout(`${baseUrl}/health`, {}, 5000);
+    if (resp.ok && !aiEngineHealthy) {
+      console.log('🟢 AI Engine recovered — clearing mock cache entries');
+      analysisCache.clearMockEntries();
+    }
+    aiEngineHealthy = resp.ok;
+  } catch {
+    if (aiEngineHealthy) {
+      console.warn('🔴 AI Engine health check failed');
+    }
+    aiEngineHealthy = false;
+  }
+}, AI_ENGINE_HEALTH_INTERVAL);
 
 function cleanupTimers() {
   clearInterval(dedupCleanupTimer);
   clearInterval(cacheMetricsTimer);
+  clearInterval(exclusiveLockCleanupTimer);
+  clearInterval(aiEngineHealthTimer);
 }
 
   // NOTE: This HOMOGLYPH_MAP, DANGEROUS_PHRASES list, and validation logic is

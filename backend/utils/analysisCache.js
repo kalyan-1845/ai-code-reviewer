@@ -6,12 +6,16 @@ import crypto from 'crypto';
  * (repoUrl, files hash, model, language, etc.) to avoid redundant LLM calls
  * for identical or very similar analyses.
  *
+ * Supports quality-aware caching: mock/fallback results get a shorter TTL
+ * so they are promptly replaced when the AI engine recovers.
+ *
  * TODO: For distributed deployments, migrate to Redis-backed cache.
  */
 
 class AnalysisCache {
-  constructor(ttlMs = 3600000) {
+  constructor(ttlMs = 3600000, mockTtlMs = 120000) {
     this.ttlMs = ttlMs;
+    this.mockTtlMs = mockTtlMs;
     this.maxEntries = 1000;
     this.cache = new Map();
     this.pending = new Map();
@@ -61,23 +65,23 @@ class AnalysisCache {
 
     const now = Date.now();
     if (now > entry.expiresAt) {
-      // Entry has expired, remove it
       this.cache.delete(key);
       this.stats.misses++;
       console.log(`⏰ Analysis cache expired for key ${key.slice(0, 8)}...`);
       return null;
     }
 
-    // Cache hit
     this.stats.hits++;
-    console.log(`✅ Analysis cache hit for key ${key.slice(0, 8)}... (${this.cache.size} entries, ${this.stats.hits} hits, ${this.stats.misses} misses)`);
+    const qualityLabel = entry.isMock ? '⚠️ MOCK' : '✅';
+    console.log(`${qualityLabel} Analysis cache hit for key ${key.slice(0, 8)}... (${this.cache.size} entries, ${this.stats.hits} hits, ${this.stats.misses} misses)`);
     return entry.result;
   }
 
   /**
    * Store an analysis result in the cache with expiration time.
+   * Options can include { isMock: true } for fallback results.
    */
-  set(key, result) {
+  set(key, result, options = {}) {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.maxEntries) {
@@ -87,9 +91,11 @@ class AnalysisCache {
         this.stats.evictions++;
       }
     }
-    const expiresAt = Date.now() + this.ttlMs;
-    this.cache.set(key, { result, expiresAt });
-    console.log(`💾 Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions)`);
+    const ttl = options.isMock ? this.mockTtlMs : this.ttlMs;
+    const expiresAt = Date.now() + ttl;
+    this.cache.set(key, { result, expiresAt, isMock: !!options.isMock });
+    const qualityLabel = options.isMock ? '⚠️ MOCK' : '💾';
+    console.log(`${qualityLabel} Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions, ttl=${ttl}ms)`);
   }
 
   /**
@@ -103,9 +109,12 @@ class AnalysisCache {
     if (existing) return existing;
     
     const promise = fetcher().then(result => {
-        this.set(key, result);
+        const cacheHint = (result && result._cacheHint) || {};
+        const resultData = (result && result._data !== undefined) ? result._data : result;
+        const isMock = cacheHint.isMock === true || result._mock === true;
+        this.set(key, resultData, { isMock });
         this.pending.delete(key);
-        return result;
+        return resultData;
     }).catch(err => {
         this.pending.delete(key);
         throw err;
@@ -116,6 +125,23 @@ class AnalysisCache {
   }
 
   /**
+   * Clear all mock entries from the cache (used when AI engine recovers).
+   */
+  clearMockEntries() {
+    let cleared = 0;
+    for (const [key, entry] of this.cache) {
+      if (entry.isMock) {
+        this.cache.delete(key);
+        cleared++;
+      }
+    }
+    if (cleared > 0) {
+      console.log(`🧹 Cleared ${cleared} mock cache entries after AI Engine recovery`);
+    }
+    return cleared;
+  }
+
+  /**
    * Clear all entries from the cache.
    */
   clear() {
@@ -123,6 +149,26 @@ class AnalysisCache {
     const size = this.cache.size;
     this.cache.clear();
     console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
+  }
+
+  /**
+   * Invalidate all cache entries whose key contains the given repo URL.
+   * Used by push-event webhook handling to evict stale analysis data.
+   */
+  invalidateByRepoUrl(repoUrl) {
+    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+    let removed = 0;
+    for (const [key] of this.cache) {
+      const keyStr = key;
+      if (keyStr.includes(normalized)) {
+        this.cache.delete(key);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      console.log(`🗑️  Invalidated ${removed} cache entries for ${repoUrl}`);
+    }
+    return removed;
   }
 
   /**
@@ -153,14 +199,24 @@ class AnalysisCache {
       ? ((this.stats.hits / (this.stats.hits + this.stats.misses)) * 100).toFixed(1)
       : 'N/A';
 
+    let totalAge = 0;
+    let mockCount = 0;
+    for (const entry of this.cache.values()) {
+      totalAge += Date.now() - (entry.expiresAt - this.ttlMs);
+      if (entry.isMock) mockCount++;
+    }
+
     return {
       size: this.cache.size,
       maxEntries: this.maxEntries,
       hits: this.stats.hits,
       misses: this.stats.misses,
+      mockCount,
+      avgAgeMs: this.cache.size > 0 ? Math.round(totalAge / this.cache.size) : 0,
       evictions: this.stats.evictions,
       hitRate: `${hitRate}%`,
       ttlMinutes: this.ttlMs / 1000 / 60,
+      mockTtlSeconds: this.mockTtlMs / 1000,
     };
   }
 
@@ -174,26 +230,6 @@ class AnalysisCache {
       return true;
     }
     return false;
-  }
-
-  /**
-   * Invalidate all cache entries by repo URL.
-   * Iterates the cache and removes entries whose key matches the given repo URL.
-   */
-  invalidateByRepoUrl(repoUrl) {
-    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
-    let removed = 0;
-    for (const [key] of this.cache) {
-      const keyStr = key;
-      if (keyStr.includes(normalized)) {
-        this.cache.delete(key);
-        removed++;
-      }
-    }
-    if (removed > 0) {
-      console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
-    }
-    return removed;
   }
 
   /**
