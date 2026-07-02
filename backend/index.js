@@ -613,7 +613,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
           mockRes._mock = true;
           return mockRes;
         }
-      });
+      }, repoUrl);
 
       // 3. Inject Regex-based Secret Detections & Complexity Metrics into the analysis result
       if (reviewResult && reviewResult.fileReviews) {

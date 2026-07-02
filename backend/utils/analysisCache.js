@@ -77,7 +77,7 @@ class AnalysisCache {
   /**
    * Store an analysis result in the cache with expiration time.
    */
-  set(key, result) {
+  set(key, result, repoUrl) {
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.maxEntries) {
@@ -88,14 +88,15 @@ class AnalysisCache {
       }
     }
     const expiresAt = Date.now() + this.ttlMs;
-    this.cache.set(key, { result, expiresAt });
+    const normalizedRepoUrl = repoUrl ? repoUrl.replace(/\/+$/, '').toLowerCase() : undefined;
+    this.cache.set(key, { result, expiresAt, repoUrl: normalizedRepoUrl });
     console.log(`💾 Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions)`);
   }
 
   /**
    * Retrieve a cached analysis result or fetch it safely if missing/concurrent.
    */
-  async getOrSet(key, fetcher) {
+  async getOrSet(key, fetcher, repoUrl) {
     const cached = this.get(key);
     if (cached) return cached;
     
@@ -103,7 +104,7 @@ class AnalysisCache {
     if (existing) return existing;
     
     const promise = fetcher().then(result => {
-        this.set(key, result);
+        this.set(key, result, repoUrl);
         this.pending.delete(key);
         return result;
     }).catch(err => {
@@ -183,9 +184,8 @@ class AnalysisCache {
   invalidateByRepoUrl(repoUrl) {
     const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
     let removed = 0;
-    for (const [key] of this.cache) {
-      const keyStr = key;
-      if (keyStr.includes(normalized)) {
+    for (const [key, entry] of this.cache) {
+      if (entry.repoUrl && entry.repoUrl === normalized) {
         this.cache.delete(key);
         removed++;
       }
