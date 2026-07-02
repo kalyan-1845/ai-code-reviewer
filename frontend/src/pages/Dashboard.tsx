@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import { useStore, ChatMessage } from '../store/useStore';
+import SkeletonLoader from "../components/SkeletonLoader";
 import SettingsModal from "../components/SettingsModal";
 import { MetricsChart } from '../components/MetricsChart';
 import { VulnerabilitiesBarChart } from '../components/VulnerabilitiesBarChart';
@@ -1734,18 +1735,18 @@ export default function Dashboard() {
               }}
             >
               <div style={{ display: "flex", gap: "10px", marginBottom: "4px" }}>
-                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
-                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
-                 <div className="skeleton" style={{ width: "140px", height: "32px" }}></div>
+                 <SkeletonLoader width="140px" height="32px" />
+                 <SkeletonLoader width="140px" height="32px" />
+                 <SkeletonLoader width="140px" height="32px" />
               </div>
               <div style={{ display: "flex", gap: "16px", height: "120px" }}>
-                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
-                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
-                 <div className="skeleton" style={{ flex: 1, height: "100%" }}></div>
+                 <SkeletonLoader style={{ flex: 1 }} height="100%" />
+                 <SkeletonLoader style={{ flex: 1 }} height="100%" />
+                 <SkeletonLoader style={{ flex: 1 }} height="100%" />
               </div>
               <div style={{ display: "flex", gap: "16px", flexGrow: 1 }}>
-                 <div className="skeleton" style={{ width: "260px", height: "400px" }}></div>
-                 <div className="skeleton" style={{ flexGrow: 1, height: "400px" }}></div>
+                 <SkeletonLoader width="260px" height="400px" />
+                 <SkeletonLoader style={{ flexGrow: 1 }} height="400px" />
               </div>
               <div style={{ textAlign: "center", marginTop: "10px" }}>
                  <div className="spin-slow" style={{ width: "24px", height: "24px", border: "2px solid rgba(168,85,247,0.1)", borderTopColor: "#a855f7", borderRadius: "50%", margin: "0 auto 8px auto" }}></div>
