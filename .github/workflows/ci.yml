@@ -15,22 +15,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install Frontend Dependencies
         run: |
           cd frontend
-          npm ci
+          pnpm install
 
       - name: Compile & Build Frontend
         run: |
           cd frontend
-          npm run build
+          pnpm run build
 
   build-github-action:
     name: Build GitHub Action (Node.js)
@@ -40,22 +45,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: github-action/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: github-action/pnpm-lock.yaml
 
       - name: Install Dependencies
         run: |
           cd github-action
-          npm ci
+          pnpm install
 
       - name: Compile Action
         run: |
           cd github-action
-          npm run build
+          pnpm run build
 
   check-backend:
     name: Check Backend & AI Engine
@@ -65,22 +75,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: backend/pnpm-lock.yaml
 
       - name: Install Backend Dependencies
         run: |
           cd backend
-          npm ci
+          pnpm install
 
       - name: Run Backend Tests
         run: |
           cd backend
-          npm test
+          pnpm test
 
       - name: Set up Python
         uses: actions/setup-python@v5
