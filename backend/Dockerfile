@@ -1,14 +1,22 @@
-FROM node:20-alpine
+# Stage 1: Builder
+FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
 
+RUN npm ci --omit=dev
+
+COPY . .
+
+# Stage 2: Production
+FROM node:20-alpine
+
+WORKDIR /usr/src/app
+
 RUN apk add --no-cache git
 
-RUN npm install
-
-COPY --chown=node:node . .
+COPY --chown=node:node --from=builder /usr/src/app .
 
 USER node
 
