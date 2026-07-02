@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import fs from 'fs';
 import path from 'path';
 import { categorizeFinding } from './severityConfig.js';
@@ -66,7 +67,7 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
       findingCount: allFindings.length,
     };
   } catch (err) {
-    console.warn(`Failed to write JSON report: ${err.message}`);
+    logger.warn(`Failed to write JSON report: ${err.message}`);
     return { success: false, error: err.message };
   }
 }
@@ -211,7 +212,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
       findingCount: allFindings.length,
     };
   } catch (err) {
-    console.warn(`Failed to write HTML report: ${err.message}`);
+    logger.warn(`Failed to write HTML report: ${err.message}`);
     return { success: false, error: err.message };
   }
 }

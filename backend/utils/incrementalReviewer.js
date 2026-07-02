@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
@@ -18,7 +19,7 @@ function getFileContentHash(filePath) {
     const content = fs.readFileSync(filePath, 'utf-8');
     return crypto.createHash('sha256').update(content).digest('hex');
   } catch (err) {
-    console.warn(`Failed to hash file ${filePath}: ${err.message}`);
+    logger.warn(`Failed to hash file ${filePath}: ${err.message}`);
     return null;
   }
 }
@@ -42,7 +43,7 @@ function loadCacheFile(cachePath) {
       return JSON.parse(content);
     }
   } catch (err) {
-    console.warn(`Failed to load cache file at ${fullPath}: ${err.message}`);
+    logger.warn(`Failed to load cache file at ${fullPath}: ${err.message}`);
   }
   return {};
 }
@@ -52,7 +53,7 @@ function saveCacheFile(cachePath, cache) {
   try {
     fs.writeFileSync(fullPath, JSON.stringify(cache, null, 2), 'utf-8');
   } catch (err) {
-    console.warn(`Failed to save cache file at ${fullPath}: ${err.message}`);
+    logger.warn(`Failed to save cache file at ${fullPath}: ${err.message}`);
   }
 }
 
@@ -69,7 +70,7 @@ async function getChangedFiles(repoPath, baseRef = 'main') {
 
     return changedFiles;
   } catch (err) {
-    console.warn(`Failed to get changed files from ${baseRef}: ${err.message}`);
+    logger.warn(`Failed to get changed files from ${baseRef}: ${err.message}`);
     return [];
   }
 }

@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import crypto from 'crypto';
 
 export const SESSION_COOKIE_NAME = 'reposage_session';
@@ -6,7 +7,7 @@ const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 function getConfiguredApiKey(res) {
   const validKey = process.env.REPOSAGE_API_KEY;
   if (!validKey) {
-    console.error('SECURITY WARNING: REPOSAGE_API_KEY is not set in backend/.env');
+    logger.error('SECURITY WARNING: REPOSAGE_API_KEY is not set in backend/.env');
     res.status(500).json({ error: 'Server misconfiguration: Authentication is not set up.' });
     return null;
   }
@@ -100,6 +101,6 @@ export const requireApiKey = (req, res, next) => {
     return;
   }
 
-  console.warn(`Unauthorized request attempt to ${req.originalUrl}`);
+  logger.warn(`Unauthorized request attempt to ${req.originalUrl}`);
   return res.status(401).json({ error: 'Unauthorized: Invalid or missing API Key.' });
 };

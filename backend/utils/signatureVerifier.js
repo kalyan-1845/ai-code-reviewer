@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import crypto from 'crypto';
 
 export function verifyWebhookSignature(rawBody, signature, secret) {
@@ -13,7 +14,7 @@ export function verifyWebhookSignature(rawBody, signature, secret) {
     if (a.length !== b.length) return false;
     return crypto.timingSafeEqual(a, b);
   } catch (err) {
-    console.error("Webhook signature verification failed:", err);
+    logger.error("Webhook signature verification failed:", err);
     return false;
   }
 }

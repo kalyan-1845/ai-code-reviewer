@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import mongoose from 'mongoose';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/reposage';
@@ -18,13 +19,13 @@ export async function connectDatabase() {
   })
     .then((conn) => {
       isConnected = true;
-      console.log('✅ Connected to MongoDB via config/db.js');
+      logger.info('✅ Connected to MongoDB via config/db.js');
       return conn;
     })
     .catch((err) => {
       isConnected = false;
       connectionPromise = null;
-      console.warn('⚠️ MongoDB connection failed, analytics will not be persisted:', err.message);
+      logger.warn('⚠️ MongoDB connection failed, analytics will not be persisted:', err.message);
       return null;
     });
 
@@ -41,7 +42,7 @@ export async function ensureConnection() {
   let reconnectAttempts = 0;
   while (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
     reconnectAttempts++;
-    console.log(`🔄 Reconnecting to MongoDB (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+    logger.info(`🔄 Reconnecting to MongoDB (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
     try {
       await connectDatabase();
       if (isConnected) {
@@ -55,7 +56,7 @@ export async function ensureConnection() {
   }
 
   reconnectAttempts = 0;
-  console.warn('⚠️ Max reconnect attempts reached. Running without database.');
+  logger.warn('⚠️ Max reconnect attempts reached. Running without database.');
   return false;
 }
 
@@ -65,20 +66,20 @@ export async function closeDatabase() {
     await mongoose.disconnect();
     isConnected = false;
     connectionPromise = null;
-    console.log('🔌 MongoDB connection closed.');
+    logger.info('🔌 MongoDB connection closed.');
   } catch (err) {
-    console.warn('⚠️ Error closing MongoDB connection:', err.message);
+    logger.warn('⚠️ Error closing MongoDB connection:', err.message);
   }
 }
 
 mongoose.connection.on('disconnected', () => {
   isConnected = false;
   connectionPromise = null;
-  console.warn('⚠️ MongoDB disconnected. Will re-attempt connection on next request.');
+  logger.warn('⚠️ MongoDB disconnected. Will re-attempt connection on next request.');
 });
 
 mongoose.connection.on('error', (err) => {
-  console.warn('⚠️ MongoDB connection error:', err.message);
+  logger.warn('⚠️ MongoDB connection error:', err.message);
 });
 
 export default {

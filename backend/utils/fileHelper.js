@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -68,7 +69,7 @@ export async function getFolderSize(dirPath) {
       }
     }
   } catch (err) {
-    console.warn(`getFolderSize: could not read path ${dirPath}: ${err.message}`);
+    logger.warn(`getFolderSize: could not read path ${dirPath}: ${err.message}`);
   }
   return size;
 }

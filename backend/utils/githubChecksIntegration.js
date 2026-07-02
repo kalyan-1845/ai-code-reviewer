@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 const GITHUB_API_BASE = 'https://api.github.com';
 const MAX_ANNOTATIONS_PER_REQUEST = 50;
 
@@ -35,7 +36,7 @@ async function createCheckRun(octokit, owner, repo, sha, findings) {
   }
 
   if (!findings || findings.length === 0) {
-    console.log('No findings to report as check run');
+    logger.info('No findings to report as check run');
     return null;
   }
 
@@ -66,9 +67,9 @@ async function createCheckRun(octokit, owner, repo, sha, findings) {
     try {
       const response = await octokit.rest.checks.create(checkRunPayload);
       checkRunIds.push(response.data.id);
-      console.log(`Check run batch ${i + 1} created with ID: ${response.data.id}`);
+      logger.info(`Check run batch ${i + 1} created with ID: ${response.data.id}`);
     } catch (error) {
-      console.error(`Failed to create check run batch ${i + 1}:`, error.message);
+      logger.error(`Failed to create check run batch ${i + 1}:`, error.message);
       throw error;
     }
   }

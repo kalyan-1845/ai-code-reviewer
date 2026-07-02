@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -31,7 +32,7 @@ function readStore() {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
     } catch (err) {
-        console.warn('⚠️ Failed to read analytics store, starting fresh:', err.message);
+        logger.warn('⚠️ Failed to read analytics store, starting fresh:', err.message);
         return [];
     }
 }
@@ -40,7 +41,7 @@ function writeStore(records) {
     try {
         fs.writeFileSync(STORE_PATH, JSON.stringify(records, null, 2));
     } catch (err) {
-        console.warn('⚠️ Failed to write analytics store:', err.message);
+        logger.warn('⚠️ Failed to write analytics store:', err.message);
     }
 }
 

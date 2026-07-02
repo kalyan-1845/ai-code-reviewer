@@ -1,3 +1,4 @@
+import logger from './utils/logger.js';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -115,7 +116,7 @@ app.use(cors({
 let redisClient;
 if (process.env.REDIS_URL) {
   redisClient = new Redis(process.env.REDIS_URL);
-  redisClient.on('error', (err) => console.error('Redis Client Error', err));
+  redisClient.on('error', (err) => logger.error('Redis Client Error', err));
 }
 
 // Per-IP rate limiting for expensive endpoints
@@ -439,7 +440,7 @@ async function generateDependencyReport(clonePath) {
         const found = await checker(filePath);
         deps.push(...found);
       } catch (err) {
-        console.warn(`⚠️ Failed to parse ${manifest}: ${err.message}`);
+        logger.warn(`⚠️ Failed to parse ${manifest}: ${err.message}`);
       }
     }
   }
@@ -477,7 +478,7 @@ const dedupCleanupTimer = setInterval(() => {
 }, 60 * 1000);
 
 const cacheMetricsTimer = setInterval(() => {
-  console.log(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES} exclusiveLocks=${reviewQueue._exclusiveLocks.size}`);
+  logger.info(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES} exclusiveLocks=${reviewQueue._exclusiveLocks.size}`);
 }, 5 * 60 * 1000);
 
 // Periodic sweeper for stale exclusive locks to prevent unbounded memory growth
@@ -531,7 +532,7 @@ function cleanupTimers() {
       return 'other';
     }))];
     if (scriptRuns.includes('cyrillic') || scriptRuns.includes('greek')) {
-      console.warn(`⚠️ System prompt contains non-Latin script characters: ${scriptRuns.join(', ')}`);
+      logger.warn(`⚠️ System prompt contains non-Latin script characters: ${scriptRuns.join(', ')}`);
     }
   }
 
@@ -635,19 +636,19 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       }
     } catch (err) {
       if (err.status !== 403 && err.status !== 429) {
-        console.error(`❌ GitHub API error verifying size for ${owner}/${repoName}: ${err.message}`);
+        logger.error(`❌ GitHub API error verifying size for ${owner}/${repoName}: ${err.message}`);
         return res.status(502).json({ error: `Failed to verify repository size: ${err.message}. Check GITHUB_PAT configuration.` });
       }
-      console.warn(`Could not verify repository size via GitHub API for ${owner}/${repoName}. Proceeding to clone with filters...`);
+      logger.warn(`Could not verify repository size via GitHub API for ${owner}/${repoName}. Proceeding to clone with filters...`);
     }
   } else {
-    console.warn('No GITHUB_PAT configured — skipping pre-clone size check. Set MAX_REPO_SIZE_MB to enforce limit at clone time.');
+    logger.warn('No GITHUB_PAT configured — skipping pre-clone size check. Set MAX_REPO_SIZE_MB to enforce limit at clone time.');
   }
 
   const uniqueId = crypto.randomUUID();
   const clonePath = path.join(tempReposDir, `${repoName}_${uniqueId}`);
 
-  console.log(`🚀 Cloning: ${repoUrl} into ${clonePath}`);
+  logger.info(`🚀 Cloning: ${repoUrl} into ${clonePath}`);
 
   // Clone repo using simple-git to prevent shell injection and handle timeouts
   try {
@@ -663,7 +664,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       return res.status(413).json({ error: `Repository exceeds the maximum allowed size of ${maxRepoSizeMB}MB.` });
     }
   } catch (error) {
-    console.error(`❌ Git Clone Error: ${error.message}`);
+    logger.error(`❌ Git Clone Error: ${error.message}`);
     await deleteFolderRecursive(clonePath);
     return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public and within size limits.' });
   }
@@ -678,7 +679,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
         return res.status(400).json({ error: 'No supportable source code files found in the repository.' });
       }
 
-      console.log(`📁 Found ${files.length} valid source files. Checking cache...`);
+      logger.info(`📁 Found ${files.length} valid source files. Checking cache...`);
 
       // 1.3. Scan files for prompt injection patterns
       const fileWarnings = [];
@@ -689,14 +690,14 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
         }
       }
       if (fileWarnings.length > 0) {
-        console.warn(`⚠️ Found ${fileWarnings.length} potential prompt injection patterns across ${files.length} files`);
+        logger.warn(`⚠️ Found ${fileWarnings.length} potential prompt injection patterns across ${files.length} files`);
       }
 
       // 1.5. Check analysis cache to avoid redundant LLM calls for identical analyses
       const cacheKey = analysisCache.generateKey(repoUrl, files, { model, language, company, systemPrompt: validatedPrompt, temperature, maxTokens, batchSize });
       let cacheHit = !!analysisCache.get(cacheKey);
       if (cacheHit) {
-        console.log(`🎯 Using cached analysis result for this repository and configuration`);
+        logger.info(`🎯 Using cached analysis result for this repository and configuration`);
       }
 
       let reviewResult = await analysisCache.getOrSet(cacheKey, async () => {
@@ -718,7 +719,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
             throw new Error('AI engine responded with error');
           }
         } catch (err) {
-          console.warn('⚠️ FastAPI engine not running, falling back to local Express review handler');
+          logger.warn('⚠️ FastAPI engine not running, falling back to local Express review handler');
           const mockRes = mockAIReview(files, model);
           mockRes._mock = true;
           return mockRes;
@@ -778,10 +779,10 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
           });
           sessionPersisted = true;
         } catch (sessionErr) {
-          console.warn('⚠️ Failed to persist session context:', sessionErr.message);
+          logger.warn('⚠️ Failed to persist session context:', sessionErr.message);
         }
       } else {
-        console.warn(`⚠️ Session too large (${(estimatedSize / 1024 / 1024).toFixed(1)}MB), skipping persistence`);
+        logger.warn(`⚠️ Session too large (${(estimatedSize / 1024 / 1024).toFixed(1)}MB), skipping persistence`);
       }
 
       // 4. Ingest files into RAG vector store for semantic search (non-fatal)
@@ -818,7 +819,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
                     if (verifyData.total_chunks > 0) {
                       ragStatus = 'verified';
                     } else {
-                      console.warn('⚠️ RAG post-ingestion verification: zero chunks found');
+                      logger.warn('⚠️ RAG post-ingestion verification: zero chunks found');
                       ragStatus = 'stored_unverified';
                     }
                   } else {
@@ -834,10 +835,10 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
             } catch (ingestErr) {
               if (attempt < 3) {
                 const delay = Math.pow(2, attempt) * 1000;
-                console.warn(`⚠️ RAG ingest attempt ${attempt} failed, retrying in ${delay}ms:`, ingestErr.message);
+                logger.warn(`⚠️ RAG ingest attempt ${attempt} failed, retrying in ${delay}ms:`, ingestErr.message);
                 await new Promise(r => setTimeout(r, delay));
               } else {
-                console.error(`❌ RAG ingest failed after 3 attempts:`, ingestErr.message);
+                logger.error(`❌ RAG ingest failed after 3 attempts:`, ingestErr.message);
                 ragStatus = 'failed';
               }
             }
@@ -846,7 +847,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
           ragStatus = 'split_failed';
         }
       } catch (ragErr) {
-        console.warn('⚠️ RAG ingestion failed (non-fatal):', ragErr.message);
+        logger.warn('⚠️ RAG ingestion failed (non-fatal):', ragErr.message);
         ragStatus = 'failed';
       }
 
@@ -944,7 +945,7 @@ const prSummary = {
             analyzedAt: new Date(),
           });
         } catch (dbErr) {
-          console.warn('⚠️ Failed to persist analytics:', dbErr.message);
+          logger.warn('⚠️ Failed to persist analytics:', dbErr.message);
         }
       }
 
@@ -1000,7 +1001,7 @@ if (reviewResult?.fileReviews) {
 });
 
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       await deleteFolderRecursive(clonePath);
       return res.status(500).json({ error: 'An error occurred during repository analysis.' });
     }
@@ -1038,7 +1039,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
         // Verify session ownership to prevent IDOR (issue #742):
         // only the client that created the session may access it.
         if (session.ownerToken && session.ownerToken !== req.clientId) {
-          console.warn(`⚠️ Session ownership mismatch: session ${sessionId} ownerToken=${session.ownerToken} request clientId=${req.clientId} (possible auth-method change or cookie refresh)`);
+          logger.warn(`⚠️ Session ownership mismatch: session ${sessionId} ownerToken=${session.ownerToken} request clientId=${req.clientId} (possible auth-method change or cookie refresh)`);
           return res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
         }
         // Update lastAccessedAt for the sliding-window TTL (see issue #743).
@@ -1047,7 +1048,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
         await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $min: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
       }
     } catch (sessionErr) {
-      console.warn('❌ Failed to retrieve session from MongoDB:', sessionErr.message);
+      logger.warn('❌ Failed to retrieve session from MongoDB:', sessionErr.message);
     }
   }
   // Use reviewQueue to serialize requests per session, preventing
@@ -1065,7 +1066,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
           await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $min: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
         }
       } catch (sessionErr) {
-        console.warn('⚠️ Failed to retrieve session from MongoDB:', sessionErr.message);
+        logger.warn('⚠️ Failed to retrieve session from MongoDB:', sessionErr.message);
       }
 
       if (!context) {
@@ -1102,7 +1103,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
           throw new Error(errText || 'AI engine chat request failed');
         }
       } catch (err) {
-        console.error('❌ Chat API Error:', err.message);
+        logger.error('❌ Chat API Error:', err.message);
 
         // Simple local fallback if Python FastAPI server is offline
         const responseMessage = `[Fallback Response] I see you are asking about: "${message}". Currently, the FastAPI AI Engine is offline, so I cannot analyze the full codebase for your query. Please make sure the AI Engine service is running on port 8000.`;
@@ -1110,7 +1111,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
       }
     });
   } catch (err) {
-    console.error('❌ Chat serialization error:', err);
+    logger.error('❌ Chat serialization error:', err);
     if (!res.headersSent) {
       res.status(500).json({ error: 'An internal error occurred while processing your message.' });
     }
@@ -1142,7 +1143,7 @@ app.post('/api/rag/query', requireApiKey, async (req, res) => {
       throw new Error(errText || 'AI engine RAG query failed');
     }
   } catch (err) {
-    console.error('❌ RAG Query API Error:', err.message);
+    logger.error('❌ RAG Query API Error:', err.message);
     return res.status(502).json({ error: 'RAG query failed: AI Engine unavailable.' });
   }
 });
@@ -1175,7 +1176,7 @@ const webhookLimiter = rateLimit({
 app.post('/api/webhook', webhookLimiter, async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error('❌ WEBHOOK_SECRET not configured');
+    logger.error('❌ WEBHOOK_SECRET not configured');
     return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
   }
 
@@ -1185,7 +1186,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
-    console.warn('❌ Webhook signature verification failed');
+    logger.warn('❌ Webhook signature verification failed');
     return res.status(401).json({ error: 'Invalid webhook signature' });
   }
 
@@ -1209,7 +1210,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       const repoUrl = `https://github.com/${owner}/${repo}`;
       const removed = analysisCache.invalidateByRepoUrl(repoUrl);
       if (removed > 0) {
-        console.log(`📡 Push event invalidated ${removed} cache entries for ${repoUrl}`);
+        logger.info(`📡 Push event invalidated ${removed} cache entries for ${repoUrl}`);
       }
     }
   }
@@ -1220,7 +1221,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Missing x-github-delivery header.' });
     }
     if (processedDeliveries.has(deliveryId)) {
-      console.log(`⏭️ Skipping duplicate webhook delivery: ${deliveryId}`);
+      logger.info(`⏭️ Skipping duplicate webhook delivery: ${deliveryId}`);
       return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
     }
     processedDeliveries.set(deliveryId, Date.now());
@@ -1236,11 +1237,11 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       const shaKey = `${owner}/${repo}/#${pullNumber}`;
       const shaAlreadyReviewed = reviewedShas.get(shaKey)?.has(headSha);
       if (shaAlreadyReviewed) {
-        console.log(`⏭️ Already reviewed commit ${headSha.substring(0,7)} for PR #${pullNumber}`);
+        logger.info(`⏭️ Already reviewed commit ${headSha.substring(0,7)} for PR #${pullNumber}`);
         return res.json({ success: true, message: 'Webhook received (duplicate SHA skipped).' });
       }
       
-      console.log(`📡 GitHub Webhook received: PR #${pullNumber} ${action} (${headSha.substring(0,7)}) in ${owner}/${repo}`);
+      logger.info(`📡 GitHub Webhook received: PR #${pullNumber} ${action} (${headSha.substring(0,7)}) in ${owner}/${repo}`);
 
       if (reviewQueue._queues.size >= reviewQueue._maxQueues) {
         return res.status(429).json({ error: 'Too many pending reviews. Try again later.' });
@@ -1255,7 +1256,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         repoEntry.windowStart = now;
       }
       if (repoEntry.count >= REPO_MAX_REQUESTS) {
-        console.warn(`⚠️ Rate limit exceeded for repository ${repoKey}`);
+        logger.warn(`⚠️ Rate limit exceeded for repository ${repoKey}`);
         return res.status(429).json({ error: 'Too many requests for this repository. Try again later.' });
       }
       repoEntry.count++;
@@ -1265,7 +1266,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         try {
           await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
         } catch (error) {
-          console.error(`❌ Webhook review failed for ${headSha}:`, error.message);
+          logger.error(`❌ Webhook review failed for ${headSha}:`, error.message);
           const shaMap = reviewedShas.get(shaKey);
           if (shaMap) {
             shaMap.delete(headSha);
@@ -1334,7 +1335,7 @@ app.post('/api/issues/create', requireApiKey, issueLimiter, async (req, res) => 
 
     const octokit = new Octokit({ auth: token });
     
-    console.log(`🤖 Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
+    logger.info(`🤖 Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
     
     const response = await octokit.rest.issues.create({
       owner,
@@ -1351,7 +1352,7 @@ app.post('/api/issues/create', requireApiKey, issueLimiter, async (req, res) => 
     });
 
   } catch (err) {
-    console.error('❌ Create GitHub Issue Error:', err.message);
+    logger.error('❌ Create GitHub Issue Error:', err.message);
     return res.status(500).json({ error: `Failed to create issue: ${err.message}` });
   }
 });
@@ -1372,12 +1373,12 @@ app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
 async function runWebhookReview(owner, repo, pullNumber, headSha) {
   const token = process.env.GITHUB_PAT;
   if (!token) {
-    console.warn("⚠️ GITHUB_PAT not set in backend/.env. Cannot run webhook PR review.");
+    logger.warn("⚠️ GITHUB_PAT not set in backend/.env. Cannot run webhook PR review.");
     return;
   }
 
   const octokit = new Octokit({ auth: token });
-  console.log(`🔍 Fetching diff for PR #${pullNumber}...`);
+  logger.info(`🔍 Fetching diff for PR #${pullNumber}...`);
 
   const { data: pullRequest } = await octokit.rest.pulls.get({
     owner,
@@ -1385,7 +1386,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     pull_number: pullNumber
   });
   if (headSha && pullRequest.head.sha !== headSha) {
-    console.log(`⏭️ Skipping stale review ${headSha.substring(0, 7)}; current head is ${pullRequest.head.sha.substring(0, 7)}.`);
+    logger.info(`⏭️ Skipping stale review ${headSha.substring(0, 7)}; current head is ${pullRequest.head.sha.substring(0, 7)}.`);
     return;
   }
 
@@ -1400,13 +1401,13 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   });
 
   if (!diff) {
-    console.warn("⚠️ No diff found for this PR.");
+    logger.warn("⚠️ No diff found for this PR.");
     return;
   }
 
   // 2. Parse files and changes
   const { files: parsedFiles, binaryFiles: parsedBinaryFiles } = parseDiff(diff);
-  console.log(`📁 Found ${parsedFiles.length} files in PR diff.`);
+  logger.info(`📁 Found ${parsedFiles.length} files in PR diff.`);
 
   const commentsToPost = [];
   const filesToReview = [];
@@ -1431,7 +1432,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       });
     });
     if (scanTruncated) {
-      console.warn(`⚠️ Secrets scan truncated for ${file.path}: ${scanReason} (total ${scanTotal} changes)`);
+      logger.warn(`⚠️ Secrets scan truncated for ${file.path}: ${scanReason} (total ${scanTotal} changes)`);
     }
 
     // Save list to send to FastAPI AI Engine
@@ -1445,7 +1446,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   let aiEngineQueried = false;
 
   if (filesToReview.length > 0) {
-    console.log(`🧠 Querying AI engine for ${filesToReview.length} files...`);
+    logger.info(`🧠 Querying AI engine for ${filesToReview.length} files...`);
     const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
     
     try {
@@ -1462,7 +1463,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
           result.comments.forEach(c => {
             const validLines = validChangedLines.get(c.path);
             if (!validLines || !validLines.has(Number(c.line))) {
-              console.warn(`⚠️ Skipping invalid inline comment location ${c.path}:${c.line}`);
+              logger.warn(`⚠️ Skipping invalid inline comment location ${c.path}:${c.line}`);
               return;
             }
             // Avoid duplicate comments if secrets scanner already flagged it
@@ -1475,13 +1476,13 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
         aiEngineQueried = true;
       }
     } catch (err) {
-      console.warn("⚠️ FastAPI AI Engine error, posting local scans only:", err.message);
+      logger.warn("⚠️ FastAPI AI Engine error, posting local scans only:", err.message);
     }
   }
 
   // 3. Post consolidated review comment back to GitHub PR
   if (commentsToPost.length > 0) {
-    console.log(`✍️ Posting PR Review with ${commentsToPost.length} inline comments...`);
+    logger.info(`✍️ Posting PR Review with ${commentsToPost.length} inline comments...`);
     let body = `## 🛡️ RepoSage AI Code Review Audit Completed!\n\n`;
     if (!aiEngineQueried && filesToReview.length > 0) {
       body += `⚠️ **Limited Review:** The AI engine was unreachable during this review. Only regex-based secret scanning was performed. AI-powered bug/performance/style analysis was skipped. Please ensure the AI Engine service is running and re-trigger the review for a complete audit.\n\n`;
@@ -1497,7 +1498,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       comments: commentsToPost
     });
   } else if (!aiEngineQueried) {
-    console.error('❌ AI Engine was unreachable — posting COMMENT review instead of auto-approving.');
+    logger.error('❌ AI Engine was unreachable — posting COMMENT review instead of auto-approving.');
     await octokit.rest.pulls.createReview({
       owner,
       repo,
@@ -1511,7 +1512,7 @@ The AI engine could not be reached during this review. The secrets scanner found
 Please ensure the AI Engine service is running and re-trigger the review for a complete analysis.`
     });
   } else {
-    console.log('🎉 No code issues or recommendations found. Posting approval review...');
+    logger.info('🎉 No code issues or recommendations found. Posting approval review...');
     await octokit.rest.pulls.createReview({
       owner,
       repo,
@@ -1530,9 +1531,9 @@ Please ensure the AI Engine service is running and re-trigger the review for a c
         issue_number: pullNumber,
         labels: ['gssoc:approved']
       });
-      console.log('✅ Added gssoc:approved label to PR');
+      logger.info('✅ Added gssoc:approved label to PR');
     } catch (err) {
-      console.warn('⚠️ Could not add gssoc:approved label:', err.message);
+      logger.warn('⚠️ Could not add gssoc:approved label:', err.message);
     }
   }
 }
@@ -1750,7 +1751,7 @@ app.post('/api/reports/pdf', requireApiKey, exportLimiter, (req, res) => {
     res.send(pdf);
   });
   doc.on('error', error => {
-    console.error('PDF report generation failed:', error);
+    logger.error('PDF report generation failed:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to generate PDF report.' });
     }
@@ -1884,7 +1885,7 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
 
     return res.json({ trends });
   } catch (err) {
-    console.error('❌ Analytics Trends Error:', err.message);
+    logger.error('❌ Analytics Trends Error:', err.message);
     return res.status(500).json({ error: 'Failed to retrieve analytics trends.' });
   }
 });
@@ -1991,6 +1992,6 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
 });
 
 app.listen(PORT, () => {
-  console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
+  logger.info(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
 });
 // TODO: Issue #397 - Bug [Backend]: Temp folder leakage if Node process crashes during analysis

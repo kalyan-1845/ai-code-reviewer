@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 // Prepared for future use — not yet wired into the backend pipeline.
 // Remove this notice when the first consumer import is added.
 
@@ -36,7 +37,7 @@ function extractCodeCells(notebookPath) {
     const notebook = JSON.parse(content);
 
     if (!notebook.cells || !Array.isArray(notebook.cells)) {
-      console.warn(`Invalid notebook format in ${notebookPath}: no cells array`);
+      logger.warn(`Invalid notebook format in ${notebookPath}: no cells array`);
       return [];
     }
 
@@ -58,7 +59,7 @@ function extractCodeCells(notebookPath) {
 
     return codeCells;
   } catch (err) {
-    console.warn(`Failed to parse notebook ${notebookPath}: ${err.message}`);
+    logger.warn(`Failed to parse notebook ${notebookPath}: ${err.message}`);
     return [];
   }
 }
@@ -102,7 +103,7 @@ function parseCellsWithMetadata(notebookPath) {
 
     return cellsWithMetadata;
   } catch (err) {
-    console.warn(`Failed to parse cells with metadata from ${notebookPath}: ${err.message}`);
+    logger.warn(`Failed to parse cells with metadata from ${notebookPath}: ${err.message}`);
     return [];
   }
 }

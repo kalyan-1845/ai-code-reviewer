@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 class ReviewQueue {
   constructor(maxQueues = 100, maxItemsPerQueue = 50, exclusiveLockTtlMs = 30 * 60 * 1000) {
     this._queues = new Map();
@@ -12,14 +13,14 @@ class ReviewQueue {
   async enqueue(key, item, processor) {
     if (!this._queues.has(key)) {
       if (this._queues.size >= this._maxQueues) {
-        console.warn(`ReviewQueue: dropping item for "${key}" — queue limit (${this._maxQueues}) reached`);
+        logger.warn(`ReviewQueue: dropping item for "${key}" — queue limit (${this._maxQueues}) reached`);
         return;
       }
       this._queues.set(key, []);
     }
     const queue = this._queues.get(key);
     if (queue.length >= this._maxItemsPerQueue) {
-      console.warn(`ReviewQueue: dropping item for "${key}" — per-queue limit (${this._maxItemsPerQueue}) reached`);
+      logger.warn(`ReviewQueue: dropping item for "${key}" — per-queue limit (${this._maxItemsPerQueue}) reached`);
       return;
     }
     queue.push(item);
@@ -39,14 +40,14 @@ class ReviewQueue {
         try {
           await processor(item);
         } catch (err) {
-          console.error(`Review processing failed for ${key}:`, err);
+          logger.error(`Review processing failed for ${key}:`, err);
         }
       }
       this._queueLocks.delete(key);
       this._queues.delete(key);
     });
     this._queueLocks.set(key, next.catch(err => {
-      console.error(`ReviewQueue processing error for "${key}":`, err);
+      logger.error(`ReviewQueue processing error for "${key}":`, err);
     }));
     return next;
   }
@@ -69,7 +70,7 @@ class ReviewQueue {
       }
     });
     const wrappedPromise = next.catch(err => {
-      console.error(`ReviewQueue exclusive processing error for "${key}":`, err);
+      logger.error(`ReviewQueue exclusive processing error for "${key}":`, err);
     });
     this._exclusiveLocks.set(key, wrappedPromise);
     this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });

@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
@@ -21,7 +22,7 @@ function loadConfigFile(repoPath) {
       return mergeWithDefaults(config);
     }
   } catch (err) {
-    console.warn(`Failed to load .codereview.yml: ${err.message}`);
+    logger.warn(`Failed to load .codereview.yml: ${err.message}`);
   }
 
   return DEFAULT_CONFIG;

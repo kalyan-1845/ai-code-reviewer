@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import fs from 'fs';
 import path from 'path';
 import { HARD_SKIP_DIRS } from './skipConstants.js';
@@ -107,7 +108,7 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
             content: content
           });
         } catch (e) {
-          console.warn(`Could not read file: ${filePath}`, e.message);
+          logger.warn(`Could not read file: ${filePath}`, e.message);
         }
       }
     }

@@ -1,3 +1,4 @@
+import logger from './utils/logger.js';
 import { Octokit } from '@octokit/rest';
 import dotenv from 'dotenv';
 import readline from 'readline';
@@ -7,7 +8,7 @@ dotenv.config();
 const token = process.env.GITHUB_PAT;
 
 if (!token || token.includes('your_github_personal_access_token_here')) {
-  console.error('❌ Error: Please set a valid GITHUB_PAT in backend/.env');
+  logger.error('❌ Error: Please set a valid GITHUB_PAT in backend/.env');
   process.exit(1);
 }
 
@@ -17,11 +18,11 @@ const owner = 'kalyan-1845';
 const repo = 'ai-code-reviewer';
 
 async function autoAssignAndMerge() {
-  console.log(`🤖 Starting GitHub Automator for ${owner}/${repo}...`);
+  logger.info(`🤖 Starting GitHub Automator for ${owner}/${repo}...`);
 
   try {
     // 1. Check for 'assign me' in issues
-    console.log('\n🔍 Checking for "assign me" comments on open issues...');
+    logger.info('\n🔍 Checking for "assign me" comments on open issues...');
     const issues = await octokit.paginate(octokit.rest.issues.listForRepo, {
       owner,
       repo,
@@ -44,21 +45,21 @@ async function autoAssignAndMerge() {
           const assignees = issue.assignees.map(a => a.login);
           
           if (!assignees.includes(userToAssign)) {
-            console.log(`👉 Assigning @${userToAssign} to Issue #${issue.number}...`);
+            logger.info(`👉 Assigning @${userToAssign} to Issue #${issue.number}...`);
             await octokit.rest.issues.addAssignees({
               owner,
               repo,
               issue_number: issue.number,
               assignees: [userToAssign]
             });
-            console.log(`✅ Assigned @${userToAssign} to Issue #${issue.number}`);
+            logger.info(`✅ Assigned @${userToAssign} to Issue #${issue.number}`);
           }
         }
       }
     }
 
     // 2. Check for Open PRs
-    console.log('\n🔍 Checking for open PRs to review and merge...');
+    logger.info('\n🔍 Checking for open PRs to review and merge...');
     const prs = await octokit.paginate(octokit.rest.pulls.list, {
       owner,
       repo,
@@ -67,16 +68,16 @@ async function autoAssignAndMerge() {
     });
 
     if (prs.length === 0) {
-      console.log('✅ No open Pull Requests found.');
+      logger.info('✅ No open Pull Requests found.');
     } else {
       for (const pr of prs) {
-        console.log(`\n📦 PR #${pr.number}: ${pr.title}`);
-        console.log(`   Author: @${pr.user.login}`);
-        console.log(`   URL: ${pr.html_url}`);
-        console.log(`   Draft: ${pr.draft ? 'Yes' : 'No'}`);
+        logger.info(`\n📦 PR #${pr.number}: ${pr.title}`);
+        logger.info(`   Author: @${pr.user.login}`);
+        logger.info(`   URL: ${pr.html_url}`);
+        logger.info(`   Draft: ${pr.draft ? 'Yes' : 'No'}`);
 
         if (pr.draft) {
-          console.log(`   ⏭️ Skipping draft PR #${pr.number}`);
+          logger.info(`   ⏭️ Skipping draft PR #${pr.number}`);
           continue;
         }
 
@@ -88,11 +89,11 @@ async function autoAssignAndMerge() {
         const labelNames = labels.map(l => l.name);
         const mergeLabel = process.env.AUTO_MERGE_LABEL || 'gssoc:approved';
         if (!labelNames.includes(mergeLabel)) {
-          console.log(`   ⏭️ Skipping PR #${pr.number} — missing label "${mergeLabel}"`);
+          logger.info(`   ⏭️ Skipping PR #${pr.number} — missing label "${mergeLabel}"`);
           continue;
         }
 
-        console.log(`   Merging PR #${pr.number}...`);
+        logger.info(`   Merging PR #${pr.number}...`);
         try {
           await octokit.rest.pulls.merge({
             owner,
@@ -100,18 +101,18 @@ async function autoAssignAndMerge() {
             pull_number: pr.number,
             merge_method: 'squash'
           });
-          console.log(`✅ Merged PR #${pr.number}`);
+          logger.info(`✅ Merged PR #${pr.number}`);
         } catch (e) {
-          console.error(`❌ Failed to merge PR #${pr.number}:`, e.message);
+          logger.error(`❌ Failed to merge PR #${pr.number}:`, e.message);
         }
       }
-      console.log('\n💡 Auto-merge complete. Draft PRs and PRs without the configured label are skipped.');
+      logger.info('\n💡 Auto-merge complete. Draft PRs and PRs without the configured label are skipped.');
     }
 
-    console.log('\n🎉 Automator finished successfully!');
+    logger.info('\n🎉 Automator finished successfully!');
 
   } catch (error) {
-    console.error('❌ An error occurred:', error.message);
+    logger.error('❌ An error occurred:', error.message);
   }
 }
 

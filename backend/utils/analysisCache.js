@@ -1,3 +1,4 @@
+import logger from '../utils/logger.js';
 import crypto from 'crypto';
 
 /**
@@ -64,13 +65,13 @@ class AnalysisCache {
       // Entry has expired, remove it
       this.cache.delete(key);
       this.stats.misses++;
-      console.log(`⏰ Analysis cache expired for key ${key.slice(0, 8)}...`);
+      logger.info(`⏰ Analysis cache expired for key ${key.slice(0, 8)}...`);
       return null;
     }
 
     // Cache hit
     this.stats.hits++;
-    console.log(`✅ Analysis cache hit for key ${key.slice(0, 8)}... (${this.cache.size} entries, ${this.stats.hits} hits, ${this.stats.misses} misses)`);
+    logger.info(`✅ Analysis cache hit for key ${key.slice(0, 8)}... (${this.cache.size} entries, ${this.stats.hits} hits, ${this.stats.misses} misses)`);
     return entry.result;
   }
 
@@ -89,7 +90,7 @@ class AnalysisCache {
     }
     const expiresAt = Date.now() + this.ttlMs;
     this.cache.set(key, { result, expiresAt });
-    console.log(`💾 Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions)`);
+    logger.info(`💾 Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions)`);
   }
 
   /**
@@ -122,7 +123,7 @@ class AnalysisCache {
     this._stopSweeper();
     const size = this.cache.size;
     this.cache.clear();
-    console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
+    logger.info(`🗑️  Cleared analysis cache (${size} entries removed)`);
   }
 
   /**
@@ -170,7 +171,7 @@ class AnalysisCache {
   invalidate(key) {
     if (this.cache.has(key)) {
       this.cache.delete(key);
-      console.log(`❌ Invalidated cache entry for key ${key.slice(0, 8)}...`);
+      logger.info(`❌ Invalidated cache entry for key ${key.slice(0, 8)}...`);
       return true;
     }
     return false;
@@ -191,7 +192,7 @@ class AnalysisCache {
       }
     }
     if (removed > 0) {
-      console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
+      logger.info(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
     }
     return removed;
   }
