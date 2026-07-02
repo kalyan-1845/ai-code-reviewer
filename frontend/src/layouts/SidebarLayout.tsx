@@ -25,12 +25,12 @@ export default function SidebarLayout() {
         flexDirection: 'column',
         padding: '20px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '40px' }}>
+        <header style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '40px' }}>
           <div style={{ background: 'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)', padding: '8px', borderRadius: '8px' }}>
             <Sparkles size={20} style={{ color: 'white' }} />
           </div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--title-color)' }}>RepoSage</h2>
-        </div>
+        </header>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <Link 
@@ -56,7 +56,7 @@ export default function SidebarLayout() {
           </div>
         </nav>
 
-        <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <footer style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
           <button
             onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
             style={{
@@ -70,7 +70,7 @@ export default function SidebarLayout() {
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             {theme === "dark" ? "Light Mode" : "Dark Mode"}
           </button>
-        </div>
+        </footer>
       </aside>
 
       <main style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>

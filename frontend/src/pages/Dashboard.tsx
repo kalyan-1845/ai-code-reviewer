@@ -953,7 +953,7 @@ export default function Dashboard() {
       }}
     >
       {/* 🚀 Main Layout Split */}
-      <main
+      <div
         style={{
           flexGrow: 1,
           padding: "8px 24px 24px 24px",
@@ -964,7 +964,7 @@ export default function Dashboard() {
         }}
       >
         {/* LEFT COLUMN: Setup & GSSoC Contributor Portal */}
-        <section
+        <aside
           style={{ display: "flex", flexDirection: "column", gap: "20px" }}
         >
           {/* Setup Console */}
@@ -1646,7 +1646,7 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-        </section>
+        </aside>
 
         {/* RIGHT COLUMN: Loading, Dashboard Audit, or Fallback Welcome Screen */}
         <section
@@ -4197,7 +4197,7 @@ export default function Dashboard() {
             </div>
           )}
         </section>
-      </main>
+      </div>
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
       )}
