@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { Suspense } from 'react';
 import SidebarLayout from './layouts/SidebarLayout';
-import Dashboard from './pages/Dashboard';
 
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 
 export default function App() {
     return (
@@ -14,7 +15,14 @@ export default function App() {
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
                     {/* The new Analytics Dashboard Route */}
-                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route 
+                        path="/dashboard" 
+                        element={
+                            <Suspense fallback={<div style={{ padding: '24px', color: '#fff' }}>Loading...</div>}>
+                                <Dashboard />
+                            </Suspense>
+                        } 
+                    />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
 
                 </Route>
