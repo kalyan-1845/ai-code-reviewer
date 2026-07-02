@@ -30,6 +30,8 @@ import AnalysisCache from './utils/analysisCache.js';
 import Analytics from './models/Analytics.js';
 import Session, { estimateSessionSize } from './models/Session.js';
 import { connectDatabase, ensureConnection, closeDatabase } from './config/db.js';
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsdoc from 'swagger-jsdoc';
 
 dotenv.config();
 
@@ -42,6 +44,42 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = verifyPort(process.env.PORT || 5000);
+
+if (process.env.NODE_ENV !== 'production') {
+  const swaggerOptions = {
+    definition: {
+      openapi: '3.0.0',
+      info: {
+        title: 'RepoSage Backend API',
+        version: '1.0.0',
+        description: 'API documentation for RepoSage AI Code Reviewer'
+      },
+      servers: [
+        {
+          url: `http://localhost:${PORT}`,
+          description: 'Development server'
+        }
+      ],
+      components: {
+        securitySchemes: {
+          ApiKeyAuth: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'x-api-key'
+          }
+        }
+      },
+      security: [
+        {
+          ApiKeyAuth: []
+        }
+      ]
+    },
+    apis: [fileURLToPath(import.meta.url)],
+  };
+  const swaggerSpecs = swaggerJsdoc(swaggerOptions);
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
+}
 
 const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill-llama-70b", "llama-3.1-8b-instant", "gemma2-9b-it"];
 
@@ -258,7 +296,17 @@ function csrfProtection(req, res, next) {
 // Apply CSRF protection to all state-changing routes
 app.use(csrfProtection);
 
-app.post('/api/session', requireApiKey, (req, res) => {
+/**
+ * @swagger
+ * /api/session:
+ *   post:
+ *     summary: Authenticate with API key
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Successfully authenticated, returns CSRF token
+ */
+app.post('/api/session', authLimiter, requireApiKey, (req, res) => {
   const sessionCookie = createFrontendSessionCookie(res);
   if (!sessionCookie) return;
 
@@ -271,6 +319,16 @@ app.post('/api/session', requireApiKey, (req, res) => {
   return res.json({ success: true, csrfToken });
 });
 
+/**
+ * @swagger
+ * /api/logout:
+ *   post:
+ *     summary: Log out and clear session
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Successfully logged out
+ */
 // Logout endpoint — clears session and CSRF token
 app.post('/api/logout', requireApiKey, (req, res) => {
   const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
@@ -283,6 +341,16 @@ app.post('/api/logout', requireApiKey, (req, res) => {
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
 
+/**
+ * @swagger
+ * /api/csrf-token:
+ *   get:
+ *     summary: Retrieve a fresh CSRF token
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Returns CSRF token
+ */
 // CSRF token retrieval for clients that need a fresh token
 app.get('/api/csrf-token', (req, res) => {
   const csrfToken = generateCsrfToken();
@@ -500,6 +568,27 @@ function requireJsonContentType(req, res, next) {
   next();
 }
 
+/**
+ * @swagger
+ * /api/analyze:
+ *   post:
+ *     summary: Analyze a GitHub repository
+ *     tags: [Analysis]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               repoUrl:
+ *                 type: string
+ *               model:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Successful analysis
+ */
 // 🟢 Route: GitHub Import & AI Review
 app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, async (req, res) => {
   let { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
