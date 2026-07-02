@@ -1,13 +1,15 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import React, { Suspense } from 'react';
 import SidebarLayout from './layouts/SidebarLayout';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 
 export default function App() {
     return (
-        <BrowserRouter>
-            <Routes>
+        <ErrorBoundary>
+            <BrowserRouter>
+                <Routes>
                 {/* Wrap all routes inside the SidebarLayout */}
                 <Route element={<SidebarLayout />}>
 
@@ -28,5 +30,6 @@ export default function App() {
                 </Route>
             </Routes>
         </BrowserRouter>
+        </ErrorBoundary>
     );
 }
