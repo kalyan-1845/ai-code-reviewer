@@ -109,6 +109,8 @@ Ask natural-language questions about any codebase — _"Explain the authenticati
 
 ## 🏗️ Architecture
 
+For a detailed breakdown of the system architecture, please see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
 ```mermaid
 graph TB
     subgraph Frontend["🎨 Frontend (React + Vite)"]
