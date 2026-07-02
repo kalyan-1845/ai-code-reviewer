@@ -22,3 +22,5 @@ export default function App() {
         </BrowserRouter>
     );
 }
+
+// TODO: Complete full implementation for #1307 - Tech Debt: Extract overly long Dashboard.tsx into smaller sub-components
