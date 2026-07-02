@@ -654,9 +654,11 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       const estimatedSize = estimateSessionSize(storedFiles);
 
       let sessionId = null;
+      let sessionOwnerToken = null;
       let sessionPersisted = false;
       if (estimatedSize <= MAX_SESSION_DOC_SIZE) {
         sessionId = crypto.randomUUID();
+        sessionOwnerToken = crypto.randomUUID();
         try {
           await Session.create({
             sessionId,
@@ -664,7 +666,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
             repoName,
             files: storedFiles,
             lastAccessedAt: new Date(),
-            ownerToken: req.clientId,
+            ownerToken: sessionOwnerToken,
           });
           sessionPersisted = true;
         } catch (sessionErr) {
@@ -879,6 +881,8 @@ if (reviewResult?.fileReviews) {
 
   sessionId,
 
+  sessionOwnerToken,
+
   chatAvailable: sessionPersisted,
 
   sessionPersisted,
@@ -899,7 +903,7 @@ if (reviewResult?.fileReviews) {
 
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async (req, res) => {
-  let { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, useRag, ragSources } = req.body;
+  let { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
 
   const chatNormalized = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
   if (!chatNormalized) {
@@ -931,8 +935,8 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
       if (session) {
         // Verify session ownership to prevent IDOR (issue #742):
         // only the client that created the session may access it.
-        if (session.ownerToken && session.ownerToken !== req.clientId) {
-          console.warn(`⚠️ Session ownership mismatch: session ${sessionId} ownerToken=${session.ownerToken} request clientId=${req.clientId} (possible auth-method change or cookie refresh)`);
+        if (session.ownerToken && session.ownerToken !== sessionOwnerToken) {
+          console.warn(`⚠️ Session ownership mismatch: session ${sessionId} ownerToken=${session.ownerToken} request sessionOwnerToken=${sessionOwnerToken} (invalid or missing session token)`);
           return res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
         }
         // Update lastAccessedAt for the sliding-window TTL (see issue #743).
