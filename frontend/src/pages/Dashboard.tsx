@@ -320,6 +320,7 @@ export default function Dashboard() {
   // Response & View State
   const { analysisResult, setAnalysisResult, selectedFile, setSelectedFile, chatHistory, setChatHistory } = useStore();
   const [fileFilterQuery, setFileFilterQuery] = useState('');
+  // Debounced search to prevent heavy filtering on every keystroke
   const debouncedFileFilterQuery = useDebounce(fileFilterQuery, 300);
   const [isClearHovered, setIsClearHovered] = useState(false);
   const [activeExtFilter, setActiveExtFilter] = useState('All');
