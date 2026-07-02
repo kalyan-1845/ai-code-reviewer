@@ -378,40 +378,11 @@ async function generateDependencyReport(clonePath) {
   return { dependencies: deps };
 }
 
-// Webhook deduplication and queuing state (module scope to persist across requests)
-const reviewQueue = new ReviewQueue();
-const processedDeliveries = new Map();
-const reviewedShas = new Map();
-const DELIVERY_TTL = 60 * 60 * 1000;
-const MAX_DELIVERY_ENTRIES = 5000;
+// Webhook deduplication using Redis SETNX for cross-instance safety
+// TTL matches GitHub's webhook retry window (300 seconds)
+const DELIVERY_REDIS_TTL = 300;
 
-const dedupCleanupTimer = setInterval(() => {
-  const now = Date.now();
-  for (const [deliveryId, timestamp] of processedDeliveries) {
-    if (now - timestamp > DELIVERY_TTL) {
-      processedDeliveries.delete(deliveryId);
-    }
-  }
-  while (processedDeliveries.size > MAX_DELIVERY_ENTRIES) {
-    const oldest = processedDeliveries.keys().next().value;
-    if (oldest !== undefined) processedDeliveries.delete(oldest);
-  }
-  for (const [shaKey, shaMap] of reviewedShas) {
-    for (const [headSha, timestamp] of shaMap) {
-      if (now - timestamp > DELIVERY_TTL) {
-        shaMap.delete(headSha);
-      }
-    }
-    if (shaMap.size === 0) {
-      reviewedShas.delete(shaKey);
-    }
-  }
-}, 60 * 1000);
 
-const cacheMetricsTimer = setInterval(() => {
-  if (process.env.NODE_ENV === 'production') return;
-  console.log(`[cache] processedDeliveries=${processedDeliveries.size}/${MAX_DELIVERY_ENTRIES} exclusiveLocks=${reviewQueue._exclusiveLocks.size}`);
-}, 5 * 60 * 1000);
 
 // Periodic sweeper for stale exclusive locks to prevent unbounded memory growth
 const EXCLUSIVE_LOCK_CLEANUP_INTERVAL = 5 * 60 * 1000;
@@ -421,8 +392,6 @@ const exclusiveLockCleanupTimer = setInterval(() => {
 }, EXCLUSIVE_LOCK_CLEANUP_INTERVAL);
 
 function cleanupTimers() {
-  clearInterval(dedupCleanupTimer);
-  clearInterval(cacheMetricsTimer);
   clearInterval(exclusiveLockCleanupTimer);
 }
 
@@ -1137,11 +1106,13 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     if (!deliveryId || typeof deliveryId !== 'string') {
       return res.status(400).json({ error: 'Missing x-github-delivery header.' });
     }
-    if (processedDeliveries.has(deliveryId)) {
+    const deliveryDedupKey = `webhook:delivery:${deliveryId}`;
+    const isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
+    if (isDuplicate === 0) {
       console.log(`⏭️ Skipping duplicate webhook delivery: ${deliveryId}`);
       return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
     }
-    processedDeliveries.set(deliveryId, Date.now());
+    await redisClient.expire(deliveryDedupKey, DELIVERY_REDIS_TTL);
 
     const action = payload.action;
     if (action === 'opened' || action === 'synchronize') {
@@ -1152,7 +1123,8 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       const reviewKey = `${owner}/${repo}/#${pullNumber}`;
 
       const shaKey = `${owner}/${repo}/#${pullNumber}`;
-      const shaAlreadyReviewed = reviewedShas.get(shaKey)?.has(headSha);
+      const shaDedupKey = `webhook:sha:${shaKey}`;
+      const shaAlreadyReviewed = await redisClient.sismember(shaDedupKey, headSha);
       if (shaAlreadyReviewed) {
         console.log(`⏭️ Already reviewed commit ${headSha.substring(0,7)} for PR #${pullNumber}`);
         return res.json({ success: true, message: 'Webhook received (duplicate SHA skipped).' });
@@ -1184,20 +1156,12 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
         } catch (error) {
           console.error(`❌ Webhook review failed for ${headSha}:`, error.message);
-          const shaMap = reviewedShas.get(shaKey);
-          if (shaMap) {
-            shaMap.delete(headSha);
-            if (shaMap.size === 0) {
-              reviewedShas.delete(shaKey);
-            }
-          }
+          await redisClient.srem(shaDedupKey, headSha);
         }
       });
       if (enqueuePromise) {
-        if (!reviewedShas.has(shaKey)) {
-          reviewedShas.set(shaKey, new Map());
-        }
-        reviewedShas.get(shaKey).set(headSha, Date.now());
+        await redisClient.sadd(shaDedupKey, headSha);
+        await redisClient.expire(shaDedupKey, DELIVERY_REDIS_TTL);
       } else {
         return res.status(429).json({ error: 'Review queue full. Try again later.' });
       }

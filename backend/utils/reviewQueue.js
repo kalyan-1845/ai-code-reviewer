@@ -11,20 +11,26 @@ class ReviewQueue {
   }
 
   async enqueue(key, item, processor) {
-    if (!this._queues.has(key)) {
-      if (this._queues.size >= this._maxQueues) {
-        console.warn(`ReviewQueue: dropping item for "${key}" — queue limit (${this._maxQueues}) reached`);
+    const prev = this._queueLocks.get(key) || Promise.resolve();
+    const next = prev.then(async () => {
+      if (!this._queues.has(key)) {
+        if (this._queues.size >= this._maxQueues) {
+          console.warn(`ReviewQueue: dropping item for "${key}" — queue limit (${this._maxQueues}) reached`);
+          return;
+        }
+        this._queues.set(key, []);
+      }
+      const queue = this._queues.get(key);
+      if (queue.length >= this._maxItemsPerQueue) {
+        console.warn(`ReviewQueue: dropping item for "${key}" — per-queue limit (${this._maxItemsPerQueue}) reached`);
         return;
       }
-      this._queues.set(key, []);
-    }
-    const queue = this._queues.get(key);
-    if (queue.length >= this._maxItemsPerQueue) {
-      console.warn(`ReviewQueue: dropping item for "${key}" — per-queue limit (${this._maxItemsPerQueue}) reached`);
-      return;
-    }
-    queue.push(item);
-    return this._processNext(key, processor);
+      queue.push(item);
+    });
+    this._queueLocks.set(key, next.catch(err => {
+      console.error(`ReviewQueue enqueue error for "${key}":`, err);
+    }));
+    return next.then(() => this._processNext(key, processor));
   }
 
   async _processNext(key, processor) {
