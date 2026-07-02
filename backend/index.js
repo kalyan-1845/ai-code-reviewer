@@ -120,6 +120,27 @@ const exportLimiter = rateLimit({
   message: { error: 'Too many export requests. Please slow down and retry after 1 minute.' }
 });
 
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
+  message: { error: 'Too many requests from this IP, please try again after 15 minutes.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit each IP to 20 auth requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
+  message: { error: 'Too many authentication attempts. Please try again later.' }
+});
+
+// Apply global rate limiting to all requests
+app.use(globalLimiter);
+
 // Parse cookies for CSRF token validation
 app.use(cookieParser());
 
@@ -258,7 +279,7 @@ function csrfProtection(req, res, next) {
 // Apply CSRF protection to all state-changing routes
 app.use(csrfProtection);
 
-app.post('/api/session', requireApiKey, (req, res) => {
+app.post('/api/session', authLimiter, requireApiKey, (req, res) => {
   const sessionCookie = createFrontendSessionCookie(res);
   if (!sessionCookie) return;
 
