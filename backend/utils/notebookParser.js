@@ -1,3 +1,6 @@
+// Prepared for future use — not yet wired into the backend pipeline.
+// Remove this notice when the first consumer import is added.
+
 import fs from 'fs';
 
 const MAGIC_COMMAND_REGEX = /^(%|!).*$/gm;

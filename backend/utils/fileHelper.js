@@ -60,9 +60,9 @@ export async function getFolderSize(dirPath) {
     const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
     for (const file of files) {
       const filePath = path.join(dirPath, file.name);
-      if (file.isDirectory()) {
+      if (file.isDirectory() && !file.isSymbolicLink()) {
         size += await getFolderSize(filePath);
-      } else {
+      } else if (!file.isSymbolicLink()) {
         const stats = await fs.promises.stat(filePath);
         size += stats.size;
       }

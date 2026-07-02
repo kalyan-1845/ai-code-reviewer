@@ -36,7 +36,7 @@ export const rules = [
   },
   {
     type: "Common Environment Credential",
-    regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]+['"]/gi,
+    regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*(['"])([^\n]{0,256}?)\1/gi,
     description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
   },
   {
@@ -51,7 +51,7 @@ export const rules = [
   },
   {
     type: "JWT Token Check",
-    regex: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*\b/g,
+    regex: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]+\b/g,
     description: "Potential hardcoded JSON Web Token (JWT) detected. Exposing JWT credentials allows authentication bypass or identity impersonation."
   },
   {

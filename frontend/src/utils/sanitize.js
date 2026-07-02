@@ -18,11 +18,17 @@ export function sanitizeForStorage(dirty) {
 
 export function sanitizeMermaidOutput(svg) {
   if (!svg || typeof svg !== 'string') return '';
-  let sanitized = svg.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+  let sanitized = svg
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
+    .replace(/<foreignObject[\s\S]*?\/>/gi, '')
+    .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
   sanitized = sanitized.replace(/href\s*=\s*["']\s*javascript:/gi, 'href="#disabled"');
   sanitized = DOMPurify.sanitize(sanitized, {
     ALLOWED_TAGS: ['svg', 'g', 'path', 'circle', 'rect', 'line', 'text', 'tspan', 'defs', 'marker', 'polygon', 'polyline', 'ellipse'],
     ALLOWED_ATTR: ['d', 'fill', 'stroke', 'viewBox', 'x', 'y', 'cx', 'cy', 'r', 'rx', 'ry', 'width', 'height', 'transform', 'style', 'class'],
+    FORBID_TAGS: ['script', 'foreignObject', 'style', 'iframe', 'object', 'embed', 'link', 'meta'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit', 'onreset', 'onkeydown', 'onkeyup'],
   });
   return sanitized;
 }

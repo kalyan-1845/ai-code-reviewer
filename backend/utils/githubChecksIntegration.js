@@ -80,7 +80,7 @@ async function createCheckRun(octokit, owner, repo, sha, findings) {
   };
 }
 
-module.exports = {
+export {
   createCheckRun,
   severityToGitHubLevel,
   formatAnnotations,

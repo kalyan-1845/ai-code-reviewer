@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Parse a `.reposageignore` file and return an array of ignore patterns.
@@ -71,4 +71,4 @@ function shouldIgnore(filePath, repoRoot) {
   return false;
 }
 
-module.exports = { parseIgnoreFile, shouldIgnore };
+export { parseIgnoreFile, shouldIgnore };

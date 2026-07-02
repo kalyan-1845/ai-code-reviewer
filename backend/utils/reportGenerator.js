@@ -1,50 +1,18 @@
 import fs from 'fs';
 import path from 'path';
+import { categorizeFinding } from './severityConfig.js';
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 const SCHEMA_VERSION = '1.0';
-
-function categorizeFinding(finding) {
-  const message = (finding.message || '').toLowerCase();
-  const ruleId = (finding.rule_id || '').toLowerCase();
-
-  if (message.includes('security') || ruleId.includes('security') ||
-      message.includes('injection') || message.includes('credential') ||
-      message.includes('vulnerability')) {
-    return 'security';
-  }
-
-  if (message.includes('performance') || ruleId.includes('performance') ||
-      message.includes('n+1') || message.includes('cache') ||
-      message.includes('optimization')) {
-    return 'performance';
-  }
-
-  if (message.includes('style') || ruleId.includes('style') ||
-      message.includes('formatting') || message.includes('comma')) {
-    return 'style';
-  }
-
-  return 'other';
-}
-
-function groupFindingsBySeverity(findings) {
-  const grouped = {
-    error: [],
-    warning: [],
-    info: [],
-  };
-
-  for (const finding of findings) {
-    const severity = finding.severity || 'info';
-    if (grouped[severity]) {
-      grouped[severity].push(finding);
-    } else {
-      grouped.info.push(finding);
-    }
-  }
-
-  return grouped;
-}
 
 function generateJSONReport(repoName, files, reviewResult, outputPath) {
   const allFindings = [];
@@ -146,12 +114,12 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
 
   const findingRows = sortedFindings.map(f => `
     <tr>
-      <td>${f.file}</td>
-      <td>${f.line}</td>
-      <td><span style="background-color: ${severityColors[f.severity]}; color: white; padding: 4px 8px; border-radius: 3px; font-weight: bold;">${f.severity}</span></td>
-      <td>${f.category}</td>
-      <td>${f.rule_id}</td>
-      <td>${f.message}</td>
+      <td>${escapeHtml(f.file)}</td>
+      <td>${escapeHtml(String(f.line))}</td>
+      <td><span style="background-color: ${severityColors[f.severity]}; color: white; padding: 4px 8px; border-radius: 3px; font-weight: bold;">${escapeHtml(f.severity)}</span></td>
+      <td>${escapeHtml(f.category)}</td>
+      <td>${escapeHtml(f.rule_id)}</td>
+      <td>${escapeHtml(f.message)}</td>
     </tr>
   `).join('');
 
@@ -186,7 +154,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
   <div class="container">
     <h1>Code Review Report</h1>
     <div class="meta">
-      <strong>Repository:</strong> ${repoName}<br>
+      <strong>Repository:</strong> ${escapeHtml(repoName)}<br>
       <strong>Generated:</strong> ${new Date().toLocaleString()}<br>
       <strong>Files Reviewed:</strong> ${files.length}
     </div>
@@ -258,5 +226,4 @@ export {
   generateHTMLReport,
   getReportPath,
   SCHEMA_VERSION,
-  categorizeFinding,
 };

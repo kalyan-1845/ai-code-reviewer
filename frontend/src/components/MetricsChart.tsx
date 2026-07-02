@@ -128,9 +128,9 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', revi
               itemStyle={{ color: colors.tooltipItem }}
               labelStyle={{ color: colors.tooltipText, fontWeight: 600 }}
             />
-            <Line type="monotone" dataKey="healthScore" stroke="#22c55e" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Health Score" />
-            <Line type="monotone" dataKey="bugs" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Bugs" />
-            <Line type="monotone" dataKey="security" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Security Issues" />
+            <Line type="monotoneX" dataKey="healthScore" stroke="#22c55e" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Health Score" />
+            <Line type="monotoneX" dataKey="bugs" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Bugs" />
+            <Line type="monotoneX" dataKey="security" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Security Issues" />
           </LineChart>
         </ResponsiveContainer>
       )}

@@ -73,9 +73,25 @@ async function autoAssignAndMerge() {
         console.log(`\n📦 PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
         console.log(`   URL: ${pr.html_url}`);
-        
-        // Example: To automatically merge if ready
-        // Uncomment the lines below if you want script to blindly merge them (Use with caution!)
+        console.log(`   Draft: ${pr.draft ? 'Yes' : 'No'}`);
+
+        if (pr.draft) {
+          console.log(`   ⏭️ Skipping draft PR #${pr.number}`);
+          continue;
+        }
+
+        const { data: labels } = await octokit.rest.issues.listLabelsOnIssue({
+          owner,
+          repo,
+          issue_number: pr.number,
+        });
+        const labelNames = labels.map(l => l.name);
+        const mergeLabel = process.env.AUTO_MERGE_LABEL || 'gssoc:approved';
+        if (!labelNames.includes(mergeLabel)) {
+          console.log(`   ⏭️ Skipping PR #${pr.number} — missing label "${mergeLabel}"`);
+          continue;
+        }
+
         console.log(`   Merging PR #${pr.number}...`);
         try {
           await octokit.rest.pulls.merge({
@@ -89,7 +105,7 @@ async function autoAssignAndMerge() {
           console.error(`❌ Failed to merge PR #${pr.number}:`, e.message);
         }
       }
-      console.log('\n💡 Please review the above PRs manually on GitHub, or uncomment the merge code in this script to auto-merge them.');
+      console.log('\n💡 Auto-merge complete. Draft PRs and PRs without the configured label are skipped.');
     }
 
     console.log('\n🎉 Automator finished successfully!');

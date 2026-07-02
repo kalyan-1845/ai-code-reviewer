@@ -185,6 +185,32 @@ def cleanup_stale_chunks(current_files: set, repo_url: Optional[str] = None) -> 
     }
 
 
+def upsert_chunks(
+    chunks: list[str],
+    metadatas: list[dict],
+    ids: list[str],
+    repo_url: Optional[str] = None,
+) -> int:
+    """Upsert chunks into ChromaDB using chunk IDs for deduplication.
+
+    Unlike the previous delete_repo_chunks + ingest_chunks sequence, this
+    is atomic at the collection level and safe across concurrent workers.
+    """
+    if not chunks:
+        return 0
+    if not (len(chunks) == len(metadatas) == len(ids)):
+        raise ValueError("chunks, metadatas, and ids must have the same length")
+    collection = _get_collection(repo_url)
+    embeddings = embed_texts(chunks)
+    collection.upsert(
+        embeddings=embeddings,
+        documents=chunks,
+        metadatas=metadatas,
+        ids=ids,
+    )
+    return len(chunks)
+
+
 def delete_repo_chunks(repo_url: str) -> int:
     """Delete ALL chunks for a given repository.
 

@@ -3,6 +3,7 @@ import json
 import re
 import time
 import asyncio
+import uuid
 import unicodedata
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, Header, Depends, Request
@@ -38,23 +39,51 @@ MAX_CHAT_FILES = int(os.getenv("MAX_CHAT_FILES", "20"))
 # Maximum seconds to wait for a single LLM API response before returning 504 (#786)
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 
+# Single source of truth for dangerous patterns — keep in sync with
+# backend/shared/dangerousPhrases.js
+DANGEROUS_PATTERNS = [
+    "ignore all previous instructions",
+    "ignore all instructions",
+    "ignore previous",
+    "ignore above",
+    "forget all previous",
+    "forget previous",
+    "you are not",
+    "you will now",
+    "you must now",
+    "from now on",
+    "override all",
+    "system override",
+    "new directive",
+    "protocol change",
+    "disregard all",
+    "disregard",
+    "do not follow",
+    "roleplay mode",
+    "instead follow",
+    "real instruction",
+    "actual instruction",
+    "replace all",
+    "disobey",
+    "unauthorized",
+    "breach",
+    "bypass",
+    "your true purpose",
+    "you are programmed",
+    "override protocol",
+    "you have been",
+    "listen to me",
+    "disable all",
+]
+
+def _neutralize_pattern(content: str, pattern: str) -> str:
+    """Replace a dangerous pattern with a non-deterministic placeholder."""
+    token = f"__NEUTRALIZED_{uuid.uuid4().hex[:8]}__"
+    return re.sub(re.escape(pattern), token, content, flags=re.IGNORECASE)
+
 def sanitize_file_content(content: str) -> str:
-    dangerous_patterns = [
-        "ignore all previous instructions",
-        "ignore all instructions",
-        "forget all previous",
-        "you are now",
-        "from now on",
-        "override all",
-        "system override",
-        "new directive",
-        "protocol change",
-        "disregard all",
-        "you will now",
-        "you must now",
-    ]
-    for i, pattern in enumerate(dangerous_patterns):
-        content = re.sub(re.escape(pattern), f"[INSTRUCTION_{i}_NEUTRALIZED]", content, flags=re.IGNORECASE)
+    for pattern in DANGEROUS_PATTERNS:
+        content = _neutralize_pattern(content, pattern)
     lines = content.split("\n")
     truncated_lines = [line[:500] for line in lines]
     wrapped = "\n".join(truncated_lines)
@@ -164,9 +193,8 @@ def sanitize_ai_output(text: str) -> str:
 
     return text
 
-# NOTE: This HOMOGLYPH_MAP, dangerous phrases list, and validation logic is
-# duplicated in backend/index.js. When modifying these definitions, update
-# both files to keep them in sync and prevent security bypasses.
+# NOTE: This HOMOGLYPH_MAP and dangerous phrases list (DANGEROUS_PATTERNS)
+# should be kept in sync with backend/shared/dangerousPhrases.js.
 HOMOGLYPH_MAP = {
     # Lowercase Cyrillic
     '\u0430': 'a', '\u0435': 'e', '\u043E': 'o', '\u0441': 'c', '\u0440': 'p',
@@ -215,23 +243,9 @@ def validate_system_prompt(prompt: str, max_len: int = 2000) -> str:
     
     homoglyph_normalized = normalize_homoglyphs(truncated)
     lower = homoglyph_normalized.lower()
-
-    dangerous = [
-        "ignore all", "ignore previous", "ignore above",
-        "forget all", "forget previous", "you are not",
-        "override all", "disregard", "do not follow",
-        "new directive", "system override", "protocol change",
-        "roleplay mode", "from now on", "instead follow",
-        "real instruction", "actual instruction", "replace all",
-        "disobey", "unauthorized", "breach", "bypass",
-        "your true purpose", "you will now", "ignore the above",
-        "ignore previous instructions", "disregard all previous",
-        "forget your", "you are programmed", "override protocol",
-        "you have been", "you must now", "listen to me",
-    ]
     
     found = []
-    for phrase in dangerous:
+    for phrase in DANGEROUS_PATTERNS:
         pattern = r"\s+".join(re.escape(w) for w in phrase.split())
         if re.search(pattern, lower):
             found.append(phrase)
@@ -284,7 +298,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "x-api-key", "x-csrf-token"],
 )
 
-API_KEY = os.getenv("REPOSAGE_API_KEY") or ""
+API_KEY = os.getenv("REPOSAGE_API_KEY") or os.getenv("AI_ENGINE_API_KEY") or ""
 
 RATE_LIMIT_WINDOW_SECONDS = 60
 RATE_LIMIT_MAX_REQUESTS = 500
@@ -614,7 +628,24 @@ async def chat_with_repository(request: ChatRequest):
     
     # 1. Build the system prompt injecting repository context
     message_lower = message.lower()
-    keywords = set(re.findall(r'\b\w+\b', message_lower))
+    STOP_WORDS = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                  'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
+                  'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
+                  'this', 'that', 'these', 'those', 'it', 'its', 'and', 'or', 'but',
+                  'not', 'no', 'nor', 'so', 'if', 'then', 'else', 'when', 'where',
+                  'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most',
+                  'other', 'some', 'such', 'only', 'own', 'same', 'very', 'here',
+                  'there', 'about', 'above', 'after', 'again', 'against', 'below',
+                  'between', 'up', 'down', 'out', 'off', 'over', 'under', 'too', 'just',
+                  'also', 'get', 'got', 'use', 'used', 'using', 'make', 'made',
+                  'making', 'take', 'took', 'taken', 'taking', 'find', 'found',
+                  'finding', 'new', 'one', 'two', 'like', 'well', 'back', 'still',
+                  'any', 'many', 'much', 'something', 'thing', 'file', 'code', 'data',
+                  'function', 'method', 'class', 'return', 'value', 'name', 'type',
+                  'set', 'list', 'object', 'string', 'number', 'key', 'add'}
+
+    keywords = set(re.findall(r'\b\w+\b', message_lower)) - STOP_WORDS
 
     def score_file(f):
         name_lower = f.name.lower()
@@ -942,24 +973,14 @@ async def split_files_for_rag(request: SplitRequest):
     )
 
 
-# 🟢 Route: Ingest chunks into ChromaDB for RAG
-_ingest_locks: dict[str, asyncio.Lock] = {}
-
-async def _get_ingest_lock(repo_url: str) -> asyncio.Lock:
-    if repo_url not in _ingest_locks:
-        _ingest_locks[repo_url] = asyncio.Lock()
-    return _ingest_locks[repo_url]
-
+# 🟢 Route: Ingest chunks into ChromaDB for RAG (uses upsert for cross-worker safety)
 @app.post("/api/rag/ingest", response_model=IngestionResponse)
 async def ingest_chunks_route(request: IngestRequest):
-    from rag import ingest_chunks, delete_repo_chunks
-    lock = await _get_ingest_lock(request.repo_url)
-    async with lock:
-        delete_repo_chunks(request.repo_url)
-        texts = [c.content for c in request.chunks]
-        metadatas = [c.metadata for c in request.chunks]
-        ids = [c.chunk_id for c in request.chunks]
-        count = ingest_chunks(texts, metadatas, ids, repo_url=request.repo_url)
+    from rag import upsert_chunks
+    texts = [c.content for c in request.chunks]
+    metadatas = [c.metadata for c in request.chunks]
+    ids = [c.chunk_id for c in request.chunks]
+    count = upsert_chunks(texts, metadatas, ids, repo_url=request.repo_url)
     return IngestionResponse(ingested_count=count)
 
 
@@ -989,5 +1010,6 @@ async def get_paginated_chunks(request: PaginatedChunksRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    reload_enabled = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=reload_enabled)
 # TODO: Issue #395 - Bug [AI Engine]: `validate_system_prompt` fails to strip multiple occurrences of dangerous phrases

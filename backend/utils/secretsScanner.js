@@ -36,7 +36,7 @@ export const rules = [
   },
   {
     type: "Common Environment Credential",
-    regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token)\s*=\s*(['"])([^\n]{0,256}?)\1/gi,
+    regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*(['"])([^\n]{0,256}?)\1/gi,
     description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
   },
   {

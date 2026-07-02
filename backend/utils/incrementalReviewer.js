@@ -1,9 +1,17 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import simpleGit from 'simple-git';
 
 const CACHE_FILENAME = '.codereview-cache.json';
+
+function getCacheDir(repoPath) {
+  const hash = crypto.createHash('sha256').update(repoPath).digest('hex').substring(0, 16);
+  const cacheDir = path.join(os.tmpdir(), 'reposage-review-cache', hash);
+  try { fs.mkdirSync(cacheDir, { recursive: true }); } catch {}
+  return cacheDir;
+}
 
 function getFileContentHash(filePath) {
   try {
@@ -27,7 +35,7 @@ function buildContentHashCache(files) {
 }
 
 function loadCacheFile(cachePath) {
-  const fullPath = path.join(cachePath, CACHE_FILENAME);
+  const fullPath = path.join(getCacheDir(cachePath), CACHE_FILENAME);
   try {
     if (fs.existsSync(fullPath)) {
       const content = fs.readFileSync(fullPath, 'utf-8');
@@ -40,7 +48,7 @@ function loadCacheFile(cachePath) {
 }
 
 function saveCacheFile(cachePath, cache) {
-  const fullPath = path.join(cachePath, CACHE_FILENAME);
+  const fullPath = path.join(getCacheDir(cachePath), CACHE_FILENAME);
   try {
     fs.writeFileSync(fullPath, JSON.stringify(cache, null, 2), 'utf-8');
   } catch (err) {

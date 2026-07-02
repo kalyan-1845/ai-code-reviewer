@@ -1,3 +1,7 @@
+// Prepared for future use — not yet wired into the backend pipeline.
+// Tests exist at backend/tests/repoReader*.test.js.
+// Remove this notice when the first consumer import is added.
+
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
