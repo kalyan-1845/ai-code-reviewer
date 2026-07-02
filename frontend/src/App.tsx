@@ -22,3 +22,5 @@ export default function App() {
         </BrowserRouter>
     );
 }
+
+// TODO: Complete full implementation for #1442 - Enhancement: Setup MSW (Mock Service Worker) for robust frontend testing
