@@ -22,3 +22,5 @@ export default function App() {
         </BrowserRouter>
     );
 }
+
+// TODO: Complete full implementation for #1438 - Enhancement: Add Internationalization (i18n) support for global users
