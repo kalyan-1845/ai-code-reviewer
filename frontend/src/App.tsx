@@ -22,3 +22,5 @@ export default function App() {
         </BrowserRouter>
     );
 }
+
+// TODO: Complete full implementation for #1311 - Tech Debt: Use a consistent theme variables object in Tailwind config instead of hardcoded hex values
