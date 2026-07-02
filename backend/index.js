@@ -1206,6 +1206,7 @@ app.post('/api/issues/create', requireApiKey, issueLimiter, async (req, res) => 
   const owner = parsed.owner;
   const repo = parsed.repo;
 
+  try {
     const octokit = new Octokit({ auth: token });
     
     console.log(`🤖 Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
