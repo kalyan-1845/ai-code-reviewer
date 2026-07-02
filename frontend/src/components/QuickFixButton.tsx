@@ -25,7 +25,7 @@ export function QuickFixButton({ text, onApply }: { text: string; onApply: (text
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
-      <button
+      <button aria-label="Quick fix"
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
@@ -60,7 +60,7 @@ export function QuickFixButton({ text, onApply }: { text: string; onApply: (text
           zIndex: 1000,
           overflow: 'hidden',
         }}>
-          <button
+          <button aria-label="Quick fix"
             type="button"
             onClick={handleApply}
             style={{
