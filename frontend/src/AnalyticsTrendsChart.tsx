@@ -11,7 +11,9 @@ interface TrendPoint {
     filesCount: number;
 }
 
-const API_BASE_URL = 'http://localhost:5000';
+import { API_ROUTES } from './constants/apiRoutes';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const SERIES = [
     { key: 'bugs', label: 'Bugs', color: '#f97316' },
@@ -34,7 +36,7 @@ const AnalyticsTrendsChart: React.FC = () => {
 
         const fetchTrends = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/analytics/trends`);
+                const res = await fetch(`${API_BASE_URL}${API_ROUTES.ANALYTICS_TRENDS}`);
                 if (!res.ok) throw new Error('Failed to fetch trends');
                 const data = await res.json();
                 if (isMounted) {

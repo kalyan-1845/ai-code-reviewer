@@ -1,10 +1,11 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_ROUTES } from "../constants/apiRoutes";
 let sessionRequest: Promise<void> | null = null;
 let csrfToken: string | null = null;
 
 const ensureApiSession = async () => {
   if (!sessionRequest) {
-    sessionRequest = fetch(`${API_BASE_URL}/api/session`, {
+    sessionRequest = fetch(`${API_BASE_URL}${API_ROUTES.SESSION}`, {
       method: "POST",
       credentials: "include",
     }).then(async (response) => {
@@ -14,7 +15,7 @@ const ensureApiSession = async () => {
           throw new Error("Backend API key is required to continue.");
         }
 
-        const loginResponse = await fetch(`${API_BASE_URL}/api/session`, {
+        const loginResponse = await fetch(`${API_BASE_URL}${API_ROUTES.SESSION}`, {
           method: "POST",
           credentials: "include",
           headers: {
@@ -55,7 +56,7 @@ const getCsrfToken = (): string | null => {
 };
 
 const refreshCsrfToken = async (): Promise<string | null> => {
-  const response = await fetch(`${API_BASE_URL}/api/csrf-token`, {
+  const response = await fetch(`${API_BASE_URL}${API_ROUTES.CSRF_TOKEN}`, {
     credentials: "include",
   });
   if (!response.ok) return null;
@@ -138,13 +139,13 @@ export const apiFetch = async (
   }
 };
 export const getReviewHistory = async () => {
-  const response = await apiFetch("/api/review-history");
+  const response = await apiFetch(API_ROUTES.REVIEW_HISTORY);
   if (!response.ok) throw new Error("Failed to fetch review history");
   return response.json();
 };
 
 export const getFixSuggestions = async (findingId: string) => {
-  const response = await apiFetch(`/api/fix-suggestions/${findingId}`);
+  const response = await apiFetch(API_ROUTES.FIX_SUGGESTIONS(findingId));
 
   if (!response.ok) {
     throw new Error("Failed to fetch AI fix suggestions");

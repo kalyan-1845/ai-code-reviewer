@@ -113,13 +113,15 @@ export const handleMarkdownExport = (repoName: string, analysis: AnalysisData) =
   URL.revokeObjectURL(url);
 };
 
+import { API_ROUTES } from "../constants/apiRoutes";
+
 export const handleHtmlExport = async (
   repoName: string,
   analysis: AnalysisData,
   apiFetch: (path: string, options?: RequestInit) => Promise<Response>
 ) => {
   try {
-    const response = await apiFetch('/api/reports/html', {
+    const response = await apiFetch(API_ROUTES.HTML_REPORT, {
       method: 'POST',
       body: JSON.stringify({
         repoName,

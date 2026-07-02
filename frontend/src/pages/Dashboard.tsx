@@ -7,6 +7,7 @@ import { VulnerabilitiesBarChart } from '../components/VulnerabilitiesBarChart';
 import MarkdownErrorBoundary from '../components/MarkdownErrorBoundary';
 import CopyToClipboardButton from "../components/CopyToClipboardButton";
 import HealthScoreGauge from "../components/HealthScoreGauge";
+import { API_ROUTES } from '../constants/apiRoutes';
 import {
   Terminal,
   ShieldAlert,
@@ -583,7 +584,7 @@ export default function Dashboard() {
       : [category];
 
     try {
-      const response = await apiFetch("/api/issues/create", {
+      const response = await apiFetch(API_ROUTES.CREATE_ISSUE, {
         method: "POST",
         body: JSON.stringify({
           repoUrl,
@@ -638,7 +639,7 @@ export default function Dashboard() {
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const response = await apiFetch('/api/review-history');
+        const response = await apiFetch(API_ROUTES.REVIEW_HISTORY);
         if (!response.ok) throw new Error("Failed to fetch");
         const history = await response.json();
 
@@ -669,7 +670,7 @@ export default function Dashboard() {
     try {
       setApiError(null);
       const chatAiSettings = getSavedAiSettings();
-      const response = await apiFetch("/api/chat", {
+      const response = await apiFetch(API_ROUTES.CHAT, {
         method: "POST",
         body: JSON.stringify({
           message: userMessage,
@@ -875,7 +876,7 @@ export default function Dashboard() {
     }, 1200);
     try {
       const aiSettings = getSavedAiSettings();
-      const response = await apiFetch("/api/analyze", {
+      const response = await apiFetch(API_ROUTES.ANALYZE, {
         method: "POST",
         body: JSON.stringify({
           repoUrl,

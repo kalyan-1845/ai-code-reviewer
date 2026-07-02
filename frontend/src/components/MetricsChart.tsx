@@ -3,6 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { apiFetch } from '../utils/api';
+import { API_ROUTES } from '../constants/apiRoutes';
 
 // Theme-aware color maps for Recharts (which requires JS string props, not CSS vars)
 const THEME_COLORS = {
@@ -49,7 +50,7 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', revi
     setLoading(true);
     setError(null);
 
-    apiFetch(`/api/analytics/trends?reviewId=${encodeURIComponent(reviewId)}`)
+    apiFetch(`${API_ROUTES.ANALYTICS_TRENDS}?reviewId=${encodeURIComponent(reviewId)}`)
       .then((res) => {
         if (cancelled) return null;
         if (!res.ok) throw new Error("Failed to fetch analytics trends");
