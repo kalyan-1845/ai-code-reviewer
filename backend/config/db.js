@@ -24,7 +24,12 @@ export async function connectDatabase() {
     .catch((err) => {
       isConnected = false;
       connectionPromise = null;
-      console.warn('⚠️ MongoDB connection failed, analytics will not be persisted:', err.message);
+      console.warn('⚠️ MongoDB connection failed:', err.message);
+      if (process.env.NODE_ENV === 'production') {
+        console.error('❌ Cannot start in production without database connection');
+        process.exit(1);
+      }
+      console.warn('⚠️ Running without database persistence');
       return null;
     });
 
