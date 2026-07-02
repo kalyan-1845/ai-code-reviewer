@@ -34,5 +34,15 @@
       "temp_repos/*",
       "temp_repos/**/*"
     ]
+  },
+  "c8": {
+    "check-coverage": true,
+    "lines": 65,
+    "functions": 65,
+    "branches": 65,
+    "reporter": [
+      "lcov",
+      "text"
+    ]
   }
 }
