@@ -22,3 +22,5 @@ export default function App() {
         </BrowserRouter>
     );
 }
+
+// TODO: Complete full implementation for #1293 - Tech Debt: Remove 'any' types in VS Code extension test suites
