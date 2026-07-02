@@ -153,3 +153,44 @@ export const handleHtmlExport = async (
     alert(err.message || 'Failed to export HTML report.');
   }
 };
+
+export const handleCsvExport = (repoName: string, analysis: AnalysisData) => {
+  if (!analysis.fileReviews || Object.keys(analysis.fileReviews).length === 0) {
+    alert("No data available to export.");
+    return;
+  }
+
+  // Create CSV headers
+  const headers = ["File Path", "Category", "Line Number", "Description", "Suggestion"];
+  
+  // Create rows
+  const rows: string[][] = [];
+  Object.entries(analysis.fileReviews).forEach(([filePath, review]) => {
+    const categories = ['bugs', 'security', 'optimization', 'styling'] as const;
+    categories.forEach(category => {
+      if (review[category] && Array.isArray(review[category])) {
+        review[category].forEach((issue: ReviewItem) => {
+          rows.push([
+            `"${filePath}"`,
+            `"${category}"`,
+            `${issue.line || "N/A"}`,
+            `"${(issue.description || "").replace(/"/g, '""')}"`,
+            `"${(issue.suggestion || "").replace(/"/g, '""')}"`
+          ]);
+        });
+      }
+    });
+  });
+  
+  const csvContent = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const element = document.createElement('a');
+  element.href = url;
+  element.download = `${repoName || 'RepoSage'}-Issues.csv`;
+  document.body.appendChild(element);
+  element.click();
+  document.body.removeChild(element);
+  URL.revokeObjectURL(url);
+};

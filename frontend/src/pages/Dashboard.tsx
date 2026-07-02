@@ -29,7 +29,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { handleMarkdownExport, handleHtmlExport } from "../utils/exportUtils";
+import { handleMarkdownExport, handleHtmlExport, handleCsvExport } from "../utils/exportUtils";
 import mermaid from "mermaid";
 import { sanitizeMermaidOutput } from "../utils/sanitize";
 import { apiFetch } from "../utils/api";
@@ -2230,6 +2230,27 @@ export default function Dashboard() {
                     title="Export the complete audit report as Markdown"
                   >
                     <FileDown size={14} /> Export Markdown
+                  </button>
+                  <button
+                    onClick={() => analysisResult && handleCsvExport(analysisResult.repoName, analysisResult.analysis)}
+                    style={{
+                      background: "rgba(34, 197, 94, 0.1)",
+                      border: "1px solid rgba(34, 197, 94, 0.3)",
+                      color: "#4ade80",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                    className="hover:bg-green-500/20"
+                    title="Export the issues as CSV"
+                  >
+                    <Download size={14} /> Export CSV
                   </button>
                 </div>
               </div>
