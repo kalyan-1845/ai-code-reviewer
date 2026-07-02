@@ -57,7 +57,7 @@ export default function SidebarLayout() {
         </nav>
 
         <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <button
+          <button aria-label="Sidebar toggle"
             onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '8px',
