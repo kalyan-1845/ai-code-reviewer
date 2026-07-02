@@ -6,7 +6,13 @@ export default function SidebarLayout() {
   const location = useLocation();
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const savedTheme = localStorage.getItem("reposage_theme");
-    return savedTheme === "light" || savedTheme === "dark" ? savedTheme : "dark";
+    if (savedTheme === "light" || savedTheme === "dark") {
+      return savedTheme;
+    }
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+      return "light";
+    }
+    return "dark";
   });
 
   useEffect(() => {
