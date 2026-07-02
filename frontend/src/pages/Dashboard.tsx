@@ -1188,7 +1188,7 @@ export default function Dashboard() {
                 <p style={{ margin: 0, fontSize: '11px', color: '#9ca3af' }}>Reload cached repository scans</p>
               </div>
               {auditHistory.length > 0 && (
-                <button
+                <button aria-label="Clear audit history"
                   onClick={clearAuditHistory}
                   title="Clear audit history"
                   style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
