@@ -22,3 +22,5 @@ export default function App() {
         </BrowserRouter>
     );
 }
+
+// TODO: Complete full implementation for #1294 - Tech Debt: Replace 'any' type for 'fr' in Dashboard.tsx fileReviews loop
