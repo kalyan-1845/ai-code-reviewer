@@ -1372,20 +1372,35 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   // 3. Post consolidated review comment back to GitHub PR
   if (commentsToPost.length > 0) {
     console.log(`✍️ Posting PR Review with ${commentsToPost.length} inline comments...`);
-    let body = `## 🛡️ RepoSage AI Code Review Audit Completed!\n\n`;
-    if (!aiEngineQueried && filesToReview.length > 0) {
-      body += `⚠️ **Limited Review:** The AI engine was unreachable during this review. Only regex-based secret scanning was performed. AI-powered bug/performance/style analysis was skipped. Please ensure the AI Engine service is running and re-trigger the review for a complete audit.\n\n`;
+
+    // Batch comments to respect GitHub's limits (50 per review for Checks API alignment)
+    const COMMENTS_PER_BATCH = 50;
+    const commentBatches = [];
+    for (let i = 0; i < commentsToPost.length; i += COMMENTS_PER_BATCH) {
+      commentBatches.push(commentsToPost.slice(i, i + COMMENTS_PER_BATCH));
     }
-    body += `I have audited the code changes in this Pull Request and generated **${commentsToPost.length} actionable inline suggestions**.\n\nPlease review my feedback and suggestions below. Happy coding! 🚀`;
-    await octokit.rest.pulls.createReview({
-      owner,
-      repo,
-      pull_number: pullNumber,
-      commit_id: headSha,
-      event: 'COMMENT',
-      body,
-      comments: commentsToPost
-    });
+
+    for (let batchIdx = 0; batchIdx < commentBatches.length; batchIdx++) {
+      const batch = commentBatches[batchIdx];
+      let body = `## 🛡️ RepoSage AI Code Review Audit Completed!\n\n`;
+      if (commentBatches.length > 1) {
+        body += `**Part ${batchIdx + 1} of ${commentBatches.length}** — Showing ${batch.length} of ${commentsToPost.length} findings.\n\n`;
+      }
+      if (!aiEngineQueried && filesToReview.length > 0 && batchIdx === 0) {
+        body += `⚠️ **Limited Review:** The AI engine was unreachable during this review. Only regex-based secret scanning was performed. AI-powered bug/performance/style analysis was skipped. Please ensure the AI Engine service is running and re-trigger the review for a complete audit.\n\n`;
+      }
+      body += `I have audited the code changes in this Pull Request and generated **${commentsToPost.length} actionable inline suggestion${commentsToPost.length === 1 ? '' : 's'}**.\n\nPlease review my feedback and suggestions below. Happy coding! 🚀`;
+
+      await octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number: pullNumber,
+        commit_id: headSha,
+        event: 'COMMENT',
+        body,
+        comments: batch
+      });
+    }
   } else if (aiCommentsDiscarded > 0) {
     console.warn(`⚠️ ${aiCommentsDiscarded} AI comments were discarded due to line number mismatches — posting COMMENT review instead of approving.`);
     await octokit.rest.pulls.createReview({
