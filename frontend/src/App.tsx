@@ -22,3 +22,5 @@ export default function App() {
         </BrowserRouter>
     );
 }
+
+// TODO: Complete full implementation for #1304 - Enhancement: Migrate LocalStorage to IndexedDB for auditHistory storage
