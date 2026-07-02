@@ -323,9 +323,14 @@ export default function Dashboard() {
   const debouncedFileFilterQuery = useDebounce(fileFilterQuery, 300);
   const [isClearHovered, setIsClearHovered] = useState(false);
   const [activeExtFilter, setActiveExtFilter] = useState('All');
+  const [visibleFileCount, setVisibleFileCount] = useState(50);
   const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling' | 'metrics'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState(false);
+
+  useEffect(() => {
+    setVisibleFileCount(50);
+  }, [debouncedFileFilterQuery, activeExtFilter]);
 
   useEffect(() => {
     if (!apiError) return;
@@ -2383,51 +2388,75 @@ export default function Dashboard() {
                       );
                     }
 
-                    return filteredFiles.map((filePath) => (
-                      <button
-                        key={filePath}
-                        onClick={() => setSelectedFile(filePath)}
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          borderRadius: "6px",
-                          background:
-                            selectedFile === filePath
-                              ? "rgba(59,130,246,0.1)"
-                              : "transparent",
-                          border:
-                            selectedFile === filePath
-                              ? "1px solid rgba(59,130,246,0.3)"
-                              : "1px solid transparent",
-                          color:
-                            selectedFile === filePath
-                              ? "#60a5fa"
-                              : "var(--text-color)",
-                          textAlign: "left",
-                          fontSize: "12px",
-                          fontWeight: selectedFile === filePath ? 600 : 500,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          transition: "all 0.15s",
-                        }}
-                      >
-                        <FileCode
-                          size={14}
-                          style={{
-                            color:
-                              selectedFile === filePath
-                                ? "#60a5fa"
-                                : "var(--subtext-color)",
-                          }}
-                        />
-                        {filePath}
-                      </button>
-                    ));
+                    return (
+                      <>
+                        {filteredFiles.slice(0, visibleFileCount).map((filePath) => (
+                          <button
+                            key={filePath}
+                            onClick={() => setSelectedFile(filePath)}
+                            style={{
+                              width: "100%",
+                              padding: "8px 12px",
+                              borderRadius: "6px",
+                              background:
+                                selectedFile === filePath
+                                  ? "rgba(59,130,246,0.1)"
+                                  : "transparent",
+                              border:
+                                selectedFile === filePath
+                                  ? "1px solid rgba(59,130,246,0.3)"
+                                  : "1px solid transparent",
+                              color:
+                                selectedFile === filePath
+                                  ? "#60a5fa"
+                                  : "var(--text-color)",
+                              textAlign: "left",
+                              fontSize: "12px",
+                              fontWeight: selectedFile === filePath ? 600 : 500,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            <FileCode
+                              size={14}
+                              style={{
+                                color:
+                                  selectedFile === filePath
+                                    ? "#60a5fa"
+                                    : "var(--subtext-color)",
+                              }}
+                            />
+                            {filePath}
+                          </button>
+                        ))}
+                        {visibleFileCount < filteredFiles.length && (
+                          <button
+                            onClick={() => setVisibleFileCount(prev => prev + 50)}
+                            style={{
+                              width: "100%",
+                              padding: "8px",
+                              marginTop: "4px",
+                              borderRadius: "6px",
+                              background: "rgba(59, 130, 246, 0.05)",
+                              border: "1px dashed rgba(59, 130, 246, 0.3)",
+                              color: "#60a5fa",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              transition: "all 0.2s",
+                            }}
+                          >
+                            Load More ({filteredFiles.length - visibleFileCount} remaining)
+                          </button>
+                        )}
+                      </>
+                    );
                   })()}
                 </div>
 
