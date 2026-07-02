@@ -33,7 +33,7 @@ interface MetricsChartProps {
 
 export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', reviewId }) => {
   const colors = THEME_COLORS[theme];
-  const [chartData, setChartData] = useState<any[] | null>(null);
+  const [chartData, setChartData] = useState<unknown[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +57,7 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', revi
       })
       .then((data) => {
         if (cancelled || !data) return;
-        const formatted = (data.trends || []).map((t: any) => ({
+        const formatted = (data.trends || []).map((t: unknown) => ({
           month: t.date ? new Date(t.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "N/A",
           bugs: t.totalBugs || 0,
           security: t.totalSecurityIssues || 0,
