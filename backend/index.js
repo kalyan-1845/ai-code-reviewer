@@ -307,9 +307,7 @@ function cleanupTempRepos() {
     fs.rmSync(tempReposDir, { recursive: true, force: true });
   }
 }
-function onShutdown() { cleanupTempRepos(); cleanupTimers(); if (redisClient) redisClient.quit(); closeDatabase(); process.exit(0); }
-process.on('SIGINT', onShutdown);
-process.on('SIGTERM', onShutdown);
+// Process signals are handled at the bottom of the file in the graceful shutdown logic.
 
 // Repository contexts for chat are now persisted in MongoDB via the Session model.
 // The Session collection uses a TTL index (expireAfterSeconds: 1800) so MongoDB
@@ -1901,7 +1899,57 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
 
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
 });
+
+let isShuttingDown = false;
+
+async function gracefulShutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log('Received shutdown signal. Stopping new requests...');
+  
+  // Close the server (stops accepting new connections)
+  server.close(async (err) => {
+    if (err) {
+      console.error('Error during server close:', err);
+      process.exit(1);
+    }
+    console.log('HTTP server closed. Cleaning up resources...');
+    
+    // Clean up timers
+    cleanupTimers();
+    
+    // Clean up temporary repositories
+    cleanupTempRepos();
+    
+    // Close Redis connection if active
+    if (redisClient) {
+      console.log('Closing Redis connection...');
+      try {
+        await redisClient.quit();
+      } catch (redisErr) {
+        console.error('Error closing Redis connection:', redisErr);
+      }
+    }
+    
+    // Close MongoDB connection
+    console.log('Closing MongoDB connection...');
+    await closeDatabase();
+    
+    console.log('Graceful shutdown complete. Exiting.');
+    process.exit(0);
+  });
+  
+  // Force exit if graceful shutdown takes too long (e.g. 10 seconds)
+  setTimeout(() => {
+    console.error('Graceful shutdown timed out. Forcing exit.');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+
 // TODO: Issue #397 - Bug [Backend]: Temp folder leakage if Node process crashes during analysis
