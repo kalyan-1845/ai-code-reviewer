@@ -22,3 +22,5 @@ export default function App() {
         </BrowserRouter>
     );
 }
+
+// TODO: Complete full implementation for #1310 - Enhancement: Add e2e tests using Playwright or Cypress for core user flows
