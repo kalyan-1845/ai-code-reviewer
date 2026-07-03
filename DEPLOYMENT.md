@@ -23,7 +23,7 @@ Render is perfect for our Node.js and Python services because they run continuou
 4. Render will automatically read the `render.yaml` file and prepare **both** the Node.js Backend and the Python AI Engine.
 5. It will ask you to fill in the environment variables:
    * `GROQ_API_KEY`: *(Your Groq API key)*
-   * `FRONTEND_URL`: *(The URL of your deployed Vercel frontend, e.g., `https://reposage-frontend.vercel.app`)*
+   * `ALLOWED_ORIGINS`: *(The URL of your deployed Vercel frontend, e.g., `https://reposage-frontend.vercel.app`)*
 6. Click **Apply**.
 
 ### 🎉 That's it!

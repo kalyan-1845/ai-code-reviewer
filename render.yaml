@@ -13,7 +13,7 @@ services:
         value: "production"
       - key: GROQ_API_KEY
         sync: false
-      - key: FRONTEND_URL
+      - key: ALLOWED_ORIGINS
         sync: false
       - key: GITHUB_PAT
         sync: false
