@@ -923,30 +923,10 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
     return res.status(400).json({ error: err.message });
   }
 
-  // Verify session ownership before entering the queue (issue #742).
-  // Only the client that created the session may access it.
-  if (sessionId) {
-    try {
-      const session = await Session.findOne({ sessionId });
-      if (session) {
-        // Verify session ownership to prevent IDOR (issue #742):
-        // only the client that created the session may access it.
-        if (session.ownerToken && session.ownerToken !== req.clientId) {
-          console.warn(`⚠️ Session ownership mismatch: session ${sessionId} ownerToken=${session.ownerToken} request clientId=${req.clientId} (possible auth-method change or cookie refresh)`);
-          return res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
-        }
-        // Update lastAccessedAt for the sliding-window TTL (see issue #743).
-        // Each interaction extends absoluteExpiry to 24h from now via $max.
-        // The initial default (24h from creation) sets the first expiry window.
-        await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $max: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
-      }
-    } catch (sessionErr) {
-      console.warn('❌ Failed to retrieve session from MongoDB:', sessionErr.message);
-    }
-  }
   // Use reviewQueue to serialize requests per session, preventing
   // lost-update race conditions when multiple messages arrive concurrently
-  // for the same session (see issue #746).
+  // for the same session (see issue #746). Session ownership verification
+  // is performed INSIDE the exclusive lock to avoid TOCTOU races (issue #1809).
   try {
     await reviewQueue.runExclusive(sessionId, async () => {
       let context = null;
@@ -960,6 +940,18 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
         res.status(400).json({ error: `No repository is currently active or session expired or not found. Please analyze a repository first.` });
         return;
       }
+
+      // Verify session ownership to prevent IDOR (issue #742).
+      // Performed inside the exclusive lock so the check and subsequent
+      // operations are atomic with respect to concurrent requests.
+      if (context.ownerToken && context.ownerToken !== req.clientId) {
+        console.warn(`⚠️ Session ownership mismatch: session ${sessionId} ownerToken=${context.ownerToken} request clientId=${req.clientId} (possible auth-method change or cookie refresh)`);
+        res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
+        return;
+      }
+
+      // Extend TTL atomically with ownership check, inside the lock
+      await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $max: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
 
       const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
