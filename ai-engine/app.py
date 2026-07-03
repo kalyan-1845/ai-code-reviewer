@@ -17,6 +17,7 @@ import bleach
 from bleach.css_sanitizer import CSSSanitizer
 import vectorstore
 from embeddings import is_fallback_active
+from diff_helper import get_changed_files_from_git, filter_files_by_changes, format_diff_header
 
 # Load environment variables: prefer local .env, fall back to backend/.env
 env_paths = [
@@ -384,6 +385,9 @@ class AnalyzeRequest(BaseModel):
     maxTokens: Optional[int] = Field(2048, ge=1, le=32768)
     systemPrompt: Optional[str] = ""
     batchSize: Optional[int] = Field(5, ge=1, le=20)
+    diffOnly: Optional[bool] = False
+    baseRef: Optional[str] = None
+    headRef: Optional[str] = None
     
 
 class ChatRequest(BaseModel):
@@ -416,7 +420,7 @@ def health_check():
 async def analyze_repository(request: AnalyzeRequest):
     if not groq_client:
         raise HTTPException(status_code=500, detail="Groq API client is not configured on this engine.")
-    
+
     files = request.files
     company = request.company
     language = request.language
@@ -424,8 +428,20 @@ async def analyze_repository(request: AnalyzeRequest):
     max_tokens = request.maxTokens or 2048
     batch_size = request.batchSize or 5
     custom_system_prompt = validate_system_prompt(request.systemPrompt or "")
-    
-    # 1. Prepare global repository structure
+
+    # 1. Apply diff mode filtering if requested
+    diff_mode_header = ""
+    num_skipped = 0
+    if request.diffOnly and request.baseRef and request.headRef:
+        changed_files = get_changed_files_from_git(request.baseRef, request.headRef)
+        if changed_files:
+            files, num_skipped = filter_files_by_changes(files, changed_files)
+            diff_mode_header = format_diff_header(len(files), num_skipped, request.baseRef, request.headRef)
+            print(f"🔍 {diff_mode_header}")
+        else:
+            print("⚠️  Diff mode requested but no changed files found. Analyzing all files.")
+
+    # 2. Prepare global repository structure
     repo_structure = [f.name for f in files]
     structure_text = "\n".join(repo_structure)
 
@@ -600,8 +616,16 @@ You must obey the JSON output format above."""
             else:
                 print(f"⚠️ Skipping failed batch {idx + 1} and continuing...")
                 continue
-                
+
     combined_result["truncatedFiles"] = truncated_files
+    if diff_mode_header:
+        combined_result["diffModeInfo"] = {
+            "active": True,
+            "filesReviewed": len(files),
+            "filesSkipped": num_skipped,
+            "baseRef": request.baseRef,
+            "headRef": request.headRef
+        }
     return combined_result
 
 # 🟢 Route: AI Chat with Repository Context
