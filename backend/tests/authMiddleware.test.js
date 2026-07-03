@@ -57,8 +57,8 @@ test('requireApiKey returns 401 when API key is missing', () => {
 
 test('requireApiKey calls next() when a valid frontend session cookie is provided', () => {
   const { res: cookieRes } = makeMockReqRes();
-  const cookie = createFrontendSessionCookie(cookieRes);
-  const { req, res } = makeMockReqRes({ cookie });
+  const session = createFrontendSessionCookie(cookieRes);
+  const { req, res } = makeMockReqRes({ cookie: session.cookieHeader });
   let nextCalled = false;
   const next = () => { nextCalled = true; };
 
@@ -70,7 +70,7 @@ test('requireApiKey calls next() when a valid frontend session cookie is provide
 
 test('requireApiKey returns 401 when frontend session cookie is tampered', () => {
   const { res: cookieRes } = makeMockReqRes();
-  const [sessionPair, ...attributes] = createFrontendSessionCookie(cookieRes).split(';');
+  const [sessionPair, ...attributes] = createFrontendSessionCookie(cookieRes).cookieHeader.split(';');
   const cookie = [sessionPair.replace(/.$/, 'x'), ...attributes].join(';');
   const { req, res } = makeMockReqRes({ cookie });
   const next = () => {};
