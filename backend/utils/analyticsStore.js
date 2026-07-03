@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { setTimeout } from 'timers/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,10 +8,15 @@ const __dirname = path.dirname(__filename);
 const STORE_PATH = path.join(__dirname, '..', 'analytics_trends.json');
 const MAX_RECORDS = 200;
 
+const LOCK_MAX_RETRIES = 50;
+const LOCK_BASE_DELAY_MS = 10;
+const LOCK_MAX_DELAY_MS = 1000;
+const LOCK_STALE_MS = 10000;
+
 let storeLock = Promise.resolve();
 
 async function acquireLock() {
-  while (true) {
+  for (let attempt = 0; attempt < LOCK_MAX_RETRIES; attempt++) {
     const prev = storeLock;
     let release;
     const next = new Promise(resolve => { release = resolve; });
@@ -20,8 +24,13 @@ async function acquireLock() {
       storeLock = next;
       return release;
     }
-    await setTimeout(5);
+    const delay = Math.min(
+      LOCK_BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 50,
+      LOCK_MAX_DELAY_MS
+    );
+    await new Promise(resolve => setTimeout(resolve, delay));
   }
+  throw new Error(`Could not acquire analytics store lock after ${LOCK_MAX_RETRIES} attempts`);
 }
 
 function readStore() {
@@ -31,7 +40,7 @@ function readStore() {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
     } catch (err) {
-        console.warn('⚠️ Failed to read analytics store, starting fresh:', err.message);
+        console.warn('Failed to read analytics store, starting fresh:', err.message);
         return [];
     }
 }
@@ -40,7 +49,7 @@ function writeStore(records) {
     try {
         fs.writeFileSync(STORE_PATH, JSON.stringify(records, null, 2));
     } catch (err) {
-        console.warn('⚠️ Failed to write analytics store:', err.message);
+        console.warn('Failed to write analytics store:', err.message);
     }
 }
 
