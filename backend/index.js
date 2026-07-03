@@ -381,7 +381,7 @@ async function generateDependencyReport(clonePath) {
 
 // Webhook deduplication using Redis SETNX for cross-instance safety
 // TTL matches GitHub's webhook retry window (300 seconds)
-const DELIVERY_REDIS_TTL = 300;
+const DELIVERY_REDIS_TTL = 3600;
 
 
 
@@ -1137,6 +1137,17 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         return res.status(429).json({ error: 'Too many pending reviews. Try again later.' });
       }
 
+      // Check for an in-progress review marker to prevent concurrent runs
+      // on the same PR (e.g. from retried webhook deliveries).
+      const reviewInProgressKey = `review:${owner}/${repo}:pr:${pullNumber}:in_progress`;
+      if (redisClient) {
+        const alreadyInProgress = await redisClient.get(reviewInProgressKey);
+        if (alreadyInProgress) {
+          console.log(`⏭️ Review already in progress for PR #${pullNumber} — skipping duplicate trigger.`);
+          return res.json({ success: true, message: 'Webhook received (review already in progress).' });
+        }
+      }
+
       // Per-repository rate limiting
       const repoKey = `${owner}/${repo}`;
       const now = Date.now();
@@ -1154,10 +1165,22 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
 
       const enqueuePromise = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
         try {
+          // Set in-progress marker with 10-minute TTL to prevent concurrent
+          // review runs for the same PR (e.g. from retried webhook deliveries).
+          if (redisClient) {
+            await redisClient.setex(reviewInProgressKey, 600, headSha);
+          }
           await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
         } catch (error) {
           console.error(`❌ Webhook review failed for ${headSha}:`, error.message);
-          await redisClient.srem(shaDedupKey, headSha);
+          // Do NOT remove headSha from dedup set on failure. If the review
+          // posted some comments before crashing, re-running would produce
+          // duplicates. Better to have an orphaned dedup key that expires
+          // naturally after DELIVERY_REDIS_TTL seconds.
+        } finally {
+          if (redisClient) {
+            await redisClient.del(reviewInProgressKey);
+          }
         }
       });
       if (enqueuePromise) {
@@ -1298,10 +1321,11 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     // Run local secrets scanner
     const { findings: secretFindings, truncated: scanTruncated, totalChanges: scanTotal, skippedReason: scanReason } = scanSecretsInChanges(file.changes);
     secretFindings.forEach(f => {
+      const commentId = crypto.createHash('md5').update(`${file.path}:${f.line}:${f.comment}`).digest('hex');
       commentsToPost.push({
         path: file.path,
         line: f.line,
-        body: `<!-- RepoSage Review Comment -->\n${f.comment}`
+        body: `<!-- RepoSage-Review-${commentId} -->\n${f.comment}`
       });
     });
     if (scanTruncated) {
@@ -1342,6 +1366,14 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
             // Avoid duplicate comments if secrets scanner already flagged it
             const duplicate = commentsToPost.some(exist => exist.path === c.path && exist.line === c.line);
             if (!duplicate) {
+              // Add idempotency marker so re-running the same review
+              // produces the same comment ID and GitHub can deduplicate.
+              const body = c.body || '';
+              const commentId = crypto.createHash('md5').update(`${c.path}:${c.line}:${body}`).digest('hex');
+              const marker = `<!-- RepoSage-Review-${commentId} -->`;
+              if (!body.includes(marker)) {
+                c.body = `${marker}\n${body}`;
+              }
               commentsToPost.push(c);
             }
           });
@@ -1351,6 +1383,19 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     } catch (err) {
       console.warn("⚠️ FastAPI AI Engine error, posting local scans only:", err.message);
     }
+  }
+
+  // Re-validate head SHA before posting to guard against concurrent
+  // synchronize events that changed the PR head after diff fetch.
+  try {
+    const { data: freshPr } = await octokit.rest.pulls.get({ owner, repo, pull_number: pullNumber });
+    if (headSha && freshPr.head.sha !== headSha) {
+      console.log(`⏭️ Head SHA changed (${headSha.substring(0,7)} → ${freshPr.head.sha.substring(0,7)}). Aborting review post.`);
+      // The new commit will trigger a fresh review via the synchronize event.
+      return;
+    }
+  } catch (recheckErr) {
+    console.warn('⚠️ Could not re-validate head SHA before posting:', recheckErr.message);
   }
 
   // 3. Post consolidated review comment back to GitHub PR
@@ -1369,6 +1414,29 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       event: 'COMMENT',
       body,
       comments: commentsToPost
+    });
+  } else if (!aiEngineQueried) {
+    console.error('❌ AI Engine was unreachable — posting COMMENT review instead of auto-approving.');
+    await octokit.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      commit_id: headSha,
+      event: 'COMMENT',
+      body: `## ⚠️ RepoSage AI Code Review — AI Engine Unavailable
+The AI engine could not be reached during this review. The secrets scanner found **0 issues**, but the PR was **not** fully reviewed by the AI.
+Please ensure the AI Engine service is running and re-trigger the review for a complete analysis.`
+    });
+  } else {
+    console.log('🎉 No code issues or recommendations found. Posting approval review...');
+    await octokit.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      commit_id: headSha,
+      event: 'APPROVE',
+      body: `## 🛡️ RepoSage AI Code Review Audit Completed!
+🎉 Outstanding work! I have scanned the PR and found **0 issues**. Your changes look pristine, clean, and optimized! Approved! 🚀`
     });
   } else if (!aiEngineQueried) {
     console.error('❌ AI Engine was unreachable — posting COMMENT review instead of auto-approving.');
