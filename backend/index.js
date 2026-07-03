@@ -8,7 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
-import { createFrontendSessionCookie, requireApiKey, SESSION_COOKIE_NAME } from './utils/authMiddleware.js';
+import { createFrontendSessionCookie, requireApiKey, SESSION_COOKIE_NAME, validateSessionSecret } from './utils/authMiddleware.js';
 import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import Redis from 'ioredis';
@@ -34,9 +34,9 @@ import { connectDatabase, ensureConnection, closeDatabase } from './config/db.js
 
 dotenv.config();
 
-const octokit = new Octokit({ auth: process.env.GITHUB_PAT || undefined });
+validateSessionSecret();
 
-connectDatabase();
+const octokit = new Octokit({ auth: process.env.GITHUB_PAT || undefined });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -613,7 +613,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
           mockRes._mock = true;
           return mockRes;
         }
-      });
+      }, repoUrl);
 
       // 3. Inject Regex-based Secret Detections & Complexity Metrics into the analysis result
       if (reviewResult && reviewResult.fileReviews) {
@@ -654,9 +654,11 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       const estimatedSize = estimateSessionSize(storedFiles);
 
       let sessionId = null;
+      let sessionOwnerToken = null;
       let sessionPersisted = false;
       if (estimatedSize <= MAX_SESSION_DOC_SIZE) {
         sessionId = crypto.randomUUID();
+        sessionOwnerToken = crypto.randomUUID();
         try {
           await Session.create({
             sessionId,
@@ -664,7 +666,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
             repoName,
             files: storedFiles,
             lastAccessedAt: new Date(),
-            ownerToken: req.clientId,
+            ownerToken: sessionOwnerToken,
           });
           sessionPersisted = true;
         } catch (sessionErr) {
@@ -879,6 +881,8 @@ if (reviewResult?.fileReviews) {
 
   sessionId,
 
+  sessionOwnerToken,
+
   chatAvailable: sessionPersisted,
 
   sessionPersisted,
@@ -899,7 +903,7 @@ if (reviewResult?.fileReviews) {
 
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async (req, res) => {
-  let { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, useRag, ragSources } = req.body;
+  let { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
 
   const chatNormalized = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
   if (!chatNormalized) {
@@ -931,8 +935,8 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
       if (session) {
         // Verify session ownership to prevent IDOR (issue #742):
         // only the client that created the session may access it.
-        if (session.ownerToken && session.ownerToken !== req.clientId) {
-          console.warn(`⚠️ Session ownership mismatch: session ${sessionId} ownerToken=${session.ownerToken} request clientId=${req.clientId} (possible auth-method change or cookie refresh)`);
+        if (session.ownerToken && session.ownerToken !== sessionOwnerToken) {
+          console.warn(`⚠️ Session ownership mismatch: session ${sessionId} ownerToken=${session.ownerToken} request sessionOwnerToken=${sessionOwnerToken} (invalid or missing session token)`);
           return res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
         }
         // Update lastAccessedAt for the sliding-window TTL (see issue #743).
@@ -952,6 +956,12 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
       let context = null;
       try {
         context = await Session.findOne({ sessionId });
+        if (context) {
+          // Update lastAccessedAt for activity tracking. createdAt remains
+          // unchanged so the original TTL (30 minutes from creation) is
+          // preserved, preventing indefinite session extension (see issue #672).
+          await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $max: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
+        }
       } catch (sessionErr) {
         console.warn('⚠️ Failed to retrieve session from MongoDB:', sessionErr.message);
       }
@@ -1206,6 +1216,7 @@ app.post('/api/issues/create', requireApiKey, issueLimiter, async (req, res) => 
   const owner = parsed.owner;
   const repo = parsed.repo;
 
+  try {
     const octokit = new Octokit({ auth: token });
     
     console.log(`🤖 Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
@@ -1317,6 +1328,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
 
   // Track whether the AI engine was successfully queried
   let aiEngineQueried = false;
+  let aiCommentsDiscarded = 0;
 
   if (filesToReview.length > 0) {
     console.log(`🧠 Querying AI engine for ${filesToReview.length} files...`);
@@ -1337,6 +1349,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
             const validLines = validChangedLines.get(c.path);
             if (!validLines || !validLines.has(Number(c.line))) {
               console.warn(`⚠️ Skipping invalid inline comment location ${c.path}:${c.line}`);
+              aiCommentsDiscarded++;
               return;
             }
             // Avoid duplicate comments if secrets scanner already flagged it
@@ -1345,6 +1358,9 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
               commentsToPost.push(c);
             }
           });
+          if (aiCommentsDiscarded > 0) {
+            console.warn(`⚠️ ${aiCommentsDiscarded} AI comments could not be posted due to line number mismatches with the diff`);
+          }
         }
         aiEngineQueried = true;
       }
@@ -1356,19 +1372,48 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   // 3. Post consolidated review comment back to GitHub PR
   if (commentsToPost.length > 0) {
     console.log(`✍️ Posting PR Review with ${commentsToPost.length} inline comments...`);
-    let body = `## 🛡️ RepoSage AI Code Review Audit Completed!\n\n`;
-    if (!aiEngineQueried && filesToReview.length > 0) {
-      body += `⚠️ **Limited Review:** The AI engine was unreachable during this review. Only regex-based secret scanning was performed. AI-powered bug/performance/style analysis was skipped. Please ensure the AI Engine service is running and re-trigger the review for a complete audit.\n\n`;
+
+    // Batch comments to respect GitHub's limits (50 per review for Checks API alignment)
+    const COMMENTS_PER_BATCH = 50;
+    const commentBatches = [];
+    for (let i = 0; i < commentsToPost.length; i += COMMENTS_PER_BATCH) {
+      commentBatches.push(commentsToPost.slice(i, i + COMMENTS_PER_BATCH));
     }
-    body += `I have audited the code changes in this Pull Request and generated **${commentsToPost.length} actionable inline suggestions**.\n\nPlease review my feedback and suggestions below. Happy coding! 🚀`;
+
+    for (let batchIdx = 0; batchIdx < commentBatches.length; batchIdx++) {
+      const batch = commentBatches[batchIdx];
+      let body = `## 🛡️ RepoSage AI Code Review Audit Completed!\n\n`;
+      if (commentBatches.length > 1) {
+        body += `**Part ${batchIdx + 1} of ${commentBatches.length}** — Showing ${batch.length} of ${commentsToPost.length} findings.\n\n`;
+      }
+      if (!aiEngineQueried && filesToReview.length > 0 && batchIdx === 0) {
+        body += `⚠️ **Limited Review:** The AI engine was unreachable during this review. Only regex-based secret scanning was performed. AI-powered bug/performance/style analysis was skipped. Please ensure the AI Engine service is running and re-trigger the review for a complete audit.\n\n`;
+      }
+      body += `I have audited the code changes in this Pull Request and generated **${commentsToPost.length} actionable inline suggestion${commentsToPost.length === 1 ? '' : 's'}**.\n\nPlease review my feedback and suggestions below. Happy coding! 🚀`;
+
+      await octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number: pullNumber,
+        commit_id: headSha,
+        event: 'COMMENT',
+        body,
+        comments: batch
+      });
+    }
+  } else if (aiCommentsDiscarded > 0) {
+    console.warn(`⚠️ ${aiCommentsDiscarded} AI comments were discarded due to line number mismatches — posting COMMENT review instead of approving.`);
     await octokit.rest.pulls.createReview({
       owner,
       repo,
       pull_number: pullNumber,
       commit_id: headSha,
       event: 'COMMENT',
-      body,
-      comments: commentsToPost
+      body: `## ⚠️ RepoSage AI Code Review — Incomplete Review
+
+The AI engine identified **${aiCommentsDiscarded} potential issue(s)** but could not determine exact line positions within the diff. These comments were filtered out to avoid inaccurate inline annotations.
+
+**Action required:** Please manually review the changes for issues the AI may have detected. Re-run the review after pushing additional changes to re-evaluate.`
     });
   } else if (!aiEngineQueried) {
     console.error('❌ AI Engine was unreachable — posting COMMENT review instead of auto-approving.');
@@ -1890,7 +1935,12 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
 
 });
 
-app.listen(PORT, () => {
-  console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
-});
+async function startServer() {
+  await connectDatabase();
+  app.listen(PORT, () => {
+    console.log(`🟢 RepoSage Backend running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
 // TODO: Issue #397 - Bug [Backend]: Temp folder leakage if Node process crashes during analysis

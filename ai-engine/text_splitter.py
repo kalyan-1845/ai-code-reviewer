@@ -2,6 +2,8 @@ import os
 import hashlib
 from typing import Optional
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pygments.lexers import guess_lexer_for_filename, guess_lexer
+from pygments.util import ClassNotFound
 
 _CHUNK_SIZE = int(os.getenv("TEXT_CHUNK_SIZE", "1000"))
 _CHUNK_OVERLAP = int(os.getenv("TEXT_CHUNK_OVERLAP", "200"))
@@ -33,13 +35,35 @@ _code_extensions = {
 }
 
 
-def _detect_language(file_name: str) -> str:
+def _detect_language(file_name: str, content: str = "") -> str:
     ext = os.path.splitext(file_name)[1].lower()
-    return _code_extensions.get(ext, "default")
+    if ext and ext in _code_extensions:
+        return _code_extensions[ext]
+
+    if content and content.strip():
+        try:
+            lexer = guess_lexer_for_filename(file_name, content)
+            lex_name = lexer.name.lower()
+            for ext_key, lang in _code_extensions.items():
+                if lang == lex_name or lex_name.startswith(lang.split()[0]):
+                    return lang
+        except (ClassNotFound, Exception):
+            pass
+
+        try:
+            lexer = guess_lexer(content)
+            lex_name = lexer.name.lower()
+            for ext_key, lang in _code_extensions.items():
+                if lang == lex_name or lex_name.startswith(lang.split()[0]):
+                    return lang
+        except (ClassNotFound, Exception):
+            pass
+
+    return "default"
 
 
-def _make_splitter(file_name: str, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> RecursiveCharacterTextSplitter:
-    language = _detect_language(file_name)
+def _make_splitter(file_name: str, content: str = "", chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> RecursiveCharacterTextSplitter:
+    language = _detect_language(file_name, content)
     separators = _language_separators.get(language, _language_separators["default"])
     
     final_chunk_size = chunk_size if chunk_size is not None else _CHUNK_SIZE
@@ -84,7 +108,7 @@ def split_file_content(
     if not content or not content.strip():
         return []
 
-    splitter = _make_splitter(file_name, chunk_size, chunk_overlap)
+    splitter = _make_splitter(file_name, content, chunk_size, chunk_overlap)
     docs = splitter.create_documents([content])
     chunks = [d.page_content for d in docs]
     start_indices = [d.metadata.get("start_index", 0) for d in docs]
@@ -97,7 +121,7 @@ def split_file_content(
             "fileName": file_name,
             "chunk_index": i,
             "total_chunks": len(chunks),
-            "language": _detect_language(file_name),
+            "language": _detect_language(file_name, content),
             "start_line": line_numbers[i][0],
             "end_line": line_numbers[i][1],
         }
