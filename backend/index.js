@@ -13,6 +13,7 @@ import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
+import { recordAnalysis as recordFileAnalytics } from './utils/analyticsStore.js';
 import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
 import { isValidRepoUrl, parseRepoUrl } from './utils/urlValidator.js';
 import simpleGit from 'simple-git';
@@ -30,13 +31,17 @@ import AnalysisCache from './utils/analysisCache.js';
 import mongoose from 'mongoose';
 import Analytics from './models/Analytics.js';
 import Session, { estimateSessionSize } from './models/Session.js';
-import { connectDatabase, ensureConnection, closeDatabase } from './config/db.js';
+import { connectDatabase, isDatabaseConnected, ensureConnection, closeDatabase } from './config/db.js';
 
 dotenv.config();
 
 const octokit = new Octokit({ auth: process.env.GITHUB_PAT || undefined });
 
-connectDatabase();
+connectDatabase().then(() => {
+  if (!isDatabaseConnected()) {
+    console.log('Server started in degraded mode (no database). Analytics will use file-based storage.');
+  }
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -814,28 +819,32 @@ const prSummary = {
 };
 
       if (!reviewResult?._mock) {
-        try {
-          await ensureConnection();
-          await Analytics.create({
-            sessionId,
-            repoUrl,
-            repoName,
-            filesReviewedCount: files.length,
-            totalBugs,
-            totalSecurityIssues,
-            totalOptimizations,
-            totalStylingIssues,
-            totalFindings,
-            healthScore,
-            prSummary,
-            dependencyReport,
-            repositoryHealth,
-            language: language || 'General',
-            model: model || 'llama-3.3-70b-versatile',
-            analyzedAt: new Date(),
-          });
-        } catch (dbErr) {
-          console.warn('⚠️ Failed to persist analytics:', dbErr.message);
+        if (isDatabaseConnected()) {
+          try {
+            await Analytics.create({
+              sessionId,
+              repoUrl,
+              repoName,
+              filesReviewedCount: files.length,
+              totalBugs,
+              totalSecurityIssues,
+              totalOptimizations,
+              totalStylingIssues,
+              totalFindings,
+              healthScore,
+              prSummary,
+              dependencyReport,
+              repositoryHealth,
+              language: language || 'General',
+              model: model || 'llama-3.3-70b-versatile',
+              analyzedAt: new Date(),
+            });
+          } catch (dbErr) {
+            console.warn('MongoDB analytics write failed, falling back to file:', dbErr.message);
+            await recordFileAnalytics({ repoName, totalLines: files.length, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch(() => {});
+          }
+        } else {
+          await recordFileAnalytics({ repoName, totalLines: files.length, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch(() => {});
         }
       }
 
@@ -1888,6 +1897,15 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
 
     }
 
+});
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    database: dbConnected ? 'connected' : 'disconnected',
+    mode: dbConnected ? 'full' : 'degraded',
+  });
 });
 
 app.listen(PORT, () => {
