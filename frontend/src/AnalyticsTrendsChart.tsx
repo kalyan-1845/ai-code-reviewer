@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { apiFetch } from './utils/api';
 
 interface TrendPoint {
     timestamp: string;
@@ -10,8 +11,6 @@ interface TrendPoint {
     styling: number;
     filesCount: number;
 }
-
-const API_BASE_URL = 'http://localhost:5000';
 
 const SERIES = [
     { key: 'bugs', label: 'Bugs', color: '#f97316' },
@@ -34,7 +33,7 @@ const AnalyticsTrendsChart: React.FC = () => {
 
         const fetchTrends = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/analytics/trends`);
+                const res = await apiFetch('/api/analytics/trends');
                 if (!res.ok) throw new Error('Failed to fetch trends');
                 const data = await res.json();
                 if (isMounted) {
