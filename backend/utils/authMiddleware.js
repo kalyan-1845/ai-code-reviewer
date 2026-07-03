@@ -85,16 +85,17 @@ export function createFrontendSessionCookie(res) {
     JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000, uid: crypto.randomUUID() }),
   ).toString('base64url');
   const signature = signValue(payload, sessionSecret);
+  const secureCookie = process.env.NODE_ENV === 'production';
 
   res.cookie(SESSION_COOKIE_NAME, `${payload}.${signature}`, {
     httpOnly: true,
-    secure: true,
+    secure: secureCookie,
     sameSite: 'strict',
     path: '/',
     maxAge: SESSION_MAX_AGE_SECONDS * 1000,
   });
 
-  return `${SESSION_COOKIE_NAME}=${payload}.${signature}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}; Secure`;
+  return `${SESSION_COOKIE_NAME}=${payload}.${signature}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secureCookie ? '; Secure' : ''}`;
 }
 
 export const requireApiKey = (req, res, next) => {
