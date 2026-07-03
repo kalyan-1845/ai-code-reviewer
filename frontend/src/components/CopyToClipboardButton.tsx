@@ -28,7 +28,7 @@ export default function CopyToClipboardButton({
 
   return (
     <>
-      <button
+      <button aria-label="Copy to clipboard"
         type="button"
         onClick={handleCopy}
         className={`inline-flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer ${className}`}

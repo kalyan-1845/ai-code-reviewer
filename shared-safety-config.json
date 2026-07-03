@@ -12,16 +12,26 @@
     "\u039F": "O", "\u0395": "E", "\u0391": "A"
   },
   "dangerous_phrases": [
-    "ignore all", "ignore previous", "ignore above",
-    "forget all", "forget previous", "you are not",
-    "override all", "disregard", "do not follow",
-    "new directive", "system override", "protocol change",
-    "roleplay mode", "from now on", "instead follow",
-    "real instruction", "actual instruction", "replace all",
+    "ignore all", "ignore all previous instructions", "ignore all instructions",
+    "ignore previous", "ignore above", "ignore the above",
+    "ignore previous instructions",
+    "forget all", "forget all previous", "forget previous", "forget your",
+    "you are not", "you will now", "you must now", "you have been",
+    "you are programmed",
+    "from now on",
+    "override all", "override protocol",
+    "system override",
+    "new directive",
+    "protocol change",
+    "disregard", "disregard all", "disregard all previous",
+    "do not follow",
+    "instead follow",
+    "roleplay mode",
+    "real instruction", "actual instruction",
+    "replace all",
     "disobey", "unauthorized", "breach", "bypass",
-    "your true purpose", "you will now", "ignore the above",
-    "ignore previous instructions", "disregard all previous",
-    "forget your", "you are programmed", "override protocol",
-    "you have been", "you must now", "listen to me"
+    "your true purpose",
+    "listen to me",
+    "disable all"
   ]
 }

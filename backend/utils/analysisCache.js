@@ -212,8 +212,8 @@ class AnalysisCache {
       return 0;
     }
     let removed = 0;
-    for (const key of keys) {
-      if (this.cache.delete(key)) {
+      for (const key of keys) {
+        if (this.cache.delete(key)) {
         removed++;
       }
     }
