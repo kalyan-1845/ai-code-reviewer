@@ -113,6 +113,47 @@ export const handleMarkdownExport = (repoName: string, analysis: AnalysisData) =
   URL.revokeObjectURL(url);
 };
 
+export const handlePdfExport = async (
+  repoName: string,
+  analysis: AnalysisData,
+  apiFetch: (path: string, options?: RequestInit) => Promise<Response>
+) => {
+  try {
+    const response = await apiFetch('/api/reports/pdf', {
+      method: 'POST',
+      body: JSON.stringify({
+        repoName,
+        analysis: {
+          fileReviews: analysis.fileReviews,
+          metrics: analysis.metrics,
+          generatedReadme: analysis.generatedReadme,
+          mermaidDiagram: analysis.mermaidDiagram,
+        }
+      })
+    });
+
+    if (!response.ok) {
+      let errMsg = 'Failed to export PDF report.';
+      try { const errData = await response.json(); errMsg = errData.error || errMsg; }
+      catch { try { errMsg = (await response.text()) || errMsg; } catch {} }
+      throw new Error(errMsg);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const element = document.createElement('a');
+    element.href = url;
+    element.download = `${repoName || 'RepoSage'}-Audit-Report.pdf`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+    URL.revokeObjectURL(url);
+  } catch (err: any) {
+    console.error(err);
+    alert(err.message || 'Failed to export PDF report.');
+  }
+};
+
 export const handleHtmlExport = async (
   repoName: string,
   analysis: AnalysisData,

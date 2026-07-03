@@ -33,8 +33,9 @@ import {
   ChevronDown,
   Folder,
   FolderOpen,
+  FileText,
 } from "lucide-react";
-import { handleMarkdownExport, handleHtmlExport } from "../utils/exportUtils";
+import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../utils/exportUtils";
 import mermaid from "mermaid";
 import { sanitizeMermaidOutput } from "../utils/sanitize";
 import { apiFetch } from "../utils/api";
@@ -2362,6 +2363,27 @@ export default function Dashboard() {
                     title="Export the complete audit report as Markdown"
                   >
                     <FileDown size={14} /> Export Markdown
+                  </button>
+                  <button
+                    onClick={() => analysisResult && handlePdfExport(analysisResult.repoName, analysisResult.analysis, apiFetch)}
+                    style={{
+                      background: "rgba(220, 38, 38, 0.1)",
+                      border: "1px solid rgba(220, 38, 38, 0.3)",
+                      color: "#f87171",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                    className="hover:bg-red-500/20"
+                    title="Export the complete audit report as PDF"
+                  >
+                    <FileText size={14} /> Export PDF
                   </button>
                 </div>
               </div>
