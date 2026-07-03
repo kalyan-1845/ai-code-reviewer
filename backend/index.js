@@ -383,6 +383,19 @@ async function generateDependencyReport(clonePath) {
 // TTL matches GitHub's webhook retry window (300 seconds)
 const DELIVERY_REDIS_TTL = 300;
 
+// In-memory fallback for webhook dedup when Redis is unavailable
+const dedupMemorySet = new Set();
+const shaDedupMemorySet = new Set();
+const DEDUP_MEMORY_TTL = DELIVERY_REDIS_TTL * 1000;
+
+function checkAndSetDedup(deliveryDedupKey) {
+  if (redisClient) return null;
+  if (dedupMemorySet.has(deliveryDedupKey)) return 0;
+  dedupMemorySet.add(deliveryDedupKey);
+  setTimeout(() => dedupMemorySet.delete(deliveryDedupKey), DEDUP_MEMORY_TTL);
+  return 1;
+}
+
 
 
 // Periodic sweeper for stale exclusive locks to prevent unbounded memory growth
@@ -1108,12 +1121,19 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Missing x-github-delivery header.' });
     }
     const deliveryDedupKey = `webhook:delivery:${deliveryId}`;
-    const isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
+    let isDuplicate;
+    if (redisClient) {
+      isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
+    } else {
+      isDuplicate = checkAndSetDedup(deliveryDedupKey);
+    }
     if (isDuplicate === 0) {
       console.log(`⏭️ Skipping duplicate webhook delivery: ${deliveryId}`);
       return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
     }
-    await redisClient.expire(deliveryDedupKey, DELIVERY_REDIS_TTL);
+    if (redisClient) {
+      await redisClient.expire(deliveryDedupKey, DELIVERY_REDIS_TTL);
+    }
 
     const action = payload.action;
     if (action === 'opened' || action === 'synchronize') {
@@ -1125,7 +1145,12 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
 
       const shaKey = `${owner}/${repo}/#${pullNumber}`;
       const shaDedupKey = `webhook:sha:${shaKey}`;
-      const shaAlreadyReviewed = await redisClient.sismember(shaDedupKey, headSha);
+      let shaAlreadyReviewed;
+      if (redisClient) {
+        shaAlreadyReviewed = await redisClient.sismember(shaDedupKey, headSha);
+      } else {
+        shaAlreadyReviewed = shaDedupMemorySet.has(`${shaDedupKey}:${headSha}`) ? 1 : 0;
+      }
       if (shaAlreadyReviewed) {
         console.log(`⏭️ Already reviewed commit ${headSha.substring(0,7)} for PR #${pullNumber}`);
         return res.json({ success: true, message: 'Webhook received (duplicate SHA skipped).' });
@@ -1157,12 +1182,21 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
         } catch (error) {
           console.error(`❌ Webhook review failed for ${headSha}:`, error.message);
-          await redisClient.srem(shaDedupKey, headSha);
+          if (redisClient) {
+            await redisClient.srem(shaDedupKey, headSha);
+          } else {
+            shaDedupMemorySet.delete(`${shaDedupKey}:${headSha}`);
+          }
         }
       });
       if (enqueuePromise) {
-        await redisClient.sadd(shaDedupKey, headSha);
-        await redisClient.expire(shaDedupKey, DELIVERY_REDIS_TTL);
+        if (redisClient) {
+          await redisClient.sadd(shaDedupKey, headSha);
+          await redisClient.expire(shaDedupKey, DELIVERY_REDIS_TTL);
+        } else {
+          shaDedupMemorySet.add(`${shaDedupKey}:${headSha}`);
+          setTimeout(() => shaDedupMemorySet.delete(`${shaDedupKey}:${headSha}`), DELIVERY_REDIS_TTL * 1000);
+        }
       } else {
         return res.status(429).json({ error: 'Review queue full. Try again later.' });
       }
