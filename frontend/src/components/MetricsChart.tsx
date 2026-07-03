@@ -33,7 +33,7 @@ interface MetricsChartProps {
 
 export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', reviewId }) => {
   const colors = THEME_COLORS[theme];
-  const [chartData, setChartData] = useState<any[] | null>(null);
+  const [chartData, setChartData] = useState<unknown[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

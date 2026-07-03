@@ -27,6 +27,12 @@ import {
   Trash2,
   Search,
   X,
+  ChevronsUpDown,
+  ChevronsDownUp,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
 } from "lucide-react";
 import { handleMarkdownExport, handleHtmlExport } from "../utils/exportUtils";
 import mermaid from "mermaid";
@@ -306,6 +312,8 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
 
 export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   // Input State
   const [repoUrl, setRepoUrl] = useState("");
@@ -320,17 +328,142 @@ export default function Dashboard() {
   // Response & View State
   const { analysisResult, setAnalysisResult, selectedFile, setSelectedFile, chatHistory, setChatHistory } = useStore();
   const [fileFilterQuery, setFileFilterQuery] = useState('');
+  // Debounced search to prevent heavy filtering on every keystroke
   const debouncedFileFilterQuery = useDebounce(fileFilterQuery, 300);
   const [isClearHovered, setIsClearHovered] = useState(false);
   const [activeExtFilter, setActiveExtFilter] = useState('All');
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling' | 'metrics'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState(false);
 
+  // --- File Tree Utilities ---
+  interface FileTreeNode {
+    name: string;
+    fullPath: string;
+    isFolder: boolean;
+    children: FileTreeNode[];
+  }
+
+  const buildFileTree = (filePaths: string[]): FileTreeNode[] => {
+    const root: FileTreeNode[] = [];
+    const folderMap = new Map<string, FileTreeNode>();
+
+    for (const filePath of filePaths) {
+      const parts = filePath.split('/');
+      let currentLevel = root;
+      let currentPath = '';
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        const isLast = i === parts.length - 1;
+
+        if (isLast) {
+          // It's a file
+          currentLevel.push({
+            name: part,
+            fullPath: filePath,
+            isFolder: false,
+            children: [],
+          });
+        } else {
+          // It's a folder
+          let folder = folderMap.get(currentPath);
+          if (!folder) {
+            folder = {
+              name: part,
+              fullPath: currentPath,
+              isFolder: true,
+              children: [],
+            };
+            folderMap.set(currentPath, folder);
+            currentLevel.push(folder);
+          }
+          currentLevel = folder.children;
+        }
+      }
+    }
+
+    // Sort: folders first, then files, both alphabetically
+    const sortTree = (nodes: FileTreeNode[]): FileTreeNode[] => {
+      nodes.sort((a, b) => {
+        if (a.isFolder && !b.isFolder) return -1;
+        if (!a.isFolder && b.isFolder) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      nodes.forEach(n => { if (n.isFolder) sortTree(n.children); });
+      return nodes;
+    };
+
+    return sortTree(root);
+  };
+
+  const collectAllFolderPaths = (nodes: FileTreeNode[]): string[] => {
+    const paths: string[] = [];
+    const traverse = (list: FileTreeNode[]) => {
+      for (const node of list) {
+        if (node.isFolder) {
+          paths.push(node.fullPath);
+          traverse(node.children);
+        }
+      }
+    };
+    traverse(nodes);
+    return paths;
+  };
+
+  const handleExpandAll = (tree: FileTreeNode[]) => {
+    const allPaths = collectAllFolderPaths(tree);
+    setExpandedFolders(new Set(allPaths));
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedFolders(new Set());
+  };
+
+  const toggleFolder = (folderPath: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) {
+        next.delete(folderPath);
+      } else {
+        next.add(folderPath);
+      }
+      return next;
+    });
+  };
+
   useEffect(() => {
-    if (!apiError) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setApiError(null);
+      // Escape to close modals and clear errors
+      if (e.key === "Escape") {
+        setApiError(null);
+        setShowSettings(false);
+        setShowShortcutsHelp(false);
+        if (document.activeElement === searchInputRef.current) {
+          searchInputRef.current?.blur();
+        }
+      }
+      
+      // Ctrl+K to search files
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+
+      // J/K for navigating views (mocked logic - just toggling tabs)
+      if (e.target === document.body || document.activeElement === document.body) {
+        if (e.key.toLowerCase() === "j" || e.key.toLowerCase() === "k") {
+          // Simply show help or focus first clickable as a demo
+          setShowShortcutsHelp(true);
+        }
+        
+        // ? to show shortcuts
+        if (e.key === "?") {
+          setShowShortcutsHelp(true);
+        }
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -1188,7 +1321,7 @@ export default function Dashboard() {
                 <p style={{ margin: 0, fontSize: '11px', color: '#9ca3af' }}>Reload cached repository scans</p>
               </div>
               {auditHistory.length > 0 && (
-                <button
+                <button aria-label="Clear audit history"
                   onClick={clearAuditHistory}
                   title="Clear audit history"
                   style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -2247,7 +2380,64 @@ export default function Dashboard() {
               >
                 {/* File Tree List */}
                 <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '72vh' }}>
-                  <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.5px' }}>File Navigator</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', margin: 0, letterSpacing: '0.5px' }}>File Navigator</h3>
+                    <div style={{ display: 'flex', gap: '2px' }}>
+                      <button
+                        onClick={() => {
+                          const filteredFiles = Object.keys(analysisResult.analysis.fileReviews).filter((filePath) => {
+                            const matchesSearch = filePath.toLowerCase().includes(debouncedFileFilterQuery.toLowerCase());
+                            if (!matchesSearch) return false;
+                            const ext = filePath.split('.').pop()?.toLowerCase();
+                            if (activeExtFilter === 'JS/TS') return ['js', 'jsx', 'ts', 'tsx'].includes(ext || '');
+                            if (activeExtFilter === 'Python') return ext === 'py';
+                            if (activeExtFilter === 'CSS/HTML') return ['css', 'html'].includes(ext || '');
+                            return true;
+                          });
+                          handleExpandAll(buildFileTree(filteredFiles));
+                        }}
+                        title="Expand All Folders"
+                        style={{
+                          padding: '4px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#9ca3af',
+                          cursor: 'pointer',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#f3f4f6'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.background = 'transparent'; }}
+                        aria-label="Expand all folders"
+                      >
+                        <ChevronsUpDown size={15} />
+                      </button>
+                      <button
+                        onClick={handleCollapseAll}
+                        title="Collapse All Folders"
+                        style={{
+                          padding: '4px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#9ca3af',
+                          cursor: 'pointer',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#f3f4f6'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.background = 'transparent'; }}
+                        aria-label="Collapse all folders"
+                      >
+                        <ChevronsDownUp size={15} />
+                      </button>
+                    </div>
+                  </div>
                   <div
                     style={{
                       position: 'relative',
@@ -2268,10 +2458,11 @@ export default function Dashboard() {
                     />
 
                     <input
+                      ref={searchInputRef}
                       type="text"
                       value={fileFilterQuery}
                       onChange={(e) => setFileFilterQuery(e.target.value)}
-                      placeholder="Search files..."
+                      placeholder="Search files... (Ctrl+K)"
                       style={{
                         width: '100%',
                         padding: '6px 30px 6px 28px',
@@ -2383,51 +2574,113 @@ export default function Dashboard() {
                       );
                     }
 
-                    return filteredFiles.map((filePath) => (
-                      <button
-                        key={filePath}
-                        onClick={() => setSelectedFile(filePath)}
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          borderRadius: "6px",
-                          background:
-                            selectedFile === filePath
-                              ? "rgba(59,130,246,0.1)"
-                              : "transparent",
-                          border:
-                            selectedFile === filePath
-                              ? "1px solid rgba(59,130,246,0.3)"
-                              : "1px solid transparent",
-                          color:
-                            selectedFile === filePath
-                              ? "#60a5fa"
-                              : "var(--text-color)",
-                          textAlign: "left",
-                          fontSize: "12px",
-                          fontWeight: selectedFile === filePath ? 600 : 500,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          transition: "all 0.15s",
-                        }}
-                      >
-                        <FileCode
-                          size={14}
+                    const fileTree = buildFileTree(filteredFiles);
+
+                    const renderTreeNode = (node: FileTreeNode, depth: number = 0) => {
+                      if (node.isFolder) {
+                        const isExpanded = expandedFolders.has(node.fullPath);
+                        return (
+                          <div key={node.fullPath}>
+                            <button
+                              onClick={() => toggleFolder(node.fullPath)}
+                              style={{
+                                width: '100%',
+                                padding: '5px 8px',
+                                paddingLeft: `${8 + depth * 14}px`,
+                                borderRadius: '4px',
+                                background: 'transparent',
+                                border: '1px solid transparent',
+                                color: '#d1d5db',
+                                textAlign: 'left',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                transition: 'all 0.15s',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown size={12} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                              ) : (
+                                <ChevronRight size={12} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                              )}
+                              {isExpanded ? (
+                                <FolderOpen size={14} style={{ color: '#60a5fa', flexShrink: 0 }} />
+                              ) : (
+                                <Folder size={14} style={{ color: '#60a5fa', flexShrink: 0 }} />
+                              )}
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+                            </button>
+                            {isExpanded && (
+                              <div style={{ transition: 'all 0.15s ease-in-out' }}>
+                                {node.children.map(child => renderTreeNode(child, depth + 1))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // File node
+                      return (
+                        <button
+                          key={node.fullPath}
+                          onClick={() => setSelectedFile(node.fullPath)}
                           style={{
+                            width: '100%',
+                            padding: '5px 8px',
+                            paddingLeft: `${8 + depth * 14}px`,
+                            borderRadius: '4px',
+                            background:
+                              selectedFile === node.fullPath
+                                ? 'rgba(59,130,246,0.1)'
+                                : 'transparent',
+                            border:
+                              selectedFile === node.fullPath
+                                ? '1px solid rgba(59,130,246,0.3)'
+                                : '1px solid transparent',
                             color:
-                              selectedFile === filePath
-                                ? "#60a5fa"
-                                : "var(--subtext-color)",
+                              selectedFile === node.fullPath
+                                ? '#60a5fa'
+                                : 'var(--text-color)',
+                            textAlign: 'left',
+                            fontSize: '12px',
+                            fontWeight: selectedFile === node.fullPath ? 600 : 500,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.15s',
                           }}
-                        />
-                        {filePath}
-                      </button>
-                    ));
+                          onMouseEnter={(e) => {
+                            if (selectedFile !== node.fullPath) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (selectedFile !== node.fullPath) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <FileCode
+                            size={14}
+                            style={{
+                              color:
+                                selectedFile === node.fullPath
+                                  ? '#60a5fa'
+                                  : 'var(--subtext-color)',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+                        </button>
+                      );
+                    };
+
+                    return fileTree.map(node => renderTreeNode(node, 0));
                   })()}
                 </div>
 
@@ -4201,6 +4454,65 @@ export default function Dashboard() {
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
       )}
+      {showShortcutsHelp && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 9999,
+          }}
+          onClick={() => setShowShortcutsHelp(false)}
+        >
+          <div
+            className="glass-panel"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "400px",
+              padding: "24px",
+              borderRadius: "12px",
+              background: "var(--panel-bg)",
+              color: "var(--text-color)",
+              border: "1px solid var(--border-color)",
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>Keyboard Shortcuts</h2>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "14px" }}>
+              <li style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                <span>Focus Search</span>
+                <kbd style={{ background: "#374151", padding: "2px 6px", borderRadius: "4px" }}>Ctrl + K</kbd>
+              </li>
+              <li style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                <span>Close Modals / Blur Input</span>
+                <kbd style={{ background: "#374151", padding: "2px 6px", borderRadius: "4px" }}>Esc</kbd>
+              </li>
+              <li style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                <span>Show Shortcuts</span>
+                <kbd style={{ background: "#374151", padding: "2px 6px", borderRadius: "4px" }}>?</kbd>
+              </li>
+            </ul>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+              <button
+                onClick={() => setShowShortcutsHelp(false)}
+                style={{
+                  background: "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  padding: "8px 16px",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 🚀 Sleek Footer */}
       <footer
         style={{

@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 
 export default function App() {
     return (
+      <>
         <BrowserRouter>
             <Routes>
                 {/* Wrap all routes inside the SidebarLayout */}
@@ -20,5 +21,9 @@ export default function App() {
                 </Route>
             </Routes>
         </BrowserRouter>
+        <div id="toast-root"></div>
+      </>
     );
 }
+
+// TODO: Complete full implementation for #1291 - Tech Debt: Replace 'any' type in catch clauses with 'unknown' or 'Error' across Dashboard.tsx

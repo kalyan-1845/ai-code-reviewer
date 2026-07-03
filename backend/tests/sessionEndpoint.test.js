@@ -9,8 +9,9 @@ import assert from 'node:assert/strict';
 
 import { createFrontendSessionCookie, requireApiKey } from '../utils/authMiddleware.js';
 
-// Set up a test API key for all tests
+// Set up a test API key and session secret for all tests
 process.env.REPOSAGE_API_KEY = 'test-session-key-123';
+process.env.SESSION_SECRET = 'test-session-secret-456';
 
 function makeMockReqRes(overrides = {}) {
   const headers = {};
@@ -32,6 +33,9 @@ function makeMockReqRes(overrides = {}) {
     },
     json(data) {
       this.body = data;
+      return this;
+    },
+    cookie(name, value, options) {
       return this;
     },
   };
@@ -56,6 +60,9 @@ function makeSessionReqRes() {
       return this;
     },
     json(data) {
+      return this;
+    },
+    cookie(name, value, options) {
       return this;
     },
   };
@@ -147,16 +154,16 @@ test('createFrontendSessionCookie includes Max-Age', () => {
   assert.ok(cookie.includes('Max-Age='), 'cookie should have Max-Age');
 });
 
-test('createFrontendSessionCookie includes reposage_session name prefix', () => {
+test('createFrontendSessionCookie includes rps_v1_session name prefix', () => {
   const { res } = makeSessionReqRes();
   const cookie = createFrontendSessionCookie(res);
-  assert.ok(cookie.startsWith('reposage_session='), 'cookie name should be reposage_session');
+  assert.ok(cookie.startsWith('rps_v1_session='), 'cookie name should be rps_v1_session');
 });
 
 test('createFrontendSessionCookie value has payload.signature format', () => {
   const { res } = makeSessionReqRes();
   const cookie = createFrontendSessionCookie(res);
-  const nameValuePart = cookie.split(';')[0]; // "reposage_session=base64.sig"
+  const nameValuePart = cookie.split(';')[0]; // "rps_v1_session=base64.sig"
   const value = nameValuePart.split('=')[1];
   assert.ok(value.includes('.'), 'cookie value should have payload.signature format');
   const segments = value.split('.');
