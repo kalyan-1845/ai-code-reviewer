@@ -119,7 +119,7 @@ async function run() {
     }
 
     // 5. Parse Diff
-    const parsedFiles = parseDiff(diff);
+    const { files: parsedFiles } = parseDiff(diff);
     console.log(`📁 Found ${parsedFiles.length} files in PR diff.`);
 
     const commentsToPost = [];
