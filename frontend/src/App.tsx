@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 
 export default function App() {
     return (
+      <>
         <BrowserRouter>
             <Routes>
                 {/* Wrap all routes inside the SidebarLayout */}
@@ -20,7 +21,8 @@ export default function App() {
                 </Route>
             </Routes>
         </BrowserRouter>
-      <div id="toast-root"></div>
+        <div id="toast-root"></div>
+      </>
     );
 }
 
