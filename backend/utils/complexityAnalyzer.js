@@ -98,7 +98,7 @@ export function analyzeComplexity(fileContent, filePath) {
         functionCount++;
       }
     } else if (ext === '.py') {
-      if (trimmed.startsWith('def ')) {
+      if (trimmed.startsWith('def ') || trimmed.startsWith('async def ')) {
         functionCount++;
       }
     } else if (ext === '.go') {

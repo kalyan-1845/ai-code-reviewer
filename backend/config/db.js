@@ -5,15 +5,15 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/reposa
 let isConnected = false;
 let connectionPromise = null;
 
-const RECONNECT_INTERVAL_MS = 5000;
-const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 1 : 5000;
+const MAX_RECONNECT_ATTEMPTS = process.env.NODE_ENV === 'test' ? 1 : 5;
 
 export async function connectDatabase() {
   if (isConnected) return;
   if (connectionPromise) return connectionPromise;
 
   connectionPromise = mongoose.connect(MONGODB_URI, {
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: process.env.NODE_ENV === 'test' ? 100 : 5000,
     socketTimeoutMS: 45000,
   })
     .then((conn) => {
@@ -24,6 +24,11 @@ export async function connectDatabase() {
     .catch((err) => {
       isConnected = false;
       connectionPromise = null;
+      if (process.env.NODE_ENV === 'production') {
+        console.error('❌ Cannot start in production without database connection');
+        process.exit(1);
+      }
+      console.warn('⚠️ MongoDB connection failed:', err.message);
       displayStartupBanner(false);
       return null;
     });
