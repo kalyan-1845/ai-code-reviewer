@@ -40,38 +40,27 @@ MAX_CHAT_FILES = int(os.getenv("MAX_CHAT_FILES", "20"))
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 
 # Single source of truth for dangerous patterns — keep in sync with
-# backend/shared/dangerousPhrases.js
+# shared-safety-config.json
 DANGEROUS_PATTERNS = [
-    "ignore all previous instructions",
-    "ignore all instructions",
-    "ignore previous",
-    "ignore above",
-    "forget all previous",
-    "forget previous",
-    "you are not",
-    "you will now",
-    "you must now",
+    "ignore all", "ignore all previous instructions", "ignore all instructions",
+    "ignore previous", "ignore above", "ignore the above",
+    "ignore previous instructions",
+    "forget all", "forget all previous", "forget previous", "forget your",
+    "you are not", "you will now", "you must now", "you have been",
+    "you are programmed",
     "from now on",
-    "override all",
+    "override all", "override protocol",
     "system override",
     "new directive",
     "protocol change",
-    "disregard all",
-    "disregard",
+    "disregard", "disregard all", "disregard all previous",
     "do not follow",
-    "roleplay mode",
     "instead follow",
-    "real instruction",
-    "actual instruction",
+    "roleplay mode",
+    "real instruction", "actual instruction",
     "replace all",
-    "disobey",
-    "unauthorized",
-    "breach",
-    "bypass",
+    "disobey", "unauthorized", "breach", "bypass",
     "your true purpose",
-    "you are programmed",
-    "override protocol",
-    "you have been",
     "listen to me",
     "disable all",
 ]
@@ -98,6 +87,8 @@ def _redact_key(text: str, key: str) -> str:
     for trunc_suffix in ["...", "…", " (truncated)"]:
         truncated = re.escape(key[:len(key) // 2] + trunc_suffix)
         text = re.sub(truncated, "***", text)
+    if len(key) > 16:
+        text = re.sub(re.escape(key[:16]), "***", text)
     return text
 
 ALLOWED_TAGS = [
@@ -192,9 +183,7 @@ def sanitize_ai_output(text: str) -> str:
     return text
 
 # NOTE: This HOMOGLYPH_MAP and dangerous phrases list (DANGEROUS_PATTERNS)
-# is sourced from shared-safety-config.json as the single source of truth.
-# The backend/index.js list uses backend/shared/dangerousPhrases.js. Keep both
-# in sync. See issue #1390.
+# should be kept in sync with backend/shared/dangerousPhrases.js.
 HOMOGLYPH_MAP = {
     # Lowercase Cyrillic
     '\u0430': 'a', '\u0435': 'e', '\u043E': 'o', '\u0441': 'c', '\u0440': 'p',
