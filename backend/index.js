@@ -260,8 +260,13 @@ function csrfProtection(req, res, next) {
 app.use(csrfProtection);
 
 app.post('/api/session', requireApiKey, (req, res) => {
-  const sessionCookie = createFrontendSessionCookie(res);
-  if (!sessionCookie) return;
+  const result = createFrontendSessionCookie(res);
+  if (!result) return;
+
+  // Set req.clientId to the cookie's uid so any session created in
+  // this request or subsequent requests uses the same per-client
+  // identifier for ownership binding.
+  req.clientId = result.clientId;
 
   const csrfToken = generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
@@ -269,7 +274,7 @@ app.post('/api/session', requireApiKey, (req, res) => {
     path: '/',
     secure: process.env.NODE_ENV === 'production',
   });
-  return res.json({ success: true, csrfToken });
+  return res.json({ success: true, csrfToken, clientId: result.clientId });
 });
 
 // Logout endpoint — clears session and CSRF token
