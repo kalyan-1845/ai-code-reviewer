@@ -12,15 +12,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sahare-mayur-0071/ai-code-reviewer.git"
+    "url": "git+https://github.com/kalyan-1845/ai-code-reviewer.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/sahare-mayur-0071/ai-code-reviewer/issues"
+    "url": "https://github.com/kalyan-1845/ai-code-reviewer/issues"
   },
-  "homepage": "https://github.com/sahare-mayur-0071/ai-code-reviewer#readme",
+  "homepage": "https://github.com/kalyan-1845/ai-code-reviewer#readme",
   "devDependencies": {
     "eslint": "^10.6.0",
     "husky": "^9.1.7",
