@@ -136,8 +136,16 @@ app.use(cookieParser());
 // webhook route; all other routes fall through to express.json() below.
 app.use((req, res, next) => {
   if (req.method === 'POST' && req.path === '/api/webhook') {
+    const MAX_WEBHOOK_BODY = 5 * 1024 * 1024; // 5 MB
     const chunks = [];
-    req.on('data', chunk => chunks.push(chunk));
+    let totalBytes = 0;
+    req.on('data', chunk => {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_WEBHOOK_BODY) {
+        req.destroy(new Error('Webhook payload too large'));
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => {
       req.rawBody = Buffer.concat(chunks);
       try {
@@ -156,8 +164,9 @@ app.use(express.json({
   limit: process.env.JSON_BODY_LIMIT || '5mb',
 }));
 
-// CSRF token endpoint: generates a random token and sets it as a non-httpOnly cookie
-// so the frontend can read it and include it in the X-CSRF-Token header.
+// CSRF token endpoint: generates a random token and sets it as an httpOnly cookie.
+// The token is also returned in the JSON response body so the frontend can read
+// it from there (not from document.cookie) and include it in the X-CSRF-Token header.
 const CSRF_COOKIE_NAME = 'csrf-token';
 const CSRF_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const CSRF_ROTATION_GRACE_MS = 10 * 1000; // allow in-flight concurrent requests
@@ -257,6 +266,7 @@ function csrfProtection(req, res, next) {
     }
     const newToken = generateCsrfToken();
     res.cookie(CSRF_COOKIE_NAME, newToken, {
+      httpOnly: true,
       sameSite: 'strict',
       path: '/',
       secure: process.env.NODE_ENV === 'production',
@@ -281,6 +291,7 @@ app.post('/api/session', requireApiKey, (req, res) => {
 
   const csrfToken = generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
+    httpOnly: true,
     sameSite: 'strict',
     path: '/',
     secure: process.env.NODE_ENV === 'production',
@@ -304,7 +315,7 @@ app.post('/api/logout', requireApiKey, (req, res) => {
 app.get('/api/csrf-token', (req, res) => {
   const csrfToken = generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
-    httpOnly: false,
+    httpOnly: true,
     sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
