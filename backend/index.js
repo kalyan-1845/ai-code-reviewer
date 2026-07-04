@@ -80,17 +80,17 @@ if (process.env.REDIS_URL) {
   redisClient.on('error', (err) => console.error('Redis Client Error', err));
 }
 
-// Per-IP rate limiting for expensive endpoints
+// Per-IP rate limiting for expensive LLM-triggering endpoints (issue #1362)
 const analyzeLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 5,
+  windowMs: 15 * 60 * 1000,
+  max: 15,
   standardHeaders: true,
   legacyHeaders: false,
   // No keyGenerator: express-rate-limit defaults to req.ip, which Express has already
   // resolved correctly via the `trust proxy` setting above. Using req.ip prevents
   // clients from bypassing the limit by rotating fake X-Forwarded-For values.
   store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
-  message: { error: 'Too many analyze requests. Please slow down and retry after 5 minutes.' }
+  message: { success: false, error: 'Too many analysis requests from this IP. Please try again in 15 minutes.' }
 });
 const issueLimiter = rateLimit({
   windowMs: 60 * 1000,
