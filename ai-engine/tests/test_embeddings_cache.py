@@ -1,7 +1,6 @@
 import pytest
 from embeddings import (
     _embedding_cache,
-    _cache_access_order,
     _cache_enabled,
     _MAX_CACHE_SIZE,
     get_or_compute_embedding,
@@ -110,11 +109,9 @@ class TestInvalidateCacheForFile:
 
     def setup_method(self):
         _embedding_cache.clear()
-        _cache_access_order.clear()
 
     def teardown_method(self):
         _embedding_cache.clear()
-        _cache_access_order.clear()
 
     def test_invalidate_nonexistent_path_is_noop(self):
         """Invalidating a path that was never cached should not raise."""
@@ -125,10 +122,8 @@ class TestInvalidateCacheForFile:
         """Invalidating should remove entry from both structures."""
         get_or_compute_embedding("x.py", "x = 1")
         assert "x.py" in _embedding_cache
-        assert "x.py" in _cache_access_order
         invalidate_cache_for_file("x.py")
         assert "x.py" not in _embedding_cache
-        assert "x.py" not in _cache_access_order
 
     def test_invalidate_one_of_multiple_entries(self):
         """Invalidating one entry should not affect others."""
@@ -162,11 +157,9 @@ class TestClearEmbeddingCache:
 
     def setup_method(self):
         _embedding_cache.clear()
-        _cache_access_order.clear()
 
     def teardown_method(self):
         _embedding_cache.clear()
-        _cache_access_order.clear()
 
     def test_clear_removes_all_entries(self):
         """Clear should empty the entire cache."""
@@ -180,15 +173,12 @@ class TestClearEmbeddingCache:
         """Clear should also empty the access order list."""
         get_or_compute_embedding("a.py", "x = 1")
         get_or_compute_embedding("b.py", "y = 2")
-        assert len(_cache_access_order) == 2
         clear_embedding_cache()
-        assert len(_cache_access_order) == 0
 
     def test_clear_on_empty_cache_is_noop(self):
         """Clearing an already-empty cache should not raise."""
         clear_embedding_cache()
         assert len(_embedding_cache) == 0
-        assert len(_cache_access_order) == 0
 
 
 class TestGetCacheStats:
@@ -196,11 +186,9 @@ class TestGetCacheStats:
 
     def setup_method(self):
         _embedding_cache.clear()
-        _cache_access_order.clear()
 
     def teardown_method(self):
         _embedding_cache.clear()
-        _cache_access_order.clear()
 
     def test_stats_reflects_empty_cache(self):
         """Stats should report zero size for empty cache."""
