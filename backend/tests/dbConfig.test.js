@@ -9,6 +9,11 @@ import mongoose from 'mongoose';
 // and error-handling behavior without requiring a live MongoDB instance.
 // ---------------------------------------------------------------------------
 
+// Override MONGODB_URI to prevent real MongoDB connection in CI.
+// Native Mongoose connection objects can't be serialized via IPC
+// on Node.js 20, causing ERR_TEST_FAILURE in the test runner.
+process.env.MONGODB_URI = 'mongodb://0.0.0.0:1/test';
+
 // Suppress console.warn during tests to keep output clean
 const originalWarn = console.warn;
 console.warn = () => {};
