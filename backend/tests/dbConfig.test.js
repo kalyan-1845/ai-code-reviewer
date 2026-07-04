@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import mongoose from 'mongoose';
 
 // ---------------------------------------------------------------------------
 // Unit tests for backend/config/db.js
@@ -113,6 +114,16 @@ test('closeDatabase returns undefined when not connected', async () => {
   const result = db.closeDatabase();
   // Returns undefined in the early-return path (not connected)
   assert.ok(result === undefined || result instanceof Promise);
+});
+
+test('cleanup: disconnect mongoose to prevent IPC serialization errors', async () => {
+  try {
+    await mongoose.disconnect();
+    mongoose.connection.removeAllListeners();
+  } catch {
+    // ignore cleanup errors
+  }
+  assert.ok(true, 'cleanup complete');
 });
 
 console.warn = originalWarn;
