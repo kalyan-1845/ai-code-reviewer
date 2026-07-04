@@ -156,7 +156,7 @@ test('mockAIReview review bugs contain type, line, description, suggestion', () 
   const result = mockAIReview([{ name: 'test.js', content: 'x' }]);
   const bug = result.fileReviews['test.js'].bugs[0];
   assert.ok(typeof bug.type === 'string' && bug.type.length > 0);
-  assert.ok(typeof bug.line === 'number');
+  assert.ok(bug.line === null);
   assert.ok(typeof bug.description === 'string' && bug.description.length > 0);
   assert.ok(typeof bug.suggestion === 'string' && bug.suggestion.length > 0);
 });
@@ -165,7 +165,7 @@ test('mockAIReview review security contain type, line, description, suggestion',
   const result = mockAIReview([{ name: 'test.js', content: 'x' }]);
   const sec = result.fileReviews['test.js'].security[0];
   assert.ok(typeof sec.type === 'string' && sec.type.length > 0);
-  assert.ok(typeof sec.line === 'number');
+  assert.ok(sec.line === null);
   assert.ok(typeof sec.description === 'string' && sec.description.length > 0);
   assert.ok(typeof sec.suggestion === 'string' && sec.suggestion.length > 0);
 });
@@ -174,7 +174,7 @@ test('mockAIReview review optimization contain type, line, description, suggesti
   const result = mockAIReview([{ name: 'test.js', content: 'x' }]);
   const opt = result.fileReviews['test.js'].optimization[0];
   assert.ok(typeof opt.type === 'string' && opt.type.length > 0);
-  assert.ok(typeof opt.line === 'number');
+  assert.ok(opt.line === null);
   assert.ok(typeof opt.description === 'string' && opt.description.length > 0);
   assert.ok(typeof opt.suggestion === 'string' && opt.suggestion.length > 0);
 });
@@ -183,7 +183,7 @@ test('mockAIReview review styling contain type, line, description, suggestion', 
   const result = mockAIReview([{ name: 'test.js', content: 'x' }]);
   const sty = result.fileReviews['test.js'].styling[0];
   assert.ok(typeof sty.type === 'string' && sty.type.length > 0);
-  assert.ok(typeof sty.line === 'number');
+  assert.ok(sty.line === null);
   assert.ok(typeof sty.description === 'string' && sty.description.length > 0);
   assert.ok(typeof sty.suggestion === 'string' && sty.suggestion.length > 0);
 });

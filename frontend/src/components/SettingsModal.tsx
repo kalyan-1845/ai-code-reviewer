@@ -73,8 +73,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   }, [onClose, trapFocus]);
 
   const handleSave = () => {
-    if (settings.maxTokens < 1 || settings.maxTokens > 32768) {
-      alert("Max Tokens must be between 1 and 32768.");
+    if (settings.maxTokens < 1 || settings.maxTokens > 2048) {
+      alert("Max Tokens must be between 1 and 2048.");
       return;
     }
     localStorage.setItem(
@@ -217,7 +217,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           <input
             type="number"
             min="1"
-            max="32768"
+            max="2048"
             value={settings.maxTokens}
             onChange={(e) =>
               setSettings({
@@ -242,7 +242,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               color: "#9ca3af",
             }}
           >
-            Recommended range: 512 – 8192
+            Recommended range: 128 – 2048
           </div>
         </div>
 

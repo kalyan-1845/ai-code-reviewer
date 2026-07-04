@@ -1,5 +1,5 @@
 class ReviewQueue {
-  constructor(maxQueues = 100, maxItemsPerQueue = 50, exclusiveLockTtlMs = 30 * 60 * 1000) {
+  constructor(maxQueues = 100, maxItemsPerQueue = 50, exclusiveLockTtlMs = 30 * 60 * 1000, maxRetries = 3) {
     this._queues = new Map();
     this._queueLocks = new Map();
     this._exclusiveLocks = new Map();
@@ -7,44 +7,62 @@ class ReviewQueue {
     this._maxQueues = maxQueues;
     this._maxItemsPerQueue = maxItemsPerQueue;
     this._exclusiveLockTtlMs = exclusiveLockTtlMs;
+    this._maxRetries = maxRetries;
   }
 
   async enqueue(key, item, processor) {
-    if (!this._queues.has(key)) {
-      if (this._queues.size >= this._maxQueues) {
-        console.warn(`ReviewQueue: dropping item for "${key}" — queue limit (${this._maxQueues}) reached`);
+    const prev = this._queueLocks.get(key) || Promise.resolve();
+    const next = prev.then(async () => {
+      if (!this._queues.has(key)) {
+        if (this._queues.size >= this._maxQueues) {
+          console.warn(`ReviewQueue: dropping item for "${key}" — queue limit (${this._maxQueues}) reached`);
+          return;
+        }
+        this._queues.set(key, []);
+      }
+      const queue = this._queues.get(key);
+      if (queue.length >= this._maxItemsPerQueue) {
+        console.warn(`ReviewQueue: dropping item for "${key}" — per-queue limit (${this._maxItemsPerQueue}) reached`);
         return;
       }
-      this._queues.set(key, []);
-    }
-    const queue = this._queues.get(key);
-    if (queue.length >= this._maxItemsPerQueue) {
-      console.warn(`ReviewQueue: dropping item for "${key}" — per-queue limit (${this._maxItemsPerQueue}) reached`);
-      return;
-    }
-    queue.push(item);
-    return this._processNext(key, processor);
+      queue.push(item);
+    });
+    this._queueLocks.set(key, next.catch(err => {
+      console.error(`ReviewQueue enqueue error for "${key}":`, err);
+    }));
+    return next.then(() => this._processNext(key, processor));
   }
 
   async _processNext(key, processor) {
     const prev = this._queueLocks.get(key) || Promise.resolve();
-    const next = prev.then(async () => {
-      const queue = this._queues.get(key);
-      if (!queue || queue.length === 0) {
-        this._queueLocks.delete(key);
-        return;
-      }
-      while (queue.length > 0) {
-        const item = queue.shift();
-        try {
-          await processor(item);
-        } catch (err) {
-          console.error(`Review processing failed for ${key}:`, err);
+    const next = prev
+      .catch(() => {})
+      .then(async () => {
+        const queue = this._queues.get(key);
+        if (!queue || queue.length === 0) {
+          this._queueLocks.delete(key);
+          return;
         }
-      }
-      this._queueLocks.delete(key);
-      this._queues.delete(key);
-    });
+        while (queue.length > 0) {
+          const item = queue.shift();
+          for (let attempt = 0; attempt <= this._maxRetries; attempt++) {
+            try {
+              await processor(item);
+              break;
+            } catch (err) {
+              if (attempt < this._maxRetries) {
+                const delay = Math.pow(2, attempt) * 1000;
+                console.warn(`ReviewQueue: retry ${attempt + 1}/${this._maxRetries} for "${key}" in ${delay}ms:`, err.message);
+                await new Promise(r => setTimeout(r, delay));
+              } else {
+                console.error(`ReviewQueue: item permanently failed for "${key}" after ${this._maxRetries + 1} attempts:`, err);
+              }
+            }
+          }
+        }
+        this._queueLocks.delete(key);
+        this._queues.delete(key);
+      });
     this._queueLocks.set(key, next.catch(err => {
       console.error(`ReviewQueue processing error for "${key}":`, err);
     }));

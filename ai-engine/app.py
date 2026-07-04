@@ -17,6 +17,7 @@ import bleach
 from bleach.css_sanitizer import CSSSanitizer
 import vectorstore
 from embeddings import is_fallback_active
+from diff_helper import get_changed_files_from_git, filter_files_by_changes, format_diff_header
 
 # Load environment variables: prefer local .env, fall back to backend/.env
 env_paths = [
@@ -40,38 +41,27 @@ MAX_CHAT_FILES = int(os.getenv("MAX_CHAT_FILES", "20"))
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 
 # Single source of truth for dangerous patterns — keep in sync with
-# backend/shared/dangerousPhrases.js
+# shared-safety-config.json
 DANGEROUS_PATTERNS = [
-    "ignore all previous instructions",
-    "ignore all instructions",
-    "ignore previous",
-    "ignore above",
-    "forget all previous",
-    "forget previous",
-    "you are not",
-    "you will now",
-    "you must now",
+    "ignore all", "ignore all previous instructions", "ignore all instructions",
+    "ignore previous", "ignore above", "ignore the above",
+    "ignore previous instructions",
+    "forget all", "forget all previous", "forget previous", "forget your",
+    "you are not", "you will now", "you must now", "you have been",
+    "you are programmed",
     "from now on",
-    "override all",
+    "override all", "override protocol",
     "system override",
     "new directive",
     "protocol change",
-    "disregard all",
-    "disregard",
+    "disregard", "disregard all", "disregard all previous",
     "do not follow",
-    "roleplay mode",
     "instead follow",
-    "real instruction",
-    "actual instruction",
+    "roleplay mode",
+    "real instruction", "actual instruction",
     "replace all",
-    "disobey",
-    "unauthorized",
-    "breach",
-    "bypass",
+    "disobey", "unauthorized", "breach", "bypass",
     "your true purpose",
-    "you are programmed",
-    "override protocol",
-    "you have been",
     "listen to me",
     "disable all",
 ]
@@ -395,6 +385,9 @@ class AnalyzeRequest(BaseModel):
     maxTokens: Optional[int] = Field(2048, ge=1, le=32768)
     systemPrompt: Optional[str] = ""
     batchSize: Optional[int] = Field(5, ge=1, le=20)
+    diffOnly: Optional[bool] = False
+    baseRef: Optional[str] = None
+    headRef: Optional[str] = None
     
 
 class ChatRequest(BaseModel):
@@ -427,7 +420,7 @@ def health_check():
 async def analyze_repository(request: AnalyzeRequest):
     if not groq_client:
         raise HTTPException(status_code=500, detail="Groq API client is not configured on this engine.")
-    
+
     files = request.files
     company = request.company
     language = request.language
@@ -435,8 +428,20 @@ async def analyze_repository(request: AnalyzeRequest):
     max_tokens = request.maxTokens or 2048
     batch_size = request.batchSize or 5
     custom_system_prompt = validate_system_prompt(request.systemPrompt or "")
-    
-    # 1. Prepare global repository structure
+
+    # 1. Apply diff mode filtering if requested
+    diff_mode_header = ""
+    num_skipped = 0
+    if request.diffOnly and request.baseRef and request.headRef:
+        changed_files = get_changed_files_from_git(request.baseRef, request.headRef)
+        if changed_files:
+            files, num_skipped = filter_files_by_changes(files, changed_files)
+            diff_mode_header = format_diff_header(len(files), num_skipped, request.baseRef, request.headRef)
+            print(f"🔍 {diff_mode_header}")
+        else:
+            print("⚠️  Diff mode requested but no changed files found. Analyzing all files.")
+
+    # 2. Prepare global repository structure
     repo_structure = [f.name for f in files]
     structure_text = "\n".join(repo_structure)
 
@@ -463,7 +468,8 @@ async def analyze_repository(request: AnalyzeRequest):
     groq_model = get_groq_model(request.model)
     print(f"📡 Forwarding batched analysis request to Groq using model: {groq_model} (Batch size: {batch_size})")
 
-    # 2. Chunk files into batches
+    # 2. Sort files deterministically before chunking into batches
+    files.sort(key=lambda f: f.name)
     batches = [files[i:i + batch_size] for i in range(0, len(files), batch_size)]
     
     combined_result = {
@@ -600,8 +606,25 @@ You must obey the JSON output format above."""
                             if "description" in item:
                                 item["description"] = sanitize_ai_output(item["description"])
                     
-                    # Store in combined results
-                    combined_result["fileReviews"][file_path] = review
+                    # Merge findings instead of overwriting
+                    if file_path in combined_result["fileReviews"]:
+                        print(f"WARNING: Merging findings for {file_path} from batch {idx + 1} (already exists from a previous batch)")
+                        existing = combined_result["fileReviews"][file_path]
+                        for category in ["bugs", "security", "optimization", "styling"]:
+                            existing_items = existing.get(category, [])
+                            new_items = review.get(category, [])
+                            seen = set()
+                            for item in existing_items:
+                                key = (item.get("type", ""), item.get("line", ""), item.get("description", ""))
+                                seen.add(key)
+                            for item in new_items:
+                                key = (item.get("type", ""), item.get("line", ""), item.get("description", ""))
+                                if key not in seen:
+                                    existing_items.append(item)
+                                    seen.add(key)
+                            existing[category] = existing_items
+                    else:
+                        combined_result["fileReviews"][file_path] = review
 
         except Exception as e:
             print(f"❌ Groq API Call Failed for batch {idx + 1}: {_redact_key(str(e), api_key)}")
@@ -611,8 +634,16 @@ You must obey the JSON output format above."""
             else:
                 print(f"⚠️ Skipping failed batch {idx + 1} and continuing...")
                 continue
-                
+
     combined_result["truncatedFiles"] = truncated_files
+    if diff_mode_header:
+        combined_result["diffModeInfo"] = {
+            "active": True,
+            "filesReviewed": len(files),
+            "filesSkipped": num_skipped,
+            "baseRef": request.baseRef,
+            "headRef": request.headRef
+        }
     return combined_result
 
 # 🟢 Route: AI Chat with Repository Context

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-export const SESSION_COOKIE_NAME = 'reposage_session';
+export const SESSION_COOKIE_NAME = 'rps_v1_session';
 const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 
 function getConfiguredApiKey(res) {
@@ -14,7 +14,22 @@ function getConfiguredApiKey(res) {
 }
 
 function getSessionSecret() {
-  return process.env.SESSION_SECRET || process.env.REPOSAGE_API_KEY;
+  if (!process.env.SESSION_SECRET) {
+    console.error('SECURITY WARNING: SESSION_SECRET is not set in backend/.env');
+    return null;
+  }
+  return process.env.SESSION_SECRET;
+}
+
+export function validateSessionSecret() {
+  if (!process.env.SESSION_SECRET) {
+    console.error('FATAL: SESSION_SECRET must be set independently of REPOSAGE_API_KEY');
+    process.exit(1);
+  }
+  if (process.env.SESSION_SECRET === process.env.REPOSAGE_API_KEY) {
+    console.error('FATAL: SESSION_SECRET must not be the same as REPOSAGE_API_KEY');
+    process.exit(1);
+  }
 }
 
 function signValue(value, secret) {
@@ -38,20 +53,20 @@ function safeEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function hasValidSessionCookie(req, secret) {
+function decodeSessionCookie(req) {
   const cookieValue = getCookie(req, SESSION_COOKIE_NAME);
-  if (!cookieValue) return false;
+  if (!cookieValue) return null;
 
   const [payload, signature] = cookieValue.split('.');
-  if (!payload || !signature || !safeEqual(signature, signValue(payload, secret))) {
-    return false;
-  }
+  if (!payload || !signature) return null;
+
+  const secret = getSessionSecret();
+  if (!safeEqual(signature, signValue(payload, secret))) return null;
 
   try {
-    const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    return Number.isFinite(session.exp) && session.exp > Date.now();
+    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -60,22 +75,31 @@ export function createFrontendSessionCookie(res) {
   if (!validKey) return null;
 
   const sessionSecret = getSessionSecret();
+  if (!sessionSecret) {
+    console.error('FATAL: SESSION_SECRET is not configured');
+    res.status(500).json({ error: 'Server misconfiguration: Session secret is not set up.' });
+    return null;
+  }
+
+  const clientId = crypto.randomUUID();
 
   const payload = Buffer.from(
-    JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000, uid: crypto.randomUUID() }),
+    JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000, uid: clientId }),
   ).toString('base64url');
   const signature = signValue(payload, sessionSecret);
-  const secure = process.env.NODE_ENV === 'production';
 
   res.cookie(SESSION_COOKIE_NAME, `${payload}.${signature}`, {
     httpOnly: true,
-    secure,
+    secure: true,
     sameSite: 'strict',
     path: '/',
     maxAge: SESSION_MAX_AGE_SECONDS * 1000,
   });
 
-  return `${SESSION_COOKIE_NAME}=${payload}.${signature}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure ? '; Secure' : ''}`;
+  return {
+    cookieHeader: `${SESSION_COOKIE_NAME}=${payload}.${signature}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}; Secure`,
+    clientId,
+  };
 }
 
 export const requireApiKey = (req, res, next) => {
@@ -88,14 +112,22 @@ export const requireApiKey = (req, res, next) => {
 
   const sessionSecret = getSessionSecret();
 
-  if (hasValidSessionCookie(req, sessionSecret)) {
-    req.clientId = crypto.createHash('sha256').update(validKey).digest('hex');
+  // When a valid session cookie exists, use its uid as clientId.
+  // This gives each browser/client a unique identifier, preventing
+  // cross-user session access even when the API key is shared.
+  const cookieData = decodeSessionCookie(req);
+  if (cookieData && Number.isFinite(cookieData.exp) && cookieData.exp > Date.now()) {
+    req.clientId = cookieData.uid;
     next();
     return;
   }
 
   if (providedKey && safeEqual(providedKey, validKey)) {
-    req.clientId = crypto.createHash('sha256').update(validKey).digest('hex');
+    // API key auth without cookie — derive clientId from a fresh UUID
+    // so that any session created with this clientId is unique to this
+    // request. The next response's Set-Cookie will bind subsequent
+    // requests to the cookie's uid.
+    req.clientId = crypto.randomUUID();
     next();
     return;
   }

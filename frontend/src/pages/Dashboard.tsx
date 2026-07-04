@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import { useStore, ChatMessage } from '../store/useStore';
 import SettingsModal from "../components/SettingsModal";
+import DashboardFooter from "../components/DashboardFooter";
+import KeyboardShortcutsHelp from "../components/KeyboardShortcutsHelp";
 import { MetricsChart } from '../components/MetricsChart';
 import { VulnerabilitiesBarChart } from '../components/VulnerabilitiesBarChart';
 import MarkdownErrorBoundary from '../components/MarkdownErrorBoundary';
@@ -33,10 +35,12 @@ import {
   ChevronDown,
   Folder,
   FolderOpen,
+  FileText,
 } from "lucide-react";
-import { handleMarkdownExport, handleHtmlExport } from "../utils/exportUtils";
+import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../utils/exportUtils";
 import mermaid from "mermaid";
 import { sanitizeMermaidOutput } from "../utils/sanitize";
+// Path resolves correctly: pages/ -> ../utils/api -> frontend/src/utils/api
 import { apiFetch } from "../utils/api";
 
 // Initialize Mermaid outside the component to avoid multiple initializations
@@ -177,7 +181,7 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
         if (cancelled) return;
         const sanitized = sanitizeMermaidOutput(renderedSvg);
         setSvg(sanitized);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (cancelled) return;
         console.error("Mermaid Render Error:", err);
         setError(
@@ -193,7 +197,7 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
   if (!chart) return null;
 
   const svgDataUrl = svg
-    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+    ? `data:image/svg+xml;charset=utf-8,${encodeURI(svg)}`
     : null;
 
   const downloadSVG = () => {
@@ -312,6 +316,8 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
 
 export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   // Input State
   const [repoUrl, setRepoUrl] = useState("");
@@ -326,6 +332,7 @@ export default function Dashboard() {
   // Response & View State
   const { analysisResult, setAnalysisResult, selectedFile, setSelectedFile, chatHistory, setChatHistory } = useStore();
   const [fileFilterQuery, setFileFilterQuery] = useState('');
+  // Debounced search to prevent heavy filtering on every keystroke
   const debouncedFileFilterQuery = useDebounce(fileFilterQuery, 300);
   const [isClearHovered, setIsClearHovered] = useState(false);
   const [activeExtFilter, setActiveExtFilter] = useState('All');
@@ -432,9 +439,35 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!apiError) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setApiError(null);
+      // Escape to close modals and clear errors
+      if (e.key === "Escape") {
+        setApiError(null);
+        setShowSettings(false);
+        setShowShortcutsHelp(false);
+        if (document.activeElement === searchInputRef.current) {
+          searchInputRef.current?.blur();
+        }
+      }
+      
+      // Ctrl+K to search files
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+
+      // J/K for navigating views (mocked logic - just toggling tabs)
+      if (e.target === document.body || document.activeElement === document.body) {
+        if (e.key.toLowerCase() === "j" || e.key.toLowerCase() === "k") {
+          // Simply show help or focus first clickable as a demo
+          setShowShortcutsHelp(true);
+        }
+        
+        // ? to show shortcuts
+        if (e.key === "?") {
+          setShowShortcutsHelp(true);
+        }
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -708,9 +741,10 @@ export default function Dashboard() {
       } else {
         throw new Error("Response did not contain issue URL");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(`Error creating issue: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      alert(`Error creating issue: ${errorMessage}`);
     } finally {
       setCreatingIssues((prev) => ({ ...prev, [itemKey]: false }));
     }
@@ -801,9 +835,9 @@ export default function Dashboard() {
         try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(updated)); } catch (e) { if (e instanceof DOMException && e.name === 'QuotaExceededError') setStorageWarning(true); }
         return updated;
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      let errMsg = err.message || "Chat service unavailable.";
+      let errMsg = (err instanceof Error ? err.message : String(err)) || "Chat service unavailable.";
       if (errMsg.includes("Failed to fetch") || errMsg.toLowerCase().includes("offline")) {
         errMsg = "Backend AI Engine offline. Please ensure the server is running.";
       } else if (errMsg.toLowerCase().includes("api key") || errMsg.toLowerCase().includes("unauthorized")) {
@@ -1015,9 +1049,9 @@ export default function Dashboard() {
       if (filesList.length > 0) {
         setSelectedFile(filesList[0]);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      let errMsg = err.message || "Could not connect to the backend server. Make sure node backend is running on port 5000.";
+      let errMsg = (err instanceof Error ? err.message : String(err)) || "Could not connect to the backend server. Make sure node backend is running on port 5000.";
       if (errMsg.includes("Failed to fetch") || errMsg.toLowerCase().includes("offline")) {
         errMsg = "Backend AI Engine offline. Please ensure the server is running.";
       } else if (errMsg.toLowerCase().includes("api key") || errMsg.toLowerCase().includes("unauthorized") || errMsg.includes("not configured")) {
@@ -1292,7 +1326,7 @@ export default function Dashboard() {
                 <p style={{ margin: 0, fontSize: '11px', color: '#9ca3af' }}>Reload cached repository scans</p>
               </div>
               {auditHistory.length > 0 && (
-                <button
+                <button aria-label="Clear audit history"
                   onClick={clearAuditHistory}
                   title="Clear audit history"
                   style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -2334,6 +2368,27 @@ export default function Dashboard() {
                   >
                     <FileDown size={14} /> Export Markdown
                   </button>
+                  <button
+                    onClick={() => analysisResult && handlePdfExport(analysisResult.repoName, analysisResult.analysis, apiFetch)}
+                    style={{
+                      background: "rgba(220, 38, 38, 0.1)",
+                      border: "1px solid rgba(220, 38, 38, 0.3)",
+                      color: "#f87171",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                    className="hover:bg-red-500/20"
+                    title="Export the complete audit report as PDF"
+                  >
+                    <FileText size={14} /> Export PDF
+                  </button>
                 </div>
               </div>
 
@@ -2429,10 +2484,11 @@ export default function Dashboard() {
                     />
 
                     <input
+                      ref={searchInputRef}
                       type="text"
                       value={fileFilterQuery}
                       onChange={(e) => setFileFilterQuery(e.target.value)}
-                      placeholder="Search files..."
+                      placeholder="Search files... (Ctrl+K)"
                       style={{
                         width: '100%',
                         padding: '6px 30px 6px 28px',
@@ -3524,7 +3580,7 @@ export default function Dashboard() {
                                     </div>
                                   </div>
                                 </div>
-                                <MetricsChart reviewId={sessionId} />
+                                <MetricsChart sessionId={sessionId} />
                               </div>
                             );
                           })()
@@ -4424,29 +4480,9 @@ export default function Dashboard() {
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
       )}
-      {/* 🚀 Sleek Footer */}
-      <footer
-        style={{
-          marginTop: "auto",
-          background: "rgba(15, 23, 42, 0.4)",
-          padding: "12px 24px",
-          borderTop: "1px solid rgba(255,255,255,0.05)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: "11px",
-          color: "#9ca3af",
-        }}
-      >
-        <span>
-          RepoSage AI © 2026. Made with 💜 for GirlScript Summer of Code
-          (GSSoC).
-        </span>
-        <div style={{ display: "flex", gap: "16px" }}>
-          <span>Mentors: Kalyan Reddy Bhoompally</span>
-          <span>Status: Production MVP Ready</span>
-        </div>
-      </footer>
+      {showShortcutsHelp && <KeyboardShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
+
+      <DashboardFooter />
     </div>
   );
 }

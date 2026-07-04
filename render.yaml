@@ -24,6 +24,8 @@ services:
       - key: AI_ENGINE_URL
         # We will point this to the AI engine service created below
         value: "https://reposage-ai-engine.onrender.com"
+      - key: MONGODB_URI
+        sync: false
 
   # ----------------------------------------
   # 🧠 Python AI Engine Service

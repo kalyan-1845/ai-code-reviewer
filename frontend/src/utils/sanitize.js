@@ -1,14 +1,18 @@
 import DOMPurify from 'dompurify';
 
+function stripNullBytes(str) {
+  return typeof str === 'string' ? str.replace(/\0/g, '') : str;
+}
+
 export function sanitizeHTML(dirty) {
-  return DOMPurify.sanitize(dirty, {
+  return DOMPurify.sanitize(stripNullBytes(dirty), {
     ALLOWED_TAGS: [],
     ALLOWED_ATTR: [],
   });
 }
 
 export function sanitizeForStorage(dirty) {
-  return DOMPurify.sanitize(dirty, {
+  return DOMPurify.sanitize(stripNullBytes(dirty), {
     ALLOWED_TAGS: ['svg', 'g', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'text', 'tspan', 'defs', 'clipPath', 'mask', 'linearGradient', 'radialGradient', 'stop', 'marker'],
     ALLOWED_ATTR: ['viewBox', 'xmlns', 'd', 'fill', 'stroke', 'stroke-width', 'cx', 'cy', 'r', 'x', 'y', 'width', 'height', 'points', 'transform', 'id', 'class', 'offset', 'stop-color', 'font-size', 'text-anchor'],
     FORBID_TAGS: ['script', 'style', 'foreignObject', 'iframe', 'object', 'embed', 'link', 'meta'],
@@ -18,7 +22,7 @@ export function sanitizeForStorage(dirty) {
 
 export function sanitizeMermaidOutput(svg) {
   if (!svg || typeof svg !== 'string') return '';
-  let sanitized = svg
+  let sanitized = stripNullBytes(svg)
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
     .replace(/<foreignObject[\s\S]*?\/>/gi, '')

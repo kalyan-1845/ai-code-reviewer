@@ -4,6 +4,7 @@ import crypto from 'crypto';
 
 // Set up REPOSAGE_API_KEY before importing the middleware
 process.env.REPOSAGE_API_KEY = 'test-secret-key';
+process.env.SESSION_SECRET = 'test-session-secret';
 
 import { createFrontendSessionCookie, requireApiKey } from '../utils/authMiddleware.js';
 
@@ -17,6 +18,9 @@ function makeMockReqRes({ providedKey = '', cookie = '' } = {}) {
     },
     json(data) {
       this.body = data;
+      return this;
+    },
+    cookie(name, value, options) {
       return this;
     },
   };
@@ -53,8 +57,8 @@ test('requireApiKey returns 401 when API key is missing', () => {
 
 test('requireApiKey calls next() when a valid frontend session cookie is provided', () => {
   const { res: cookieRes } = makeMockReqRes();
-  const cookie = createFrontendSessionCookie(cookieRes);
-  const { req, res } = makeMockReqRes({ cookie });
+  const session = createFrontendSessionCookie(cookieRes);
+  const { req, res } = makeMockReqRes({ cookie: session.cookieHeader });
   let nextCalled = false;
   const next = () => { nextCalled = true; };
 
@@ -66,7 +70,7 @@ test('requireApiKey calls next() when a valid frontend session cookie is provide
 
 test('requireApiKey returns 401 when frontend session cookie is tampered', () => {
   const { res: cookieRes } = makeMockReqRes();
-  const [sessionPair, ...attributes] = createFrontendSessionCookie(cookieRes).split(';');
+  const [sessionPair, ...attributes] = createFrontendSessionCookie(cookieRes).cookieHeader.split(';');
   const cookie = [sessionPair.replace(/.$/, 'x'), ...attributes].join(';');
   const { req, res } = makeMockReqRes({ cookie });
   const next = () => {};
@@ -113,8 +117,8 @@ test('requireApiKey returns 401 and safely handles error when session cookie pay
   const corruptPayload = Buffer.from('this-is-not-valid-json').toString('base64url');
   const signature = crypto.createHmac('sha256', secret).update(corruptPayload).digest('base64url');
   
-  // Construct the spoofed cookie: reposage_session=payload.signature
-  const sessionCookie = `reposage_session=${corruptPayload}.${signature}`;
+  // Construct the spoofed cookie: rps_v1_session=payload.signature
+  const sessionCookie = `rps_v1_session=${corruptPayload}.${signature}`;
   
   const { req, res } = makeMockReqRes({ cookie: sessionCookie });
   let nextCalled = false;

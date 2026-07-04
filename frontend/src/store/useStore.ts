@@ -12,14 +12,34 @@ interface GlobalState {
   setChatHistory: (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void;
 }
 
+const loadChatHistory = (): ChatMessage[] => {
+  try {
+    const saved = localStorage.getItem('reposage_chat_history');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+  } catch {}
+  return [];
+};
+
+let chatHistoryLoaded = false;
+let chatHistoryCache: ChatMessage[] = [];
+
 export const useStore = create<GlobalState>((set) => ({
   analysisResult: null,
   setAnalysisResult: (result) => set({ analysisResult: result }),
   selectedFile: null,
   setSelectedFile: (file) => set({ selectedFile: file }),
-  chatHistory: (() => { try { const saved = localStorage.getItem('reposage_chat_history'); if (saved) { const parsed = JSON.parse(saved); return Array.isArray(parsed) ? parsed : []; } return []; } catch { return []; } })(),
+  chatHistory: [],
   setChatHistory: (updater) => set((state) => {
-    const updated = typeof updater === 'function' ? updater(state.chatHistory) : updater;
+    if (!chatHistoryLoaded) {
+      chatHistoryCache = loadChatHistory();
+      chatHistoryLoaded = true;
+    }
+    const current = chatHistoryLoaded ? chatHistoryCache : state.chatHistory;
+    const updated = typeof updater === 'function' ? updater(current) : updater;
+    chatHistoryCache = updated;
     try { localStorage.setItem("reposage_chat_history", JSON.stringify(updated)); } catch {}
     return { chatHistory: updated };
   }),

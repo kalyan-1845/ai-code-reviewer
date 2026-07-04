@@ -6,18 +6,18 @@ export function estimateSessionSize(files) {
   let size = 200;
   size += 100;
   for (const file of files) {
-    size += 50 + Buffer.byteLength(file.name, 'utf8') + Buffer.byteLength(file.content, 'utf8');
+    size += 50 + Math.round(1.5 * (Buffer.byteLength(file.name, 'utf8') + Buffer.byteLength(file.content, 'utf8')));
     if (size > MAX_SESSION_SIZE_BYTES) return size;
   }
   return size;
 }
 
 // Each document stores the repository context for a single analysis session.
-// MongoDB automatically removes expired documents via a sliding-window TTL
-// index on lastAccessedAt (expireAfterSeconds: 86400 = 24 hours). Every chat
-// interaction updates lastAccessedAt, so the session lifetime extends with
-// active use. A secondary TTL index on absoluteExpiry enforces a hard 7-day
-// ceiling to prevent abandoned sessions from living forever.
+// MongoDB removes expired documents via a single TTL index on absoluteExpiry
+// (expireAfterSeconds: 0). The initial default is 24h from creation. Every
+// chat interaction extends absoluteExpiry to 24h from now via $max in
+// application code, so active sessions stay alive.
+// MongoDB allows at most one TTL index per collection.
 //
 // IMPORTANT: createdAt is set once on document creation and is NEVER updated.
 // It is kept for audit purposes only; the slash command window is driven by
@@ -65,20 +65,20 @@ const sessionSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  // Hard upper bound on session lifetime (7 days after creation).
-  // A separate TTL index on this field ensures documents are cleaned up
-  // even if the session is actively used, preventing abandoned sessions
-  // from living past this ceiling.
+  // TTL-based expiry: session is deleted when this timestamp is reached.
+  // Default is 24h from creation. Application code extends it to 24h from
+  // the last activity via $max on each chat interaction, implementing the
+  // sliding-window expiry. The TTL index (expireAfterSeconds: 0) removes
+  // the document when absoluteExpiry is reached.
   absoluteExpiry: {
     type: Date,
-    default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    default: () => new Date(Date.now() + 24 * 60 * 60 * 1000),
   },
 });
 
-// Single TTL index on absoluteExpiry enforces the hard 7-day ceiling.
-// MongoDB allows at most one TTL index per collection, so the sliding
-// 24h inactivity window is handled in application code (update the
-// session's expiry on each access to extend it, capped at 7 days).
+// Single TTL index on absoluteExpiry. Document is deleted the moment
+// absoluteExpiry is reached. The sliding 24h window is handled by
+// application code ($max on each chat interaction).
 sessionSchema.index({ absoluteExpiry: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.model('Session', sessionSchema);

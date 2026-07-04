@@ -15,6 +15,7 @@ class AnalysisCache {
     this.maxEntries = 1000;
     this.cache = new Map();
     this.pending = new Map();
+    this._repoUrlIndex = new Map();
     this.stats = { hits: 0, misses: 0, evictions: 0 };
     this._startSweeper();
   }
@@ -68,7 +69,8 @@ class AnalysisCache {
       return null;
     }
 
-    // Cache hit
+    // Cache hit — extend TTL (sliding window) so active entries don't expire mid-session
+    entry.expiresAt = now + this.ttlMs;
     this.stats.hits++;
     console.log(`✅ Analysis cache hit for key ${key.slice(0, 8)}... (${this.cache.size} entries, ${this.stats.hits} hits, ${this.stats.misses} misses)`);
     return entry.result;
@@ -77,25 +79,40 @@ class AnalysisCache {
   /**
    * Store an analysis result in the cache with expiration time.
    */
-  set(key, result) {
+  set(key, result, repoUrl) {
     if (this.cache.has(key)) {
+      const entry = this.cache.get(key);
       this.cache.delete(key);
+      if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+        this._repoUrlIndex.get(entry.repoUrl).delete(key);
+      }
     } else if (this.cache.size >= this.maxEntries) {
       const oldestKey = this.cache.keys().next().value;
       if (oldestKey !== undefined) {
+        const entry = this.cache.get(oldestKey);
         this.cache.delete(oldestKey);
+        if (entry && entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+          this._repoUrlIndex.get(entry.repoUrl).delete(oldestKey);
+        }
         this.stats.evictions++;
       }
     }
     const expiresAt = Date.now() + this.ttlMs;
-    this.cache.set(key, { result, expiresAt });
+    const normalizedRepoUrl = repoUrl ? repoUrl.replace(/\/+$/, '').toLowerCase() : undefined;
+    this.cache.set(key, { result, expiresAt, repoUrl: normalizedRepoUrl });
+    if (normalizedRepoUrl) {
+      if (!this._repoUrlIndex.has(normalizedRepoUrl)) {
+        this._repoUrlIndex.set(normalizedRepoUrl, new Set());
+      }
+      this._repoUrlIndex.get(normalizedRepoUrl).add(key);
+    }
     console.log(`💾 Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions)`);
   }
 
   /**
    * Retrieve a cached analysis result or fetch it safely if missing/concurrent.
    */
-  async getOrSet(key, fetcher) {
+  async getOrSet(key, fetcher, repoUrl) {
     const cached = this.get(key);
     if (cached) return cached;
     
@@ -103,7 +120,7 @@ class AnalysisCache {
     if (existing) return existing;
     
     const promise = fetcher().then(result => {
-        this.set(key, result);
+        this.set(key, result, repoUrl);
         this.pending.delete(key);
         return result;
     }).catch(err => {
@@ -122,6 +139,7 @@ class AnalysisCache {
     this._stopSweeper();
     const size = this.cache.size;
     this.cache.clear();
+    this._repoUrlIndex.clear();
     console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
   }
 
@@ -135,6 +153,9 @@ class AnalysisCache {
       for (const [key, entry] of this.cache) {
         if (now > entry.expiresAt) {
           this.cache.delete(key);
+          if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+          }
         }
       }
     }, intervalMs);
@@ -169,7 +190,11 @@ class AnalysisCache {
    */
   invalidate(key) {
     if (this.cache.has(key)) {
+      const entry = this.cache.get(key);
       this.cache.delete(key);
+      if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+        this._repoUrlIndex.get(entry.repoUrl).delete(key);
+      }
       console.log(`❌ Invalidated cache entry for key ${key.slice(0, 8)}...`);
       return true;
     }
@@ -182,15 +207,19 @@ class AnalysisCache {
    */
   invalidateByRepoUrl(repoUrl) {
     const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+    const keys = this._repoUrlIndex.get(normalized);
+    if (!keys || keys.size === 0) {
+      return 0;
+    }
     let removed = 0;
-    for (const [key] of this.cache) {
-      const keyStr = key;
-      if (keyStr.includes(normalized)) {
-        this.cache.delete(key);
+      for (const key of keys) {
+        if (this.cache.delete(key)) {
         removed++;
       }
     }
+    this._repoUrlIndex.delete(normalized);
     if (removed > 0) {
+      this.stats.evictions += removed;
       console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
     }
     return removed;
@@ -208,7 +237,11 @@ class AnalysisCache {
     while (this.cache.size > this.maxEntries) {
       const oldestKey = this.cache.keys().next().value;
       if (oldestKey !== undefined) {
+        const entry = this.cache.get(oldestKey);
         this.cache.delete(oldestKey);
+        if (entry && entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+          this._repoUrlIndex.get(entry.repoUrl).delete(oldestKey);
+        }
         this.stats.evictions++;
       }
     }

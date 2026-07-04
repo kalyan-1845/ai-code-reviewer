@@ -21,38 +21,27 @@ function cleanAndParseJSON(responseText) {
   }
 }
 
-// Keep in sync with backend/shared/dangerousPhrases.js
+// Keep in sync with shared-safety-config.json (single source of truth)
 const DANGEROUS_PHRASES = [
-  'ignore all previous instructions',
-  'ignore all instructions',
-  'ignore previous',
-  'ignore above',
-  'forget all previous',
-  'forget previous',
-  'you are not',
-  'you will now',
-  'you must now',
+  'ignore all', 'ignore all previous instructions', 'ignore all instructions',
+  'ignore previous', 'ignore above', 'ignore the above',
+  'ignore previous instructions',
+  'forget all', 'forget all previous', 'forget previous', 'forget your',
+  'you are not', 'you will now', 'you must now', 'you have been',
+  'you are programmed',
   'from now on',
-  'override all',
+  'override all', 'override protocol',
   'system override',
   'new directive',
   'protocol change',
-  'disregard all',
-  'disregard',
+  'disregard', 'disregard all', 'disregard all previous',
   'do not follow',
-  'roleplay mode',
   'instead follow',
-  'real instruction',
-  'actual instruction',
+  'roleplay mode',
+  'real instruction', 'actual instruction',
   'replace all',
-  'disobey',
-  'unauthorized',
-  'breach',
-  'bypass',
+  'disobey', 'unauthorized', 'breach', 'bypass',
   'your true purpose',
-  'you are programmed',
-  'override protocol',
-  'you have been',
   'listen to me',
   'disable all',
 ];
@@ -73,6 +62,15 @@ async function run() {
     const groqApiKey = core.getInput('groq-api-key', { required: true });
     const excludePathsInput = core.getInput('exclude-paths') || '';
     const includeExtensionsInput = core.getInput('include-extensions') || '';
+    if (includeExtensionsInput) {
+      const rawExtensions = includeExtensionsInput.split(',').map(e => e.trim()).filter(Boolean);
+      for (const ext of rawExtensions) {
+        if (!/^\.[a-zA-Z0-9]+$/.test(ext)) {
+          core.setFailed(`Invalid file extension: "${ext}". Extensions must start with a dot and contain only alphanumeric characters (e.g., .js, .tsx).`);
+          return;
+        }
+      }
+    }
     const maxTokens = parseInt(core.getInput('max-tokens') || '4096', 10);
     const autoApprove = core.getInput('auto-approve')?.toLowerCase() === 'true';
 
@@ -119,7 +117,7 @@ async function run() {
     }
 
     // 5. Parse Diff
-    const parsedFiles = parseDiff(diff);
+    const { files: parsedFiles } = parseDiff(diff);
     console.log(`📁 Found ${parsedFiles.length} files in PR diff.`);
 
     const commentsToPost = [];

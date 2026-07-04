@@ -128,8 +128,8 @@ export const apiFetch = async (
       }
     }
     return response;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`Request timed out after ${timeoutMs / 1000} seconds. Backend might be hanging.`);
     }
     throw error;
@@ -143,12 +143,3 @@ export const getReviewHistory = async () => {
   return response.json();
 };
 
-export const getFixSuggestions = async (findingId: string) => {
-  const response = await apiFetch(`/api/fix-suggestions/${findingId}`);
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch AI fix suggestions");
-  }
-
-  return response.json();
-};

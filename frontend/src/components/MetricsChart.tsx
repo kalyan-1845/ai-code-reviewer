@@ -28,19 +28,19 @@ const THEME_COLORS = {
 
 interface MetricsChartProps {
   theme?: 'dark' | 'light';
-  reviewId?: string | null;
+  sessionId?: string | null;
 }
 
-export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', reviewId }) => {
+export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sessionId }) => {
   const colors = THEME_COLORS[theme];
-  const [chartData, setChartData] = useState<any[] | null>(null);
+  const [chartData, setChartData] = useState<unknown[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!reviewId) {
+    if (!sessionId) {
       setChartData(null);
       setError(null);
       return;
@@ -49,7 +49,7 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', revi
     setLoading(true);
     setError(null);
 
-    apiFetch(`/api/analytics/trends?reviewId=${encodeURIComponent(reviewId)}`)
+    apiFetch(`/api/analytics/trends?sessionId=${encodeURIComponent(sessionId)}`)
       .then((res) => {
         if (cancelled) return null;
         if (!res.ok) throw new Error("Failed to fetch analytics trends");
@@ -74,7 +74,7 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', revi
         setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [reviewId]);
+  }, [sessionId]);
 
 
   return (

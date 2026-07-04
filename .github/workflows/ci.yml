@@ -25,7 +25,7 @@ jobs:
       - name: Install Frontend Dependencies
         run: |
           cd frontend
-          npm ci
+          npm install
 
       - name: Compile & Build Frontend
         run: |
@@ -50,7 +50,7 @@ jobs:
       - name: Install Dependencies
         run: |
           cd github-action
-          npm ci
+          npm install
 
       - name: Compile Action
         run: |
@@ -60,6 +60,11 @@ jobs:
   check-backend:
     name: Check Backend & AI Engine
     runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
 
     steps:
       - name: Checkout Repository
@@ -75,7 +80,7 @@ jobs:
       - name: Install Backend Dependencies
         run: |
           cd backend
-          npm ci
+          npm install
 
       - name: Run Backend Tests
         run: |

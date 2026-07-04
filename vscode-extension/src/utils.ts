@@ -40,8 +40,7 @@ export function buildRequestHeaders(apiKey?: string): Record<string, string> {
 
 export function buildRequestBody(fileName: string, content: string) {
   return {
-    code: content,
-    fileName: fileName,
+    files: [{ name: fileName, content }],
     company: "General",
     language: "English",
     model: "llama-3.3-70b-versatile",
