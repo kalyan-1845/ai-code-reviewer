@@ -1838,8 +1838,8 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
       analyzedAt: { $gte: thirtyDaysAgo },
     };
 
-    if (req.query.sessionId) {
-      matchFilter.sessionId = String(req.query.sessionId);
+    if (req.query.sessionId && typeof req.query.sessionId === 'string') {
+      matchFilter.sessionId = req.query.sessionId;
     }
 
     const trends = await Analytics.aggregate([
@@ -1917,7 +1917,7 @@ app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
 
     try {
         const repo = req.params.repo;
-        if (typeof repo !== 'string' || repo.length === 0) {
+        if (typeof repo !== 'string' || repo.length === 0 || !/^[a-zA-Z0-9._-]+$/.test(repo)) {
           return res.status(400).json({ error: 'Invalid repo parameter.' });
         }
 
