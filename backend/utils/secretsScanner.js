@@ -51,7 +51,7 @@ export const rules = [
   },
   {
     type: "JWT Token Check",
-    regex: /\beyJ[A-Za-z0-9_\-=]+(?:\.[A-Za-z0-9_\-=]+){2}\b/g,
+    regex: /\beyJ[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+\b/g,
     description: "Potential hardcoded JSON Web Token (JWT) detected. Exposing JWT credentials allows authentication bypass or identity impersonation."
   },
   {
