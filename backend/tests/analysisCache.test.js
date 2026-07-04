@@ -218,3 +218,87 @@ test('AnalysisCache: realistic workflow - cache prevents redundant LLM calls', (
   assert.ok(result.fileReviews['index.js'].bugs.includes('missing error handling'));
   assert.ok(result.fileReviews['server.js'].security.includes('no HTTPS'));
 });
+
+test('AnalysisCache: invalidateByRepoUrl removes all entries for that repo', () => {
+  const cache = new AnalysisCache();
+  const repo = 'https://github.com/owner/repo';
+
+  // Store two different entries for the same repo
+  const key1 = cache.generateKey(repo, [{ name: 'a.js', content: 'a' }]);
+  const key2 = cache.generateKey(repo, [{ name: 'b.js', content: 'b' }]);
+  cache.set(key1, { data: 1 }, repo);
+  cache.set(key2, { data: 2 }, repo);
+
+  assert.equal(cache.cache.size, 2);
+
+  const removed = cache.invalidateByRepoUrl(repo);
+
+  assert.equal(removed, 2, 'Should return count of removed entries');
+  assert.equal(cache.cache.size, 0, 'Cache should be empty after invalidation');
+  assert.equal(cache.get(key1), null, 'key1 should be gone');
+  assert.equal(cache.get(key2), null, 'key2 should be gone');
+});
+
+test('AnalysisCache: invalidateByRepoUrl returns 0 for non-existent repo', () => {
+  const cache = new AnalysisCache();
+  const repo = 'https://github.com/nonexistent/project';
+  const key = cache.generateKey(repo, [{ name: 'x.js', content: 'x' }]);
+  cache.set(key, { data: 1 }, repo);
+
+  const removed = cache.invalidateByRepoUrl('https://github.com/other/repo');
+
+  assert.equal(removed, 0, 'Should return 0 for non-matching repo');
+  assert.equal(cache.cache.size, 1, 'Original entry should remain');
+});
+
+test('AnalysisCache: invalidateByRepoUrl normalizes trailing slashes and case', () => {
+  const cache = new AnalysisCache();
+  const repo1 = 'https://github.com/owner/repo';
+  const repo2 = 'https://github.com/owner/repo///';
+  const key1 = cache.generateKey(repo1, [{ name: 'f.js', content: 'f' }]);
+  cache.set(key1, { data: 1 }, repo1);
+
+  const removed = cache.invalidateByRepoUrl(repo2);
+
+  assert.equal(removed, 1, 'Should match repo with trailing slashes');
+  assert.equal(cache.cache.size, 0);
+});
+
+test('AnalysisCache: setMaxEntries updates the property', () => {
+  const cache = new AnalysisCache();
+  assert.equal(cache.maxEntries, 1000, 'Default maxEntries is 1000');
+
+  cache.setMaxEntries(500);
+
+  assert.equal(cache.maxEntries, 500, 'maxEntries should be updated');
+});
+
+test('AnalysisCache: setMaxEntries evicts oldest entries when limit is reduced', () => {
+  const cache = new AnalysisCache();
+  const repo = 'https://github.com/owner/repo';
+
+  // Store 5 entries
+  for (let i = 0; i < 5; i++) {
+    const key = cache.generateKey(repo, [{ name: `f${i}.js`, content: `${i}` }]);
+    cache.set(key, { data: i }, repo);
+  }
+  assert.equal(cache.cache.size, 5);
+
+  // Reduce limit to 3 - oldest 2 should be evicted
+  cache.setMaxEntries(3);
+
+  assert.equal(cache.maxEntries, 3);
+  assert.equal(cache.cache.size, 3, 'Should evict to maxEntries');
+});
+
+test('AnalysisCache: setMaxEntries does nothing if cache is already below new limit', () => {
+  const cache = new AnalysisCache();
+  const repo = 'https://github.com/owner/repo';
+  const key = cache.generateKey(repo, [{ name: 'f.js', content: 'f' }]);
+  cache.set(key, { data: 1 }, repo);
+
+  cache.setMaxEntries(100);
+
+  assert.equal(cache.maxEntries, 100);
+  assert.equal(cache.cache.size, 1, 'Single entry should remain');
+});
