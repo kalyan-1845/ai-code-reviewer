@@ -971,6 +971,101 @@ if (reviewResult?.fileReviews) {
     }
 });
 
+// 🟢 Route: Direct File Analysis (for VS Code extension and single-file use cases)
+app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimiter, async (req, res) => {
+  try {
+    let { files, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = '', batchSize = 5 } = req.body;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'At least one file is required.' });
+    }
+
+    for (const file of files) {
+      if (!file.name || !file.content) {
+        return res.status(400).json({ error: 'Each file must have a name and content.' });
+      }
+    }
+
+    batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
+    temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
+    maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
+
+    const normalizedModel = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
+    if (!normalizedModel) {
+      model = "llama-3.3-70b-versatile";
+    } else {
+      model = normalizedModel;
+    }
+
+    let validatedPrompt;
+    try {
+      validatedPrompt = validatePrompt(systemPrompt);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const fileWarnings = [];
+    for (const file of files) {
+      const scanResult = scanFileContentForWarnings(file.content);
+      for (const warning of scanResult) {
+        fileWarnings.push({ file: file.name, warning });
+      }
+    }
+
+    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    const baseUrl = aiEngineUrl.replace(/\/+$/, '');
+
+    let reviewResult;
+    try {
+      const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+        body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
+      }, 120000);
+
+      if (aiResponse.ok) {
+        const resData = await aiResponse.json();
+        reviewResult = resData;
+      } else {
+        throw new Error('AI engine responded with error');
+      }
+    } catch (err) {
+      const { mockAIReview } = await import('./utils/mockAIReview.js');
+      const mockRes = mockAIReview(files, model);
+      reviewResult = mockRes;
+    }
+
+    if (reviewResult && reviewResult.fileReviews) {
+      reviewResult.metrics = {};
+      files.forEach(file => {
+        reviewResult.metrics[file.name] = analyzeComplexity(file.content, file.name);
+        const secretFindings = scanSecrets(file.content);
+        if (secretFindings.length > 0) {
+          if (!reviewResult.fileReviews[file.name]) {
+            reviewResult.fileReviews[file.name] = { bugs: [], security: [], optimization: [], styling: [] };
+          }
+          secretFindings.forEach(finding => {
+            const duplicate = reviewResult.fileReviews[file.name].security.some(s => s.line === finding.line && s.type === finding.type);
+            if (!duplicate) {
+              reviewResult.fileReviews[file.name].security.unshift(finding);
+            }
+          });
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      analysis: reviewResult,
+      source: 'direct',
+      ...(fileWarnings.length > 0 ? { warnings: fileWarnings } : {})
+    });
+  } catch (err) {
+    console.error('File analysis failed:', err);
+    return res.status(500).json({ error: 'An error occurred during file analysis.' });
+  }
+});
+
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async (req, res) => {
   let { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
