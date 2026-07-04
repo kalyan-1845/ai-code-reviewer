@@ -468,7 +468,8 @@ async def analyze_repository(request: AnalyzeRequest):
     groq_model = get_groq_model(request.model)
     print(f"📡 Forwarding batched analysis request to Groq using model: {groq_model} (Batch size: {batch_size})")
 
-    # 2. Chunk files into batches
+    # 2. Sort files deterministically before chunking into batches
+    files.sort(key=lambda f: f.name)
     batches = [files[i:i + batch_size] for i in range(0, len(files), batch_size)]
     
     combined_result = {
@@ -605,8 +606,25 @@ You must obey the JSON output format above."""
                             if "description" in item:
                                 item["description"] = sanitize_ai_output(item["description"])
                     
-                    # Store in combined results
-                    combined_result["fileReviews"][file_path] = review
+                    # Merge findings instead of overwriting
+                    if file_path in combined_result["fileReviews"]:
+                        print(f"WARNING: Merging findings for {file_path} from batch {idx + 1} (already exists from a previous batch)")
+                        existing = combined_result["fileReviews"][file_path]
+                        for category in ["bugs", "security", "optimization", "styling"]:
+                            existing_items = existing.get(category, [])
+                            new_items = review.get(category, [])
+                            seen = set()
+                            for item in existing_items:
+                                key = (item.get("type", ""), item.get("line", ""), item.get("description", ""))
+                                seen.add(key)
+                            for item in new_items:
+                                key = (item.get("type", ""), item.get("line", ""), item.get("description", ""))
+                                if key not in seen:
+                                    existing_items.append(item)
+                                    seen.add(key)
+                            existing[category] = existing_items
+                    else:
+                        combined_result["fileReviews"][file_path] = review
 
         except Exception as e:
             print(f"❌ Groq API Call Failed for batch {idx + 1}: {_redact_key(str(e), api_key)}")
