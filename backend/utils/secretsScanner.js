@@ -21,7 +21,7 @@ export const rules = [
   },
   {
     type: "Database Connection Credentials",
-    regex: /(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql):\/\/[a-zA-Z0-9_]{1,32}:[a-zA-Z0-9_]{1,32}@/gi,
+    regex: /(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql):\/\/[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
     description: "Database connection credentials detected directly in code. Exposes the database tables to global read/write breaches."
   },
   {
@@ -51,7 +51,7 @@ export const rules = [
   },
   {
     type: "JWT Token Check",
-    regex: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]+\b/g,
+    regex: /\beyJ[A-Za-z0-9_\-=]+(?:\.[A-Za-z0-9_\-=]+){2}\b/g,
     description: "Potential hardcoded JSON Web Token (JWT) detected. Exposing JWT credentials allows authentication bypass or identity impersonation."
   },
   {
