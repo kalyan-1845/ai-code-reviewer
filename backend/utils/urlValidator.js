@@ -4,10 +4,12 @@ export function isValidRepoUrl(url) {
   if (!url || typeof url !== 'string') return false;
 
   // Reject URLs containing spaces, tabs, null bytes, or control characters
-  if (/[\s\t\x00-\x1f]/.test(url)) return false;
+  if (/[\s\x00-\x1f]/.test(url)) return false;
 
-  // Reject URLs that start with or contain flag-like patterns (git argument injection)
-  if (/--?[a-zA-Z]/.test(url.replace(/^https:\/\/github\.com\//, ''))) return false;
+  // Reject URLs with double-dash (git long flag) or path segments starting with dash (git short flag)
+  const pathPart = url.replace(/^https:\/\/github\.com\//, '');
+  if (/--/.test(pathPart)) return false;
+  if (pathPart.split('/').some(function (s) { return s.startsWith('-'); })) return false;
 
   try {
     const parsed = new URL(url);
