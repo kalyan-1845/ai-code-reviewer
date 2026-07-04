@@ -24,7 +24,7 @@ import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import ReviewQueue from './utils/reviewQueue.js';
 import { scanFileContentForWarnings } from './utils/sanitizeFileContent.js';
-import { DANGEROUS_PHRASES } from './shared/dangerousPhrases.js';
+import sharedConfig from '../shared-safety-config.json' assert { type: 'json' };
 import { verifyPort } from './utils/envVerifier.js';
 import { mockAIReview } from './utils/mockAIReview.js';
 import AnalysisCache from './utils/analysisCache.js';
@@ -462,25 +462,9 @@ function cleanupTimers() {
   clearInterval(exclusiveLockCleanupTimer);
 }
 
-  // NOTE: This HOMOGLYPH_MAP, DANGEROUS_PHRASES list, and validation logic is
-  // sourced from backend/shared/dangerousPhrases.js as the single source of
-  // truth. The ai-engine/app.py list uses shared-safety-config.json as the
-  // single source of truth. Keep both in sync. See issue #1390.
-  const HOMOGLYPH_MAP = {
-    // Lowercase Cyrillic
-    '\u0430': 'a', '\u0435': 'e', '\u043E': 'o', '\u0441': 'c', '\u0440': 'p',
-    '\u0445': 'x', '\u0443': 'y', '\u0432': 'b', '\u043D': 'h', '\u043A': 'k',
-    '\u043C': 'm', '\u0438': 'i',
-    // Uppercase Cyrillic
-    '\u0410': 'A', '\u0412': 'B', '\u0415': 'E', '\u0421': 'C', '\u041D': 'H',
-    '\u041A': 'K', '\u041C': 'M', '\u041E': 'O', '\u0420': 'P', '\u0423': 'Y',
-    '\u0425': 'X',
-    // Cyrillic lowercase that look like Latin uppercase
-    '\u0428': 'W',
-    // Greek
-    '\u03BF': 'o', '\u03B5': 'e', '\u03B1': 'a',
-    '\u039F': 'O', '\u0395': 'E', '\u0391': 'A'
-  };
+  const HOMOGLYPH_MAP = sharedConfig.homoglyph_map;
+  const DANGEROUS_PHRASES = sharedConfig.dangerous_phrases;
+  const SHARED_CONFIG_VERSION = sharedConfig.version;
 
   function normalizeHomoglyphs(text) {
     return text.split('').map(ch => HOMOGLYPH_MAP[ch] || ch).join('');
@@ -492,16 +476,6 @@ function cleanupTimers() {
     const homoglyphCount = [...prompt].filter(ch => HOMOGLYPH_MAP[ch]).length;
     if (homoglyphCount / totalChars > 0.3) {
       throw new Error('System prompt contains an unusually high proportion of confusable Unicode characters.');
-    }
-    const scriptRuns = [...new Set([...prompt].map(ch => {
-      const cp = ch.codePointAt(0);
-      if (cp >= 0x0400 && cp <= 0x04FF) return 'cyrillic';
-      if (cp >= 0x0370 && cp <= 0x03FF) return 'greek';
-      if (cp >= 0x0061 && cp <= 0x007A) return 'latin';
-      return 'other';
-    }))];
-    if (scriptRuns.includes('cyrillic') || scriptRuns.includes('greek')) {
-      console.warn(`⚠️ System prompt contains non-Latin script characters: ${scriptRuns.join(', ')}`);
     }
   }
 

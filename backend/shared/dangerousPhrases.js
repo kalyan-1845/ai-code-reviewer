@@ -1,23 +1,3 @@
-export const DANGEROUS_PHRASES = [
-  'ignore all', 'ignore all previous instructions', 'ignore all instructions',
-  'ignore previous', 'ignore above', 'ignore the above',
-  'ignore previous instructions',
-  'forget all', 'forget all previous', 'forget previous', 'forget your',
-  'you are not', 'you will now', 'you must now', 'you have been',
-  'you are programmed',
-  'from now on',
-  'override all', 'override protocol',
-  'system override',
-  'new directive',
-  'protocol change',
-  'disregard', 'disregard all', 'disregard all previous',
-  'do not follow',
-  'instead follow',
-  'roleplay mode',
-  'real instruction', 'actual instruction',
-  'replace all',
-  'disobey', 'unauthorized', 'breach', 'bypass',
-  'your true purpose',
-  'listen to me',
-  'disable all',
-];
+import sharedConfig from '../../shared-safety-config.json' assert { type: 'json' };
+export const DANGEROUS_PHRASES = sharedConfig.dangerous_phrases;
+export const HOMOGLYPH_MAP = sharedConfig.homoglyph_map;
