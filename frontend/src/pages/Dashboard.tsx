@@ -4,7 +4,6 @@ import { useStore, ChatMessage } from '../store/useStore';
 import SettingsModal from "../components/SettingsModal";
 import DashboardFooter from "../components/DashboardFooter";
 import KeyboardShortcutsHelp from "../components/KeyboardShortcutsHelp";
-import { MetricsChart } from '../components/MetricsChart';
 import { VulnerabilitiesBarChart } from '../components/VulnerabilitiesBarChart';
 import MarkdownErrorBoundary from '../components/MarkdownErrorBoundary';
 import CopyToClipboardButton from "../components/CopyToClipboardButton";
@@ -38,29 +37,16 @@ import {
   FileText,
 } from "lucide-react";
 import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../utils/exportUtils";
-import mermaid from "mermaid";
 import { sanitizeMermaidOutput } from "../utils/sanitize";
 // Path resolves correctly: pages/ -> ../utils/api -> frontend/src/utils/api
 import { apiFetch } from "../utils/api";
 
-// Initialize Mermaid outside the component to avoid multiple initializations
-try {
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: window.matchMedia("(prefers-color-scheme: light)").matches ? "base" : "dark",
-    securityLevel: "strict",
-    themeVariables: {
-      background: "#0f172a",
-      primaryColor: "#3b82f6",
-      primaryTextColor: "#e5e7eb",
-      lineColor: "#c084fc",
-      nodeBorder: "#3b82f6",
-      mainBkg: "#1e293b",
-    },
-  });
-} catch (e) {
-  console.error("Failed to initialize Mermaid:", e);
-}
+const LazyMetricsChart = React.lazy(() =>
+  import('../components/MetricsChart').then((module) => ({ default: module.MetricsChart }))
+);
+
+let mermaidInitialized = false;
+
 
 const getSavedAiSettings = () => {
   try {
@@ -175,6 +161,30 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
         const firstWord = cleanChart.split(/\s+/)[0];
         if (!MERMAID_TYPES.includes(firstWord)) {
           cleanChart = `graph TD\n${cleanChart}`;
+        }
+
+        const mermaidModule = await import("mermaid");
+        const mermaid = mermaidModule.default;
+
+        if (!mermaidInitialized) {
+          try {
+            mermaid.initialize({
+              startOnLoad: false,
+              theme: window.matchMedia("(prefers-color-scheme: light)").matches ? "base" : "dark",
+              securityLevel: "strict",
+              themeVariables: {
+                background: "#0f172a",
+                primaryColor: "#3b82f6",
+                primaryTextColor: "#e5e7eb",
+                lineColor: "#c084fc",
+                nodeBorder: "#3b82f6",
+                mainBkg: "#1e293b",
+              },
+            });
+            mermaidInitialized = true;
+          } catch (e) {
+            console.error("Failed to initialize Mermaid:", e);
+          }
         }
 
         const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
@@ -3580,7 +3590,9 @@ export default function Dashboard() {
                                     </div>
                                   </div>
                                 </div>
-                                <MetricsChart sessionId={sessionId} />
+                                <React.Suspense fallback={<div style={{ height: 350, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--subtext-color)', fontSize: '12px' }}>Loading codebase metrics...</div>}>
+                                  <LazyMetricsChart sessionId={sessionId} />
+                                </React.Suspense>
                               </div>
                             );
                           })()
