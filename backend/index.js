@@ -139,10 +139,13 @@ app.use((req, res, next) => {
     const MAX_WEBHOOK_BODY = 5 * 1024 * 1024; // 5 MB
     const chunks = [];
     let totalBytes = 0;
+    req.on('error', () => {});
     req.on('data', chunk => {
       totalBytes += chunk.length;
       if (totalBytes > MAX_WEBHOOK_BODY) {
-        req.destroy(new Error('Webhook payload too large'));
+        res.status(413).json({ error: 'Webhook payload too large' });
+        req.resume();
+        return;
       }
       chunks.push(chunk);
     });
