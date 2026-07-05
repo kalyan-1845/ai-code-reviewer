@@ -37,7 +37,7 @@ import {
   FileText,
 } from "lucide-react";
 import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../utils/exportUtils";
-import { sanitizeMermaidOutput } from "../utils/sanitize";
+import { sanitizeMermaidOutput, sanitizeAuditEntry, sanitizeForStorage } from "../utils/sanitize";
 // Path resolves correctly: pages/ -> ../utils/api -> frontend/src/utils/api
 import { apiFetch } from "../utils/api";
 
@@ -146,7 +146,7 @@ function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
     const renderChart = async () => {
       try {
         setSvg("");
-        let cleanChart = chart
+        let cleanChart = sanitizeForStorage(chart)
           .replace(/```mermaid/g, "")
           .replace(/```/g, "")
           .trim();
@@ -483,10 +483,25 @@ export default function Dashboard() {
     return () => document.removeEventListener("keydown", handler);
   }, [apiError]);
 
+  const isValidAuditEntry = (entry: unknown): entry is AuditHistoryEntry => {
+    if (!entry || typeof entry !== 'object') return false;
+    const e = entry as Record<string, unknown>;
+    return typeof e.id === 'string' &&
+      typeof e.repoUrl === 'string' &&
+      typeof e.repoName === 'string' &&
+      typeof e.auditedAt === 'string' &&
+      typeof e.totalFindings === 'number' &&
+      typeof e.overallGrade === 'string' &&
+      e.response !== null && typeof e.response === 'object';
+  };
+
   const [auditHistory, setAuditHistory] = useState<AuditHistoryEntry[]>(() => {
     try {
       const savedHistory = localStorage.getItem('reposage_audit_history');
-      return savedHistory ? JSON.parse(savedHistory) : [];
+      if (!savedHistory) return [];
+      const parsed = JSON.parse(savedHistory);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(isValidAuditEntry);
     } catch (err) {
       console.error('Failed to load audit history:', err);
       return [];
@@ -760,6 +775,35 @@ export default function Dashboard() {
     }
   };
 
+  const safeSetItem = (key: string, value: string, maxRetries = 2): boolean => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch (e: unknown) {
+        if (!(e instanceof DOMException && e.name === 'QuotaExceededError')) {
+          console.warn('Failed to save to localStorage:', e);
+          return false;
+        }
+        if (attempt < maxRetries) {
+          // Evict oldest audit and chat entries to free space
+          for (const storageKey of ['reposage_audit_history', CHAT_HISTORY_KEY]) {
+            try {
+              const raw = localStorage.getItem(storageKey);
+              if (!raw) continue;
+              const data = JSON.parse(raw);
+              if (Array.isArray(data) && data.length > 0) {
+                const evicted = data.slice(data.length <= 1 ? 0 : 1);
+                localStorage.setItem(storageKey, JSON.stringify(evicted));
+              }
+            } catch { /* ignore corrupt entries */ }
+          }
+        }
+      }
+    }
+    return false;
+  };
+
   // AI Chat with Repository States
   const [activeDashboardView, setActiveDashboardView] = useState<
     "audit" | "chat" | "diagram"
@@ -809,7 +853,7 @@ export default function Dashboard() {
     setChatInput("");
     setChatHistory((prev) => {
       const updated = [...prev, { role: "user" as const, content: userMessage }];
-      try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(truncateChatHistory(updated))); } catch (e) { if (e instanceof DOMException && e.name === 'QuotaExceededError') setStorageWarning(true); }
+      if (!safeSetItem(CHAT_HISTORY_KEY, JSON.stringify(truncateChatHistory(updated)))) setStorageWarning(true);
       return updated;
     });
     setIsChatLoading(true);
@@ -842,7 +886,7 @@ export default function Dashboard() {
           ...prev,
           { role: "assistant" as const, content: data.response, sources: sources.length > 0 ? sources : undefined },
         ]);
-        try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(updated)); } catch (e) { if (e instanceof DOMException && e.name === 'QuotaExceededError') setStorageWarning(true); }
+        if (!safeSetItem(CHAT_HISTORY_KEY, JSON.stringify(updated))) setStorageWarning(true);
         return updated;
       });
     } catch (err: unknown) {
@@ -960,7 +1004,8 @@ export default function Dashboard() {
       ].slice(0, 5); // reduced to 5 to save space
 
       try {
-        localStorage.setItem('reposage_audit_history', JSON.stringify(updatedHistory));
+        const sanitized = updatedHistory.map(sanitizeAuditEntry);
+        localStorage.setItem('reposage_audit_history', JSON.stringify(sanitized));
       } catch (e: any) {
         if (e instanceof DOMException && e.name === 'QuotaExceededError') {
           console.warn('localStorage quota exceeded — audit history not saved.');
