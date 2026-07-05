@@ -10,7 +10,7 @@ Vercel is the best place to host the frontend. We have already added a `vercel.j
 3. Important: Open the **"Framework Preset"** section and ensure it says **Vite**.
 4. Open the **"Root Directory"** setting and type `frontend`.
 5. Under **Environment Variables**, add:
-   * `VITE_GROQ_API_KEY`: *(Your Groq API key)*
+    * `GROQ_API_KEY`: *(Your Groq API key - server-side only, never exposed to clients)*
    * `VITE_API_BASE_URL`: *(The URL of your deployed backend, e.g., `https://reposage-backend.onrender.com`)*
 6. Click **Deploy**.
 

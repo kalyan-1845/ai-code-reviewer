@@ -366,7 +366,7 @@ if api_key:
         groq_client = Groq(api_key=api_key)
         print("🟢 Groq Client successfully initialized in FastAPI AI Engine!")
     except Exception as e:
-        sanitized_error = str(e).replace(api_key[:8] if len(api_key) > 8 else api_key, "***")
+        sanitized_error = _redact_key(str(e), api_key)
         print(f"⚠️ Error initializing Groq client: {sanitized_error}")
 else:
     print("⚠️ GROQ_API_KEY not found in environment. Running in sandbox mode.")

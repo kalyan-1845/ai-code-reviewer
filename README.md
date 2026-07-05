@@ -191,7 +191,7 @@ The project is split into **four independent modules**:
 
 1. Go to **[console.groq.com/keys](https://console.groq.com/keys)** and sign in (or create a free account).
 2. Click **Create API Key**, give it a name (e.g., `reposage`), and copy the key.
-3. The key is used by both the **Backend** (via `GROQ_API_KEY` env var in `backend/.env`) and the **Frontend** (via `VITE_GROQ_API_KEY`). See the backend setup below.
+3. The key is used by the **Backend** and **AI Engine** via `GROQ_API_KEY` env var. See the backend setup below.
 
 ### 1. Clone the Repository
 
@@ -234,7 +234,7 @@ You need to provide your Groq API key for the frontend to function. Copy the exa
 ```bash
 cp .env.example .env
 ```
-*(Open the newly created `.env` file and set `VITE_GROQ_API_KEY=your_api_key_here`)*
+*(Open the newly created `.env` file and set `GROQ_API_KEY=your_api_key_here`)*
 
 Finally, start the development server:
 
