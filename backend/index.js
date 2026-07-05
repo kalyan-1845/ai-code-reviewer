@@ -450,6 +450,14 @@ const dedupMemorySet = new Set();
 const shaDedupMemorySet = new Set();
 const DEDUP_MEMORY_TTL = DELIVERY_REDIS_TTL * 1000;
 
+// Atomic check-and-add for in-memory dedup (best-effort under concurrent load)
+function checkAndSetDedup(key) {
+  if (dedupMemorySet.has(key)) return 0;
+  dedupMemorySet.add(key);
+  setTimeout(() => dedupMemorySet.delete(key), DEDUP_MEMORY_TTL);
+  return 1;
+}
+
 
 // Periodic sweeper for stale exclusive locks to prevent unbounded memory growth
 const EXCLUSIVE_LOCK_CLEANUP_INTERVAL = 5 * 60 * 1000;

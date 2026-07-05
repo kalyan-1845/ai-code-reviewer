@@ -60,8 +60,14 @@ class ReviewQueue {
             }
           }
         }
-        this._queueLocks.delete(key);
-        this._queues.delete(key);
+        // Two-phase check: only delete the queue if it is still empty.
+        // Prevents race window A (item enqueued after last shift but before delete)
+        // and race window B (concurrent enqueue/_processNext chain reading a deleted queue).
+        const finalQueue = this._queues.get(key);
+        if (!finalQueue || finalQueue.length === 0) {
+          this._queueLocks.delete(key);
+          this._queues.delete(key);
+        }
       });
     this._queueLocks.set(key, next.catch(err => {
       console.error(`ReviewQueue processing error for "${key}":`, err);
