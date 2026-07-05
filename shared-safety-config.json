@@ -1,5 +1,6 @@
 {
-  "_warning": "This file is the SINGLE SOURCE OF TRUTH for homoglyph maps and dangerous phrases. Edit here, then update backend/index.js and ai-engine/app.py from this file. See issue #1390.",
+  "_warning": "This file is the SINGLE SOURCE OF TRUTH for homoglyph maps and dangerous phrases. All consumers (backend/index.js, backend/shared/dangerousPhrases.js, ai-engine/app.py) MUST read from this file at runtime.",
+  "version": "1.0.0",
   "homoglyph_map": {
     "\u0430": "a", "\u0435": "e", "\u043E": "o", "\u0441": "c", "\u0440": "p",
     "\u0445": "x", "\u0443": "y", "\u0432": "b", "\u043D": "h", "\u043A": "k",
