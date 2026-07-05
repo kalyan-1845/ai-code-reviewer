@@ -11,6 +11,7 @@ _COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "reposage_code_chunks")
 _PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_data")
 _CHROMA_HOST = os.getenv("CHROMA_HOST", "")
 _CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
+_MAX_INGEST_CHUNKS = int(os.getenv("MAX_INGEST_CHUNKS", "500"))
 
 _client = None
 _client_lock = threading.Lock()
@@ -74,6 +75,9 @@ def ingest_chunks(
         return 0
     if not (len(chunks) == len(metadatas) == len(ids)):
         raise ValueError("chunks, metadatas, and ids must have the same length")
+    chunks = chunks[:_MAX_INGEST_CHUNKS]
+    metadatas = metadatas[:_MAX_INGEST_CHUNKS]
+    ids = ids[:_MAX_INGEST_CHUNKS]
     collection = _get_collection(repo_url)
     embeddings = embed_texts(chunks)
     collection.add(
@@ -167,13 +171,15 @@ def cleanup_stale_chunks(current_files: set, repo_url: Optional[str] = None) -> 
     previous vectorstore-based implementation.
     """
     collection = _get_collection(repo_url)
-    # Fetch all stored source_file values without retrieving embeddings
-    all_results = collection.get(include=["metadatas"])
-    stored_paths = {
-        m.get("source_file")
-        for m in (all_results.get("metadatas") or [])
-        if m.get("source_file")
-    }
+    stored_paths = set()
+    offset = 0
+    while True:
+        batch = collection.get(limit=_MAX_INGEST_CHUNKS, offset=offset, include=["metadatas"])
+        metadatas = batch.get("metadatas") or []
+        if not metadatas:
+            break
+        stored_paths.update(m.get("source_file") for m in metadatas if m.get("source_file"))
+        offset += len(metadatas)
     stale_paths = stored_paths - current_files
     removed_count = 0
     for stale_path in stale_paths:
@@ -200,6 +206,9 @@ def upsert_chunks(
         return 0
     if not (len(chunks) == len(metadatas) == len(ids)):
         raise ValueError("chunks, metadatas, and ids must have the same length")
+    chunks = chunks[:_MAX_INGEST_CHUNKS]
+    metadatas = metadatas[:_MAX_INGEST_CHUNKS]
+    ids = ids[:_MAX_INGEST_CHUNKS]
     collection = _get_collection(repo_url)
     embeddings = embed_texts(chunks)
     collection.upsert(
@@ -219,10 +228,15 @@ def delete_repo_chunks(repo_url: str) -> int:
     them.  Returns the number of deleted chunks.
     """
     collection = _get_collection(repo_url)
-    all_ids = collection.get()["ids"]
-    if all_ids:
-        collection.delete(ids=all_ids)
-    return len(all_ids)
+    total = 0
+    while True:
+        batch = collection.get(limit=_MAX_INGEST_CHUNKS)
+        ids = batch.get("ids", [])
+        if not ids:
+            break
+        collection.delete(ids=ids)
+        total += len(ids)
+    return total
 
 
 def delete_collection(repo_url: str) -> bool:

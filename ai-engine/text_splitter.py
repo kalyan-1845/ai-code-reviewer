@@ -7,6 +7,8 @@ from pygments.util import ClassNotFound
 
 _CHUNK_SIZE = int(os.getenv("TEXT_CHUNK_SIZE", "1000"))
 _CHUNK_OVERLAP = int(os.getenv("TEXT_CHUNK_OVERLAP", "200"))
+_MAX_CHUNKS_PER_FILE = int(os.getenv("MAX_CHUNKS_PER_FILE", "500"))
+_MAX_FILES_PER_BATCH = int(os.getenv("MAX_FILES_PER_BATCH", "100"))
 
 _language_separators = {
     "python": ["\nclass ", "\ndef ", "\n    ", "\n\t", "\n", " ", ""],
@@ -116,6 +118,8 @@ def split_file_content(
 
     results = []
     for i, chunk in enumerate(chunks):
+        if i >= _MAX_CHUNKS_PER_FILE:
+            break
         metadata = {
             "source_file": file_name,
             "fileName": file_name,
@@ -142,7 +146,9 @@ def split_files(
     repo_url: Optional[str] = None,
 ) -> list[dict]:
     all_chunks = []
-    for file in files:
+    for idx, file in enumerate(files):
+        if idx >= _MAX_FILES_PER_BATCH:
+            break
         if not isinstance(file, dict):
             continue
         if not file.get("name") or not file.get("content"):
