@@ -40,20 +40,21 @@ MAX_CHAT_FILES = int(os.getenv("MAX_CHAT_FILES", "20"))
 # Maximum seconds to wait for a single LLM API response before returning 504 (#786)
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 
-# Load shared safety configuration from the single source of truth
-_shared_config_path = os.path.join(os.path.dirname(__file__), '..', 'shared-safety-config.json')
-with open(_shared_config_path) as _f:
-    _shared_config = json.load(_f)
-DANGEROUS_PATTERNS = _shared_config['dangerous_phrases']
-HOMOGLYPH_MAP = _shared_config['homoglyph_map']
-
-_REQUIRED_KEYS = {'homoglyph_map', 'dangerous_phrases', 'version'}
-_missing = _REQUIRED_KEYS - set(_shared_config.keys())
-if _missing:
-    raise RuntimeError(
-        f"shared-safety-config.json missing required keys: {_missing}. "
-        "Safety checks cannot be initialized."
-    )
+# Single source of truth — loaded from shared-safety-config.json
+_SHARED_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'shared-safety-config.json')
+try:
+    with open(_SHARED_CONFIG_PATH) as _f:
+        _shared_config = json.load(_f)
+    _REQUIRED_KEYS = {'homoglyph_map', 'dangerous_phrases', 'version'}
+    _missing = _REQUIRED_KEYS - set(_shared_config.keys())
+    if _missing:
+        raise RuntimeError(f"shared-safety-config.json missing required keys: {_missing}")
+    DANGEROUS_PATTERNS = _shared_config['dangerous_phrases']
+    HOMOGLYPH_MAP = _shared_config['homoglyph_map']
+except (FileNotFoundError, json.JSONDecodeError, RuntimeError) as _e:
+    print(f"SECURITY: Failed to load shared-safety-config.json ({_e}), prompt injection defenses may be incomplete.")
+    DANGEROUS_PATTERNS = []
+    HOMOGLYPH_MAP = {}
 
 def _neutralize_pattern(content: str, pattern: str) -> str:
     """Replace a dangerous pattern with a non-deterministic placeholder."""
@@ -61,8 +62,21 @@ def _neutralize_pattern(content: str, pattern: str) -> str:
     return re.sub(re.escape(pattern), token, content, flags=re.IGNORECASE)
 
 def sanitize_file_content(content: str) -> str:
-    for pattern in DANGEROUS_PATTERNS:
-        content = _neutralize_pattern(content, pattern)
+    for _round in range(3):
+        previous = content
+        for pattern in DANGEROUS_PATTERNS:
+            content = _neutralize_pattern(content, pattern)
+        if content == previous:
+            break
+        lower = content.lower()
+        still_dangerous = False
+        for phrase in DANGEROUS_PATTERNS:
+            p = r"\s+".join(re.escape(w) for w in phrase.split())
+            if re.search(p, lower):
+                still_dangerous = True
+                break
+        if not still_dangerous:
+            break
     lines = content.split("\n")
     truncated_lines = [line[:500] for line in lines]
     wrapped = "\n".join(truncated_lines)
