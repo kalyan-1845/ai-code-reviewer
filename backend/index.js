@@ -1895,6 +1895,7 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
 app.get("/api/review-history", requireApiKey, async (req, res) => {
 
     try {
+        await ensureConnection();
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
@@ -1927,6 +1928,7 @@ app.get("/api/review-history", requireApiKey, async (req, res) => {
 app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
 
     try {
+        await ensureConnection();
         const repo = req.params.repo;
         if (typeof repo !== 'string' || repo.length === 0 || !/^[a-zA-Z0-9._-]+$/.test(repo)) {
           return res.status(400).json({ error: 'Invalid repo parameter.' });
@@ -1964,6 +1966,7 @@ app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
 app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res) => {
 
     try {
+        await ensureConnection();
         if (!mongoose.Types.ObjectId.isValid(req.params.id1) || !mongoose.Types.ObjectId.isValid(req.params.id2)) {
           return res.status(400).json({ error: 'Invalid ID format.' });
         }
