@@ -3,7 +3,6 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import PDFDocument from 'pdfkit';
 import crypto from 'crypto';
-import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -24,8 +23,9 @@ import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import ReviewQueue from './utils/reviewQueue.js';
 import { scanFileContentForWarnings } from './utils/sanitizeFileContent.js';
-import { DANGEROUS_PHRASES } from './shared/dangerousPhrases.js';
+import sharedConfig from '../shared-safety-config.json' assert { type: 'json' };
 import { verifyPort } from './utils/envVerifier.js';
+import { sanitizeRedisKey } from './utils/redisSafe.js';
 import { mockAIReview } from './utils/mockAIReview.js';
 import AnalysisCache from './utils/analysisCache.js';
 import mongoose from 'mongoose';
@@ -462,25 +462,9 @@ function cleanupTimers() {
   clearInterval(exclusiveLockCleanupTimer);
 }
 
-  // NOTE: This HOMOGLYPH_MAP, DANGEROUS_PHRASES list, and validation logic is
-  // sourced from backend/shared/dangerousPhrases.js as the single source of
-  // truth. The ai-engine/app.py list uses shared-safety-config.json as the
-  // single source of truth. Keep both in sync. See issue #1390.
-  const HOMOGLYPH_MAP = {
-    // Lowercase Cyrillic
-    '\u0430': 'a', '\u0435': 'e', '\u043E': 'o', '\u0441': 'c', '\u0440': 'p',
-    '\u0445': 'x', '\u0443': 'y', '\u0432': 'b', '\u043D': 'h', '\u043A': 'k',
-    '\u043C': 'm', '\u0438': 'i',
-    // Uppercase Cyrillic
-    '\u0410': 'A', '\u0412': 'B', '\u0415': 'E', '\u0421': 'C', '\u041D': 'H',
-    '\u041A': 'K', '\u041C': 'M', '\u041E': 'O', '\u0420': 'P', '\u0423': 'Y',
-    '\u0425': 'X',
-    // Cyrillic lowercase that look like Latin uppercase
-    '\u0428': 'W',
-    // Greek
-    '\u03BF': 'o', '\u03B5': 'e', '\u03B1': 'a',
-    '\u039F': 'O', '\u0395': 'E', '\u0391': 'A'
-  };
+  const HOMOGLYPH_MAP = sharedConfig.homoglyph_map;
+  const DANGEROUS_PHRASES = sharedConfig.dangerous_phrases;
+  const SHARED_CONFIG_VERSION = sharedConfig.version;
 
   function normalizeHomoglyphs(text) {
     return text.split('').map(ch => HOMOGLYPH_MAP[ch] || ch).join('');
@@ -492,16 +476,6 @@ function cleanupTimers() {
     const homoglyphCount = [...prompt].filter(ch => HOMOGLYPH_MAP[ch]).length;
     if (homoglyphCount / totalChars > 0.3) {
       throw new Error('System prompt contains an unusually high proportion of confusable Unicode characters.');
-    }
-    const scriptRuns = [...new Set([...prompt].map(ch => {
-      const cp = ch.codePointAt(0);
-      if (cp >= 0x0400 && cp <= 0x04FF) return 'cyrillic';
-      if (cp >= 0x0370 && cp <= 0x03FF) return 'greek';
-      if (cp >= 0x0061 && cp <= 0x007A) return 'latin';
-      return 'other';
-    }))];
-    if (scriptRuns.includes('cyrillic') || scriptRuns.includes('greek')) {
-      console.warn(`⚠️ System prompt contains non-Latin script characters: ${scriptRuns.join(', ')}`);
     }
   }
 
@@ -971,6 +945,101 @@ if (reviewResult?.fileReviews) {
     }
 });
 
+// 🟢 Route: Direct File Analysis (for VS Code extension and single-file use cases)
+app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimiter, async (req, res) => {
+  try {
+    let { files, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = '', batchSize = 5 } = req.body;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'At least one file is required.' });
+    }
+
+    for (const file of files) {
+      if (!file.name || !file.content) {
+        return res.status(400).json({ error: 'Each file must have a name and content.' });
+      }
+    }
+
+    batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
+    temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
+    maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
+
+    const normalizedModel = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
+    if (!normalizedModel) {
+      model = "llama-3.3-70b-versatile";
+    } else {
+      model = normalizedModel;
+    }
+
+    let validatedPrompt;
+    try {
+      validatedPrompt = validatePrompt(systemPrompt);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const fileWarnings = [];
+    for (const file of files) {
+      const scanResult = scanFileContentForWarnings(file.content);
+      for (const warning of scanResult) {
+        fileWarnings.push({ file: file.name, warning });
+      }
+    }
+
+    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    const baseUrl = aiEngineUrl.replace(/\/+$/, '');
+
+    let reviewResult;
+    try {
+      const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+        body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
+      }, 120000);
+
+      if (aiResponse.ok) {
+        const resData = await aiResponse.json();
+        reviewResult = resData;
+      } else {
+        throw new Error('AI engine responded with error');
+      }
+    } catch (err) {
+      const { mockAIReview } = await import('./utils/mockAIReview.js');
+      const mockRes = mockAIReview(files, model);
+      reviewResult = mockRes;
+    }
+
+    if (reviewResult && reviewResult.fileReviews) {
+      reviewResult.metrics = {};
+      files.forEach(file => {
+        reviewResult.metrics[file.name] = analyzeComplexity(file.content, file.name);
+        const secretFindings = scanSecrets(file.content);
+        if (secretFindings.length > 0) {
+          if (!reviewResult.fileReviews[file.name]) {
+            reviewResult.fileReviews[file.name] = { bugs: [], security: [], optimization: [], styling: [] };
+          }
+          secretFindings.forEach(finding => {
+            const duplicate = reviewResult.fileReviews[file.name].security.some(s => s.line === finding.line && s.type === finding.type);
+            if (!duplicate) {
+              reviewResult.fileReviews[file.name].security.unshift(finding);
+            }
+          });
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      analysis: reviewResult,
+      source: 'direct',
+      ...(fileWarnings.length > 0 ? { warnings: fileWarnings } : {})
+    });
+  } catch (err) {
+    console.error('File analysis failed:', err);
+    return res.status(500).json({ error: 'An error occurred during file analysis.' });
+  }
+});
+
 // 🟢 Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async (req, res) => {
   let { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
@@ -1179,7 +1248,13 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     if (!deliveryId || typeof deliveryId !== 'string') {
       return res.status(400).json({ error: 'Missing x-github-delivery header.' });
     }
-    const deliveryDedupKey = `webhook:delivery:${deliveryId}`;
+    const GITHUB_DELIVERY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!GITHUB_DELIVERY_UUID_RE.test(deliveryId)) {
+      console.warn(`Rejected malformed x-github-delivery header: ${deliveryId}`);
+      return res.status(400).json({ error: 'Invalid delivery ID format.' });
+    }
+    const safeDeliveryId = sanitizeRedisKey(deliveryId);
+    const deliveryDedupKey = `webhook:delivery:${safeDeliveryId}`;
     let isDuplicate;
     if (redisClient) {
       isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
@@ -1202,7 +1277,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       const repo = payload.repository.name;
       const reviewKey = `${owner}/${repo}/#${pullNumber}`;
 
-      const shaKey = `${owner}/${repo}/#${pullNumber}`;
+      const shaKey = `${sanitizeRedisKey(owner)}/${sanitizeRedisKey(repo)}/#${sanitizeRedisKey(String(pullNumber))}`;
       const shaDedupKey = `webhook:sha:${shaKey}`;
       let shaAlreadyReviewed;
       if (redisClient) {

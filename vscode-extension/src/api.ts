@@ -28,7 +28,7 @@ export async function reviewFileContent(
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
-    const response = await fetch(`${apiUrl}/api/analyze`, {
+    const response = await fetch(`${apiUrl}/api/analyze-file`, {
       method: "POST",
       headers,
       body: JSON.stringify(buildRequestBody(fileName, content)),

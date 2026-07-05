@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import mongoose from 'mongoose';
 
 // ---------------------------------------------------------------------------
 // Unit tests for backend/config/db.js
@@ -7,6 +8,11 @@ import assert from 'node:assert/strict';
 // Mongoose operations that need real DB are tested for correct early-return
 // and error-handling behavior without requiring a live MongoDB instance.
 // ---------------------------------------------------------------------------
+
+// Override MONGODB_URI to prevent real MongoDB connection in CI.
+// Native Mongoose connection objects can't be serialized via IPC
+// on Node.js 20, causing ERR_TEST_FAILURE in the test runner.
+process.env.MONGODB_URI = 'mongodb://0.0.0.0:1/test';
 
 // Suppress console.warn during tests to keep output clean
 const originalWarn = console.warn;
@@ -113,6 +119,16 @@ test('closeDatabase returns undefined when not connected', async () => {
   const result = db.closeDatabase();
   // Returns undefined in the early-return path (not connected)
   assert.ok(result === undefined || result instanceof Promise);
+});
+
+test('cleanup: disconnect mongoose to prevent IPC serialization errors', async () => {
+  try {
+    await mongoose.disconnect();
+    mongoose.connection.removeAllListeners();
+  } catch {
+    // ignore cleanup errors
+  }
+  assert.ok(true, 'cleanup complete');
 });
 
 console.warn = originalWarn;

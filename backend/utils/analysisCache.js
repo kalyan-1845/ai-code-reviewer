@@ -9,14 +9,36 @@ import crypto from 'crypto';
  * TODO: For distributed deployments, migrate to Redis-backed cache.
  */
 
+class AsyncLock {
+  constructor() {
+    this._promise = null;
+    this._resolve = null;
+  }
+  async acquire(fn) {
+    while (this._promise) {
+      await this._promise;
+    }
+    this._promise = new Promise(resolve => { this._resolve = resolve; });
+    try {
+      return await fn();
+    } finally {
+      const resolve = this._resolve;
+      this._promise = null;
+      this._resolve = null;
+      if (resolve) resolve();
+    }
+  }
+}
+
 class AnalysisCache {
   constructor(ttlMs = 3600000) {
     this.ttlMs = ttlMs;
     this.maxEntries = 1000;
     this.cache = new Map();
     this.pending = new Map();
+    this._locks = new Map();
     this._repoUrlIndex = new Map();
-    this.stats = { hits: 0, misses: 0, evictions: 0 };
+    this.stats = { hits: 0, misses: 0, dedupSaves: 0 };
     this._startSweeper();
   }
 
@@ -111,25 +133,43 @@ class AnalysisCache {
 
   /**
    * Retrieve a cached analysis result or fetch it safely if missing/concurrent.
+   * Uses per-key locks to prevent duplicate fetches (thundering herd mitigation).
    */
   async getOrSet(key, fetcher, repoUrl) {
     const cached = this.get(key);
     if (cached) return cached;
-    
-    const existing = this.pending.get(key);
-    if (existing) return existing;
-    
-    const promise = fetcher().then(result => {
+
+    let lock = this._locks.get(key);
+    if (!lock) {
+      lock = new AsyncLock();
+      this._locks.set(key, lock);
+    }
+
+    return lock.acquire(async () => {
+      const recheck = this.get(key);
+      if (recheck) {
+        this.stats.dedupSaves++;
+        return recheck;
+      }
+
+      const pending = this.pending.get(key);
+      if (pending) {
+        this.stats.dedupSaves++;
+        return pending;
+      }
+
+      const promise = fetcher().then(result => {
         this.set(key, result, repoUrl);
         this.pending.delete(key);
         return result;
-    }).catch(err => {
+      }).catch(err => {
         this.pending.delete(key);
         throw err;
+      });
+
+      this.pending.set(key, promise);
+      return promise;
     });
-    
-    this.pending.set(key, promise);
-    return promise;
   }
 
   /**
