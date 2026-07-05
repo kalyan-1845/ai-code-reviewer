@@ -296,7 +296,11 @@ MAX_RATE_LIMIT_ENTRIES = 10000
 _rate_limit_store: OrderedDict[str, list[float]] = OrderedDict()
 
 async def rate_limit_middleware(request: Request, call_next):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = (
+        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (request.client.host if request.client else None)
+        or "unknown"
+    )
     now = time.time()
 
     if client_ip in _rate_limit_store:
@@ -1042,5 +1046,5 @@ async def get_paginated_chunks(request: PaginatedChunksRequest):
 if __name__ == "__main__":
     import uvicorn
     reload_enabled = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=reload_enabled)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=reload_enabled, proxy_headers=True, forwarded_allow_ips="*")
 # TODO: Issue #395 - Bug [AI Engine]: `validate_system_prompt` fails to strip multiple occurrences of dangerous phrases
