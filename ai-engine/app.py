@@ -222,10 +222,15 @@ def validate_system_prompt(prompt: str, max_len: int = 2000) -> str:
     lower = homoglyph_normalized.lower()
     
     found = []
+    stripped = lower
     for phrase in DANGEROUS_PATTERNS:
-        pattern = r"\s+".join(re.escape(w) for w in phrase.split())
-        if re.search(pattern, lower):
+        pattern_str = r"\s+".join(re.escape(w) for w in phrase.split())
+        pattern = re.compile(pattern_str, re.IGNORECASE)
+        # Keep substituting until no more matches exist, so all occurrences are stripped
+        new_stripped, count = pattern.subn('', stripped)
+        if count > 0:
             found.append(phrase)
+            stripped = new_stripped
     if found:
         details = "; ".join(f"'{p}'" for p in found)
         print(f"⚠️ System prompt rejected: contains prohibited directives: {details}")
