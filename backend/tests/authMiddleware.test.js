@@ -19,6 +19,11 @@ function makeMockReqRes({ providedKey = '', cookie = '' } = {}) {
       this.body = data;
       return this;
     },
+    cookie(name, value, options) {
+      this.cookies = this.cookies || {};
+      this.cookies[name] = { value, options };
+      return this;
+    },
   };
   const req = {
     headers: {

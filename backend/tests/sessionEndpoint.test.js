@@ -34,6 +34,11 @@ function makeMockReqRes(overrides = {}) {
       this.body = data;
       return this;
     },
+    cookie(name, value, options) {
+      this.cookies = this.cookies || {};
+      this.cookies[name] = { value, options };
+      return this;
+    },
   };
   const req = {
     headers,
@@ -56,6 +61,11 @@ function makeSessionReqRes() {
       return this;
     },
     json(data) {
+      return this;
+    },
+    cookie(name, value, options) {
+      this.cookies = this.cookies || {};
+      this.cookies[name] = { value, options };
       return this;
     },
   };

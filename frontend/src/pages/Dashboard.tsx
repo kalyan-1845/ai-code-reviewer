@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { get, set, del } from 'idb-keyval';
 import { useDebounce } from '../hooks/useDebounce';
 import { useStore, ChatMessage } from '../store/useStore';
 import SettingsModal from "../components/SettingsModal";
@@ -336,15 +337,17 @@ export default function Dashboard() {
     return () => document.removeEventListener("keydown", handler);
   }, [apiError]);
 
-  const [auditHistory, setAuditHistory] = useState<AuditHistoryEntry[]>(() => {
-    try {
-      const savedHistory = localStorage.getItem('reposage_audit_history');
-      return savedHistory ? JSON.parse(savedHistory) : [];
-    } catch (err) {
-      console.error('Failed to load audit history:', err);
-      return [];
-    }
-  });
+  const [auditHistory, setAuditHistory] = useState<AuditHistoryEntry[]>([]);
+
+  useEffect(() => {
+    get('reposage_audit_history').then((savedHistory) => {
+      if (savedHistory) {
+        setAuditHistory(savedHistory as AuditHistoryEntry[]);
+      }
+    }).catch(err => {
+      console.error('Failed to load audit history from idb:', err);
+    });
+  }, []);
 
   // Automated Issue Generator States
   const [isGssocLabelingEnabled, setIsGssocLabelingEnabled] = useState(true);
@@ -809,17 +812,10 @@ export default function Dashboard() {
       const updatedHistory = [
         entry,
         ...prev.filter(item => item.repoUrl !== repoUrl)
-      ].slice(0, 5); // reduced to 5 to save space
-
-      try {
-        localStorage.setItem('reposage_audit_history', JSON.stringify(updatedHistory));
-      } catch (e: any) {
-        if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-          console.warn('localStorage quota exceeded — audit history not saved.');
-        } else {
-          console.warn('Failed to save to localStorage:', e);
-        }
-      }
+      ].slice(0, 5); // reduced to 5
+      set('reposage_audit_history', updatedHistory).catch(e => {
+        console.warn('Failed to save to idb:', e);
+      });
       return updatedHistory;
     });
   };
@@ -840,7 +836,7 @@ export default function Dashboard() {
 
   const clearAuditHistory = () => {
     setAuditHistory([]);
-    localStorage.removeItem('reposage_audit_history');
+    del('reposage_audit_history').catch(console.error);
   };
 
   // Submit Handler to Call Backend API
