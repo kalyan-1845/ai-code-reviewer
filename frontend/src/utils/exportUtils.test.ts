@@ -74,8 +74,8 @@ describe('generateMarkdownReport', () => {
       }
     };
     const report = generateMarkdownReport('test-repo', analysis);
-    expect(report).toContain('a\\|b.js');
-    expect(report).toContain('desc\\|ription');
+    expect(report).toContain('a&#124;b.js');
+    expect(report).toContain('desc&#124;ription');
   });
 
   it('includes metrics table when metrics are present', () => {
