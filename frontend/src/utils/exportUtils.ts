@@ -148,8 +148,8 @@ export const handleHtmlExport = async (
     element.click();
     document.body.removeChild(element);
     URL.revokeObjectURL(url);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(err);
-    alert(err.message || 'Failed to export HTML report.');
+    alert(err instanceof Error && err.message ? err.message : 'Failed to export HTML report.');
   }
 };
