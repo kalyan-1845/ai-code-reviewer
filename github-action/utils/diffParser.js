@@ -1,3 +1,4 @@
+import core from '@actions/core';
 export function parseDiff(diffStr) {
   const files = [];
   const lines = diffStr.split('\n');
@@ -19,7 +20,7 @@ export function parseDiff(diffStr) {
       if (match) {
         currentLineInNewFile = parseInt(match[1], 10);
       } else {
-        console.warn(`Warning: Could not parse hunk header: ${line}`);
+        core.warning(`Warning: Could not parse hunk header: ${line}`);
       }
     } else if (currentFile) {
       if (line.startsWith('+') && !line.startsWith('+++')) {

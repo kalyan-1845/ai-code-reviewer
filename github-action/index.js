@@ -101,7 +101,7 @@ async function run() {
       return;
     }
 
-    console.log(`🚀 Starting RepoSage AI PR Review for PR #${pullNumber} in ${owner}/${repo}`);
+    core.info(`🚀 Starting RepoSage AI PR Review for PR #${pullNumber} in ${owner}/${repo}`);
 
     // 4. Fetch PR Diff
     const { data: diff } = await octokit.rest.pulls.get({
@@ -120,7 +120,7 @@ async function run() {
 
     // 5. Parse Diff
     const parsedFiles = parseDiff(diff);
-    console.log(`📁 Found ${parsedFiles.length} files in PR diff.`);
+    core.info(`📁 Found ${parsedFiles.length} files in PR diff.`);
 
     const commentsToPost = [];
     let reviewedFilesCount = 0;
@@ -131,13 +131,13 @@ async function run() {
       const isExcluded = excludePatterns.some(regex => regex.test(file.path));
 
       if (isExcluded) {
-        console.log(`⏭️ Skipping excluded file: ${file.path}`);
+        core.info(`⏭️ Skipping excluded file: ${file.path}`);
         continue;
       }
 
       const ext = file.path.split('.').pop()?.toLowerCase();
       if (!ext || !validExtensions.includes(ext)) {
-        console.log(`skip non-code file: ${file.path}`);
+        core.info(`skip non-code file: ${file.path}`);
         continue;
       }
 
@@ -145,7 +145,7 @@ async function run() {
         continue;
       }
 
-      console.log(`🔍 Reviewing: ${file.path} (${file.changes.length} changes)`);
+      core.info(`🔍 Reviewing: ${file.path} (${file.changes.length} changes)`);
       reviewedFilesCount++;
 
       // 1. Run local secrets scanner
@@ -158,7 +158,7 @@ async function run() {
         });
       }
       if (scanTruncated) {
-        console.warn(`⚠️ Secrets scan truncated for ${file.path}: ${scanReason} (total ${scanTotal} changes)`);
+        core.warning(`⚠️ Secrets scan truncated for ${file.path}: ${scanReason} (total ${scanTotal} changes)`);
       }
 
       const changesText = file.changes
@@ -218,7 +218,7 @@ If no issues are found, reply with: { "reviews": [] }`;
         }
 
         if (issues.length > 0) {
-          console.log(`✅ AI review returned ${issues.length} comments for ${file.path}`);
+          core.info(`✅ AI review returned ${issues.length} comments for ${file.path}`);
           for (const issue of issues) {
             const changeExists = file.changes.some(c => c.line === issue.line);
             if (changeExists) {
@@ -231,11 +231,11 @@ If no issues are found, reply with: { "reviews": [] }`;
                 });
               }
             } else {
-              console.warn(`⚠️ AI suggested line ${issue.line} which is outside the PR changes for ${file.path}. Skipping.`);
+              core.warning(`⚠️ AI suggested line ${issue.line} which is outside the PR changes for ${file.path}. Skipping.`);
             }
           }
         } else {
-          console.warn(`⚠️ Warning: Expected array from AI response, got something else for ${file.path}. Parsed keys: ${Object.keys(parsed || {}).join(', ')}`);
+          core.warning(`⚠️ Warning: Expected array from AI response, got something else for ${file.path}. Parsed keys: ${Object.keys(parsed || {}).join(', ')}`);
         }
 
       } catch (err) {
@@ -246,7 +246,7 @@ If no issues are found, reply with: { "reviews": [] }`;
 
     // 6. Post Consolidated Review
     if (commentsToPost.length > 0) {
-      console.log(`✍️ Posting PR Review with ${commentsToPost.length} inline comments...`);
+      core.info(`✍️ Posting PR Review with ${commentsToPost.length} inline comments...`);
       await octokit.rest.pulls.createReview({
         owner,
         repo,
@@ -265,7 +265,7 @@ Please review my feedback and suggestions below. Happy coding! 🚀
         comments: commentsToPost
       });
     } else if (reviewedFilesCount > 0 && successfulReviewsCount > 0 && failedReviewsCount === 0) {
-      console.log('🎉 No code issues or recommendations found. Posting positive review status...');
+      core.info('🎉 No code issues or recommendations found. Posting positive review status...');
 
       const reviewEvent = autoApprove ? 'APPROVE' : 'COMMENT';
       await octokit.rest.pulls.createReview({
@@ -290,9 +290,9 @@ Please review my feedback and suggestions below. Happy coding! 🚀
           issue_number: pullNumber,
           labels: ['gssoc:approved']
         });
-        console.log('✅ Added gssoc:approved label to PR');
+        core.info('✅ Added gssoc:approved label to PR');
       } catch (err) {
-        console.warn('⚠️ Could not add gssoc:approved label:', err.message);
+        core.warning('⚠️ Could not add gssoc:approved label:', err.message);
       }
     } else {
       core.setFailed(
@@ -301,7 +301,7 @@ Please review my feedback and suggestions below. Happy coding! 🚀
       return;
     }
 
-    console.log('✅ RepoSage AI Pull Request Review completed successfully.');
+    core.info('✅ RepoSage AI Pull Request Review completed successfully.');
 
   } catch (err) {
     core.setFailed(`❌ Action run failed: ${err.message}`);
