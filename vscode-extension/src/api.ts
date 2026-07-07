@@ -7,6 +7,7 @@ import {
   formatNetworkError,
   parseApiError
 } from "./utils";
+import { logInfo } from "./logger";
 
 export { ReviewItem, FileReview, AnalysisData, BackendResponse, ReviewResponse } from "./utils";
 
@@ -45,7 +46,7 @@ export async function reviewFileContent(
     }
 
     const data = (await response.json()) as BackendResponse;
-    console.log("RepoSage API response:", data);
+    logInfo("RepoSage API response:", data);
     return {
       success: true,
       response: JSON.stringify(data, null, 2),

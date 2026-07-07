@@ -22,5 +22,3 @@ export default function App() {
         </BrowserRouter>
     );
 }
-
-// TODO: Complete full implementation for #1298 - Enhancement: Use VS Code OutputChannel instead of console.log in extension.ts

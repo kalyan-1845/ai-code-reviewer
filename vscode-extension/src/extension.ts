@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { reviewFileContent } from "./api";
 import { RepoSageDiagnostics } from "./diagnostics";
 import { RepoSageWebviewProvider } from "./webviewProvider";
+import { logInfo } from "./logger";
 
 const SECRET_KEY = "reposage.apiKey";
 
@@ -24,7 +25,7 @@ async function updateApiKeyStatusBar(
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log("RepoSage extension is now active!");
+  logInfo("RepoSage extension is now active!");
 
   // Migrate any legacy plain-text API key from settings.json to SecretStorage.
   const legacyConfig = vscode.workspace.getConfiguration("reposage");
@@ -117,7 +118,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const result = await reviewFileContent(fileName, fileContent, apiKey);
 
         if (result.success) {
-          console.log("RepoSage review result:", result.response);
+          logInfo("RepoSage review result:", result.response);
           provider.setContent(result.response || "");
           if (result.data) {
             diagnostics.updateFromResponse(result.data, fileName);
