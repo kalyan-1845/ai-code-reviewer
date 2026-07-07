@@ -2446,7 +2446,7 @@ export default function Dashboard() {
                       {analysisResult && (() => {
                         const fileReviews = analysisResult.analysis.fileReviews || {};
                         const breakdown: Record<string, number> = { bugs: 0, security: 0, optimization: 0, styling: 0 };
-                        Object.values(fileReviews).forEach((fr: any) => {
+                        Object.values(fileReviews).forEach((fr: FileReview) => {
                           breakdown.bugs += fr.bugs?.length || 0;
                           breakdown.security += fr.security?.length || 0;
                           breakdown.optimization += fr.optimization?.length || 0;
