@@ -23,16 +23,16 @@ let mockWarning = '';
 let mockInfo = '';
 let mockClearCount = 0;
 
-const vscode = require('vscode') as any;
+const vscodeMock = require('vscode') as Record<string, unknown>;
 // Stub the APIs used by RepoSageDiagnostics
-(vscode as any).window = {
+vscodeMock.window = {
   showWarningMessage: (msg: string) => { mockWarning = msg; return Promise.resolve(); },
   showInformationMessage: (msg: string) => { mockInfo = msg; return Promise.resolve(); },
 };
-(vscode as any).languages = {
+vscodeMock.languages = {
   createDiagnosticCollection: () => ({
     clear: () => { mockClearCount++; },
-    set: (_uri: any, diags: any[]) => {
+    set: (_uri: unknown, diags: Array<{ severity: number; message: string; range: { start: { line: number } }; source: string }>) => {
       mockDiagnosticsSet.length = 0;
       for (const d of diags) {
         mockDiagnosticsSet.push({
@@ -46,9 +46,9 @@ const vscode = require('vscode') as any;
     dispose: () => {},
   }),
 };
-(vscode as any).DiagnosticSeverity = DiagnosticSeverity;
-(vscode as any).Uri = { file: (p: string) => p };
-(vscode as any).Range = class {
+vscodeMock.DiagnosticSeverity = DiagnosticSeverity;
+vscodeMock.Uri = { file: (p: string) => p };
+vscodeMock.Range = class {
   constructor(
     public startLine: number,
     public startChar: number,
@@ -61,7 +61,7 @@ const vscode = require('vscode') as any;
   start: { line: number; character: number };
   end: { line: number; character: number };
 };
-(vscode as any).Diagnostic = class {
+vscodeMock.Diagnostic = class {
   constructor(
     public range: { start: { line: number; character: number }; end: { line: number; character: number } },
     public message: string,
@@ -70,7 +70,7 @@ const vscode = require('vscode') as any;
     this.source = '';
   }
   source: string;
-  code: any;
+  code: unknown;
 };
 
 // ---------------------------------------------------------------------------
@@ -339,7 +339,7 @@ test('shows info when no issues found', () => {
 test('handles missing analysis gracefully', () => {
   reset();
   const rq = new RepoSageDiagnostics();
-  rq.updateFromResponse({ success: false } as any, 'foo.js');
+  rq.updateFromResponse({ success: false } as never, 'foo.js');
   assert.deepEqual(mockDiagnosticsSet, []);
   rq.dispose();
 });
