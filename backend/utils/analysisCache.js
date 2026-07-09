@@ -64,6 +64,7 @@ class AnalysisCache {
       .update(
         files
           .map(f => `${f.name}:${crypto.createHash('sha256').update(f.content).digest('hex')}`)
+          .sort()
           .join('|')
       )
       .digest('hex')
