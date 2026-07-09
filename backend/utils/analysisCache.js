@@ -103,8 +103,10 @@ class AnalysisCache {
       return null;
     }
 
-    // Cache hit — extend TTL (sliding window) so active entries don't expire mid-session
+    // Cache hit — promote to MRU position and extend TTL
+    this.cache.delete(key);
     entry.expiresAt = now + this.ttlMs;
+    this.cache.set(key, entry);
     this.stats.hits++;
     console.log(`✅ Analysis cache hit for key ${key.slice(0, 8)}... (${this.cache.size} entries, ${this.stats.hits} hits, ${this.stats.misses} misses)`);
     return entry.result;
