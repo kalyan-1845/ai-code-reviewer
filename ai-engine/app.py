@@ -371,10 +371,11 @@ async def start_rate_limit_cleanup():
         while True:
             await asyncio.sleep(60)
             now = time.time()
-            stale_ips = [ip for ip, times in list(_rate_limit_store.items())
-                         if not any(now - t < RATE_LIMIT_WINDOW_SECONDS for t in times)]
-            for ip in stale_ips:
-                del _rate_limit_store[ip]
+            async with _rate_limit_lock:
+                stale_ips = [ip for ip, times in list(_rate_limit_store.items())
+                             if not any(now - t < RATE_LIMIT_WINDOW_SECONDS for t in times)]
+                for ip in stale_ips:
+                    del _rate_limit_store[ip]
     app.state.rate_limit_cleanup_task = asyncio.create_task(cleanup())
 
 @app.on_event("shutdown")
