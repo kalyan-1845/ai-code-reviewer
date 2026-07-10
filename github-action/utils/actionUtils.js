@@ -61,3 +61,13 @@ export function normalizeReviewLineNumber(value) {
   const line = Number(value);
   return Number.isInteger(line) && line > 0 ? line : null;
 }
+
+export function chunkReviewComments(comments, chunkSize = 50) {
+  if (!Array.isArray(comments) || comments.length === 0) return [];
+  const safeChunkSize = Number.isInteger(chunkSize) && chunkSize > 0 ? chunkSize : 50;
+  const chunks = [];
+  for (let i = 0; i < comments.length; i += safeChunkSize) {
+    chunks.push(comments.slice(i, i + safeChunkSize));
+  }
+  return chunks;
+}

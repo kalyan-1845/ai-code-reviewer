@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { globToRegex, cleanAndParseJSON, normalizeReviewLineNumber } from '../utils/actionUtils.js';
+import { globToRegex, cleanAndParseJSON, normalizeReviewLineNumber, chunkReviewComments } from '../utils/actionUtils.js';
 
 // ---------------------------------------------------------------------------
 // globToRegex
@@ -124,4 +124,18 @@ test('normalizeReviewLineNumber rejects invalid line values', () => {
   assert.equal(normalizeReviewLineNumber(0), null);
   assert.equal(normalizeReviewLineNumber(-1), null);
   assert.equal(normalizeReviewLineNumber(1.5), null);
+});
+
+test('chunkReviewComments splits large comment lists into bounded batches', () => {
+  const comments = Array.from({ length: 121 }, (_, i) => ({ path: 'a.js', line: i + 1, body: `comment ${i}` }));
+  const chunks = chunkReviewComments(comments, 50);
+
+  assert.equal(chunks.length, 3);
+  assert.equal(chunks[0].length, 50);
+  assert.equal(chunks[1].length, 50);
+  assert.equal(chunks[2].length, 21);
+});
+
+test('chunkReviewComments returns an empty list for empty input', () => {
+  assert.deepEqual(chunkReviewComments([], 50), []);
 });

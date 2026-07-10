@@ -4,7 +4,7 @@ import Groq from 'groq-sdk';
 import { parseDiff } from './utils/diffParser.js';
 import { scanSecretsInChanges } from './utils/secretsScanner.js';
 import { globToRegex } from './utils/globToRegex.js';
-import { cleanAndParseJSON, normalizeReviewLineNumber } from './utils/actionUtils.js';
+import { cleanAndParseJSON, normalizeReviewLineNumber, chunkReviewComments } from './utils/actionUtils.js';
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -247,8 +247,11 @@ If no issues are found, reply with: { "reviews": [] }`;
 
     // 6. Post Consolidated Review
     if (commentsToPost.length > 0) {
+      const commentChunks = chunkReviewComments(commentsToPost, 50);
+      let failedComments = commentsToPost;
       console.log(`✍️ Posting PR Review with ${commentsToPost.length} inline comments...`);
       try {
+      failedComments = commentChunks[0];
       await octokit.rest.pulls.createReview({
         owner,
         repo,
@@ -266,11 +269,22 @@ Please review my feedback and suggestions below. Happy coding! 🚀
 
 ---
 ⭐ **Support RepoSage!** If you find this AI helpful, please consider giving us a **Star** 🌟 on GitHub! Your support helps us win GSSoC '26 and grow professionally!`,
-        comments: commentsToPost
+        comments: commentChunks[0]
       });
+      for (let i = 1; i < commentChunks.length; i++) {
+        failedComments = commentChunks[i];
+        await octokit.rest.pulls.createReview({
+          owner,
+          repo,
+          pull_number: pullNumber,
+          event: 'COMMENT',
+          body: `RepoSage review comments continued (${i + 1}/${commentChunks.length}).`,
+          comments: commentChunks[i]
+        });
+      }
       } catch (err) {
         core.warning(`⚠️ Batched review creation failed (${err.message}); retrying comments individually and skipping invalid ones.`);
-        for (const comment of commentsToPost) {
+        for (const comment of failedComments) {
           try {
             await octokit.rest.pulls.createReview({
               owner,
