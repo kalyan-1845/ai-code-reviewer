@@ -2,6 +2,20 @@ class DedupStore {
   constructor(redisClient) {
     this.redisClient = redisClient;
     this.memoryStore = new Map();
+    this.pruneInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of this.memoryStore.entries()) {
+        if (entry.expiresAt && now > entry.expiresAt) {
+          this.memoryStore.delete(key);
+        }
+      }
+    }, 60000).unref();
+  }
+
+  destroy() {
+    if (this.pruneInterval) {
+      clearInterval(this.pruneInterval);
+    }
   }
 
   async set(key, value, ttlMs) {
