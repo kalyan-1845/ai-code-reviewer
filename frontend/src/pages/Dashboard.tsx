@@ -110,6 +110,7 @@ export interface BackendResponse {
   filesReviewedCount: number;
   analysis: AnalysisData;
   sessionId?: string;
+  sessionOwnerToken?: string;
   sessionPersisted?: boolean;
   _mock?: boolean;
   partial_review?: boolean;
@@ -1067,6 +1068,11 @@ export default function Dashboard() {
     setRepoUrl(entry.repoUrl);
     setAnalysisResult(entry.response);
     setSessionId(entry.response.sessionId ?? null);
+    if (entry.response.sessionPersisted === true && entry.response.sessionOwnerToken) {
+      localStorage.setItem("sessionOwnerToken", entry.response.sessionOwnerToken);
+    } else {
+      localStorage.removeItem("sessionOwnerToken");
+    }
     setApiError(null);
     setIsLoading(false);
     setActiveDashboardView('audit');
@@ -1142,6 +1148,11 @@ export default function Dashboard() {
       setSessionId(
         data.sessionPersisted === true ? data.sessionId ?? null : null
       );
+      if (data.sessionPersisted === true && data.sessionOwnerToken) {
+        localStorage.setItem("sessionOwnerToken", data.sessionOwnerToken);
+      } else {
+        localStorage.removeItem("sessionOwnerToken");
+      }
       persistAuditHistory(data);
       setChatHistory([]);
 

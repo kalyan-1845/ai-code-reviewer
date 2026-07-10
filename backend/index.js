@@ -1061,7 +1061,7 @@ if (reviewResult?.fileReviews) {
       }
 
       // 8. Return result
-      return res.json({ ...(sessionPersisted ? { csrfToken } : {}),
+      return res.json({ ...(sessionPersisted ? { csrfToken, sessionOwnerToken } : {}),
   success: true,
 
   repoName,
