@@ -2,6 +2,23 @@ class DedupStore {
   constructor(redisClient) {
     this.redisClient = redisClient;
     this.memoryStore = new Map();
+    this._startCleanupSweeper();
+  }
+
+  _startCleanupSweeper() {
+    this._cleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of this.memoryStore) {
+        if (now > entry.expiresAt) {
+          this.memoryStore.delete(key);
+        }
+      }
+    }, 60 * 1000);
+    this._cleanupTimer.unref();
+  }
+
+  get size() {
+    return this.memoryStore.size;
   }
 
   async set(key, value, ttlMs) {
@@ -39,7 +56,7 @@ class DedupStore {
     return val !== null && val !== undefined;
   }
 
-  async addToSet(key, member) {
+  async addToSet(key, member, ttlMs = 3600000) {
     if (this.redisClient) {
       try {
         await this.redisClient.sadd(key, member);
@@ -49,9 +66,14 @@ class DedupStore {
       }
     }
     if (!this.memoryStore.has(key)) {
-      this.memoryStore.set(key, { value: new Set(), expiresAt: Infinity });
+      this.memoryStore.set(key, { value: new Set(), expiresAt: Date.now() + ttlMs });
     }
-    this.memoryStore.get(key).value.add(member);
+    const entry = this.memoryStore.get(key);
+    if (Date.now() > entry.expiresAt) {
+      this.memoryStore.delete(key);
+      return;
+    }
+    entry.value.add(member);
   }
 
   async isMember(key, member) {
@@ -65,6 +87,10 @@ class DedupStore {
     }
     const entry = this.memoryStore.get(key);
     if (!entry) return false;
+    if (Date.now() > entry.expiresAt) {
+      this.memoryStore.delete(key);
+      return false;
+    }
     return entry.value.has(member);
   }
 
@@ -78,9 +104,12 @@ class DedupStore {
       }
     }
     const entry = this.memoryStore.get(key);
-    if (entry) {
-      entry.value.delete(member);
+    if (!entry) return;
+    if (Date.now() > entry.expiresAt) {
+      this.memoryStore.delete(key);
+      return;
     }
+    entry.value.delete(member);
   }
 
   async expire(key, ttlMs) {
