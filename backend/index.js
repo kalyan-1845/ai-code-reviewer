@@ -2205,6 +2205,7 @@ app.post('/api/reports/pdf', requireApiKey, pdfExportLimiter, (req, res) => {
         addBadge(finding.category.badge, finding.category.color);
         doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827')
           .text(`${normalizeText(finding.type)} - Line ${normalizeText(finding.line)}`, doc.x, doc.y, { width: 380 });
+        doc.x = 48;
         doc.moveDown(0.25);
         doc.font('Helvetica').fontSize(9).fillColor('#374151')
           .text(`Description: ${normalizeText(finding.description)}`, { width: 490 });
