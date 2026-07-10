@@ -62,10 +62,6 @@ export function analyzeComplexity(fileContent, filePath) {
         commentLines++;
         inBlockComment = true;
       }
-      // Line starting with * inside a doc-comment block (e.g. JSDoc)
-      else if (inBlockComment && trimmed.startsWith('*')) {
-        commentLines++;
-      }
     } else if (ext === '.py' || ext === '.rb') {
       if (trimmed.startsWith('#')) {
         commentLines++;
