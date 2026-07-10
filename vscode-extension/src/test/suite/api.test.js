@@ -148,6 +148,26 @@ suite('api.ts - reviewFileContent', function () {
       'error should mention network failure, got: ' + result.error);
   });
 
+  test('clears timeout when fetch rejects before response', async function () {
+    const originalClearTimeout = global.clearTimeout;
+    let clearTimeoutCalled = false;
+    global.clearTimeout = function (handle) {
+      clearTimeoutCalled = true;
+      return originalClearTimeout(handle);
+    };
+    setupFetchMock(null, new Error('ECONNREFUSED'));
+    setApiUrl('http://localhost:5000');
+
+    try {
+      const result = await api.reviewFileContent('test.js', 'code', '');
+
+      assert.strictEqual(result.success, false, 'success should be false on network error');
+      assert.strictEqual(clearTimeoutCalled, true, 'timeout should be cleared when fetch rejects');
+    } finally {
+      global.clearTimeout = originalClearTimeout;
+    }
+  });
+
   test('sends correct request body with fileName, code, company, language, model', async function () {
     setupFetchMock({ ok: true, status: 200, body: {} }, null);
     setApiUrl('http://localhost:5000');
