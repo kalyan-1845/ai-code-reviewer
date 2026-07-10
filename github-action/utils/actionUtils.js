@@ -61,3 +61,11 @@ export function normalizeReviewLineNumber(value) {
   const line = Number(value);
   return Number.isInteger(line) && line > 0 ? line : null;
 }
+
+export function parseBoundedPositiveInt(value, defaultValue, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < min) {
+    return defaultValue;
+  }
+  return Math.min(parsed, max);
+}

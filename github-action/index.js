@@ -4,7 +4,7 @@ import Groq from 'groq-sdk';
 import { parseDiff } from './utils/diffParser.js';
 import { scanSecretsInChanges } from './utils/secretsScanner.js';
 import { globToRegex } from './utils/globToRegex.js';
-import { cleanAndParseJSON, normalizeReviewLineNumber } from './utils/actionUtils.js';
+import { cleanAndParseJSON, normalizeReviewLineNumber, parseBoundedPositiveInt } from './utils/actionUtils.js';
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -41,7 +41,7 @@ async function run() {
         }
       }
     }
-    const maxTokens = parseInt(core.getInput('max-tokens') || '4096', 10);
+    const maxTokens = parseBoundedPositiveInt(core.getInput('max-tokens') || '4096', 4096, { min: 1, max: 128000 });
     const autoApprove = core.getInput('auto-approve')?.toLowerCase() === 'true';
 
     const excludePatterns = excludePathsInput

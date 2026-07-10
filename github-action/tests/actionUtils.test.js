@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { globToRegex, cleanAndParseJSON, normalizeReviewLineNumber } from '../utils/actionUtils.js';
+import { globToRegex, cleanAndParseJSON, normalizeReviewLineNumber, parseBoundedPositiveInt } from '../utils/actionUtils.js';
 
 // ---------------------------------------------------------------------------
 // globToRegex
@@ -124,4 +124,18 @@ test('normalizeReviewLineNumber rejects invalid line values', () => {
   assert.equal(normalizeReviewLineNumber(0), null);
   assert.equal(normalizeReviewLineNumber(-1), null);
   assert.equal(normalizeReviewLineNumber(1.5), null);
+});
+
+test('parseBoundedPositiveInt accepts valid numeric input', () => {
+  assert.equal(parseBoundedPositiveInt('4096', 2048, { min: 1, max: 128000 }), 4096);
+});
+
+test('parseBoundedPositiveInt falls back for invalid, zero, and negative input', () => {
+  assert.equal(parseBoundedPositiveInt('abc', 2048, { min: 1, max: 128000 }), 2048);
+  assert.equal(parseBoundedPositiveInt('0', 2048, { min: 1, max: 128000 }), 2048);
+  assert.equal(parseBoundedPositiveInt('-10', 2048, { min: 1, max: 128000 }), 2048);
+});
+
+test('parseBoundedPositiveInt clamps oversized input', () => {
+  assert.equal(parseBoundedPositiveInt('999999', 2048, { min: 1, max: 128000 }), 128000);
 });
