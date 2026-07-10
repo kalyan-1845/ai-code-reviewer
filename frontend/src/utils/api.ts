@@ -126,6 +126,7 @@ const ensureApiSession = async () => {
 export const clearApiKey = () => {
   sessionStorage.removeItem(API_KEY_STORAGE_KEY);
   sessionRequest = null;
+  csrfToken = null;
 };
 
 const getCsrfToken = (): string | null => {
