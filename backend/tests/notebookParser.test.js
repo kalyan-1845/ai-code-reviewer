@@ -197,3 +197,20 @@ test('notebookParser: formatNotebookFindings adds cellContext to each finding', 
   assert.equal(result[1].cellContext, 'Cell 2');
   assert.equal(result[0].message, 'Bug in cell', 'original fields preserved');
 });
+
+test('notebookParser: handles null cells gracefully without throwing', () => {
+  const notebook = {
+    cells: [
+      null,
+      { cell_type: 'code', source: 'print("valid code")' }
+    ]
+  };
+  withNotebookFixture(notebook, () => {
+    const codeCells = extractCodeCells(FIXTURE_PATH);
+    assert.deepStrictEqual(codeCells, ['print("valid code")']);
+
+    const cellsMetadata = parseCellsWithMetadata(FIXTURE_PATH);
+    assert.equal(cellsMetadata.length, 1);
+    assert.equal(cellsMetadata[0].cleanedSource, 'print("valid code")');
+  });
+});
