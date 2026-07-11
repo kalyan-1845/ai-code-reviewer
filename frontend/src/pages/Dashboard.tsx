@@ -926,11 +926,15 @@ export default function Dashboard() {
       }
 
       const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.message || "Chat service returned an error.");
+      }
+      const responseText = data.response || data.message || "I'm sorry, I couldn't generate a response.";
       const sources = data.sources || [];
       setChatHistory((prev) => {
         const updated = truncateChatHistory([
           ...prev,
-          { role: "assistant" as const, content: data.response, sources: sources.length > 0 ? sources : undefined },
+          { role: "assistant" as const, content: responseText, sources: sources.length > 0 ? sources : undefined },
         ]);
         if (!safeSetItem(CHAT_HISTORY_KEY, JSON.stringify(updated))) setStorageWarning(true);
         return updated;
