@@ -50,20 +50,22 @@ export function isIgnored(filePath, patterns, baseDir) {
   const relative = path.relative(baseDir, filePath).replace(/\\/g, '/');
   for (const pattern of patterns) {
     if (typeof pattern !== 'string') continue;
-    if (pattern.endsWith('/')) {
-      if (relative === pattern.slice(0, -1) || relative.startsWith(pattern)) {
+    let cleanPattern = pattern.startsWith('/') ? pattern.slice(1) : pattern;
+    if (!cleanPattern) continue;
+    if (cleanPattern.endsWith('/')) {
+      if (relative === cleanPattern.slice(0, -1) || relative.startsWith(cleanPattern)) {
         return true;
       }
-    } else if (pattern.startsWith('*.')) {
-      if (relative.endsWith(pattern.slice(1))) {
+    } else if (cleanPattern.startsWith('*.')) {
+      if (relative.endsWith(cleanPattern.slice(1))) {
         return true;
       }
-    } else if (pattern.includes('*')) {
+    } else if (cleanPattern.includes('*')) {
       // Convert glob to regex. Handle `**` (matches across any number of
       // directories, including `/`) correctly: split on `**` first, replace
       // any single `*` within the segments with `[^/]*`, then join the
       // segments with `.*` so globstar crosses directory boundaries.
-      const escaped = pattern
+      const escaped = cleanPattern
         .replace(/[.+^${}()|[\]\\]/g, '\\$&')
         .split('**')
         .map(part => part.split('*').join('[^/]*'))
@@ -73,7 +75,7 @@ export function isIgnored(filePath, patterns, baseDir) {
         if (new RegExp(`^${escaped}$`).test(relative)) return true;
       } catch { /* skip invalid pattern */ }
     } else {
-      if (relative === pattern || relative.startsWith(pattern + '/')) {
+      if (relative === cleanPattern || relative.startsWith(cleanPattern + '/')) {
         return true;
       }
     }
