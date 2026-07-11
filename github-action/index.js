@@ -132,12 +132,12 @@ async function run() {
       }
 
       console.log(`🔍 Reviewing: ${file.path} (${file.changes.length} changes)`);
-      reviewedFilesCount++;
 
-      if (reviewedFilesCount > MAX_REVIEW_FILES) {
+      if (reviewedFilesCount >= MAX_REVIEW_FILES) {
         core.warning(`Skipping remaining files beyond the review limit of ${MAX_REVIEW_FILES}.`);
         break;
       }
+      reviewedFilesCount++;
 
       // 1. Run local secrets scanner
       const { findings: localSecretIssues, truncated: scanTruncated, totalChanges: scanTotal, skippedReason: scanReason } = scanSecretsInChanges(file.changes);
