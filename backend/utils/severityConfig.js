@@ -38,8 +38,9 @@ function mergeWithDefaults(userConfig) {
 }
 
 function categorizeFinding(finding) {
-  const message = (finding.message || '').toLowerCase();
-  const ruleId = (finding.rule_id || '').toLowerCase();
+  if (!finding) return 'other';
+  const message = (finding.description || finding.message || '').toLowerCase();
+  const ruleId = (finding.rule || finding.rule_id || '').toLowerCase();
 
   if (message.includes('security') || ruleId.includes('security') ||
       message.includes('injection') || message.includes('credential') ||
