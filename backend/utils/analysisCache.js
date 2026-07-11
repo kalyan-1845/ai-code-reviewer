@@ -236,18 +236,35 @@ class AnalysisCache {
   /**
    * Invalidate all cache entries whose key contains the given repo URL.
    * Used by push-event webhook handling to evict stale analysis data.
+   * First tries the repoUrl index for O(1) lookup; falls back to scanning
+   * the entire cache when the index has drifted (entries exist in cache
+   * but not in the index).
    */
   invalidateByRepoUrl(repoUrl) {
     const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
     let removed = 0;
-    for (const [key] of this.cache) {
-      const keyStr = key;
-      if (keyStr.includes(normalized)) {
-        this.cache.delete(key);
-        removed++;
+    const keys = this._repoUrlIndex.get(normalized);
+    if (keys && keys.size > 0) {
+      for (const key of keys) {
+        if (this.cache.delete(key)) {
+          removed++;
+        }
+      }
+      this._repoUrlIndex.delete(normalized);
+    }
+    // Fallback: scan the entire cache in case the index has drifted.
+    // This ensures entries are never silently left behind when the index
+    // is out of sync with the cache (e.g. after concurrent mutations).
+    if (removed === 0) {
+      for (const [key] of this.cache) {
+        if (key.includes(normalized)) {
+          this.cache.delete(key);
+          removed++;
+        }
       }
     }
     if (removed > 0) {
+      this.stats.evictions += removed;
       console.log(`🗑️  Invalidated ${removed} cache entries for ${repoUrl}`);
     }
     return removed;
@@ -345,30 +362,6 @@ class AnalysisCache {
       return true;
     }
     return false;
-  }
-
-  /**
-   * Invalidate all cache entries by repo URL.
-   * Iterates the cache and removes entries whose key matches the given repo URL.
-   */
-  invalidateByRepoUrl(repoUrl) {
-    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
-    const keys = this._repoUrlIndex.get(normalized);
-    if (!keys || keys.size === 0) {
-      return 0;
-    }
-    let removed = 0;
-      for (const key of keys) {
-        if (this.cache.delete(key)) {
-        removed++;
-      }
-    }
-    this._repoUrlIndex.delete(normalized);
-    if (removed > 0) {
-      this.stats.evictions += removed;
-      console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
-    }
-    return removed;
   }
 
   /**
