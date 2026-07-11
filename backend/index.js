@@ -384,7 +384,13 @@ function cleanupTempRepos() {
     console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
   }
 }
-function onShutdown() { cleanupTempRepos(); cleanupTimers(); if (redisClient) redisClient.quit(); closeDatabase(); process.exit(0); }
+async function onShutdown() {
+  cleanupTempRepos();
+  cleanupTimers();
+  if (redisClient) redisClient.quit();
+  await closeDatabase();
+  process.exit(0);
+}
 process.on('SIGINT', onShutdown);
 process.on('SIGTERM', onShutdown);
 process.on('exit', cleanupTempRepos);
