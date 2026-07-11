@@ -304,29 +304,61 @@ export default function Dashboard() {
           searchInputRef.current?.blur();
         }
       }
-      
+
       // Ctrl+K to search files
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
 
-      // J/K for navigating views (mocked logic - just toggling tabs)
-      if (e.target === document.body || document.activeElement === document.body) {
-        if (e.key.toLowerCase() === "j" || e.key.toLowerCase() === "k") {
-          // Simply show help or focus first clickable as a demo
-          setShowShortcutsHelp(true);
-        }
-        
-        // ? to show shortcuts
-        if (e.key === "?") {
-          setShowShortcutsHelp(true);
-        }
+      // / to focus search input
+      if (e.key === "/" && e.target !== searchInputRef.current &&
+          document.activeElement?.tagName !== "INPUT" &&
+          document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+
+      // Ctrl+N to start a new analysis
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault();
+        const repoInput = document.querySelector<HTMLInputElement>("input[placeholder*='github.com']");
+        repoInput?.focus();
+      }
+
+      // Ctrl+L to clear chat history
+      if ((e.metaKey || e.ctrlKey) && e.key === "l") {
+        e.preventDefault();
+        setChatHistory([]);
+      }
+
+      // Ctrl+B to toggle sidebar (focus file list)
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        const fileTree = document.querySelector<HTMLElement>("[class*='file-tree'], [class*='FileTree']");
+        fileTree?.focus();
+      }
+
+      // Ctrl+E to export HTML report
+      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+        e.preventDefault();
+        downloadReadme();
+      }
+
+      // Ctrl+, to open settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setShowSettings(true);
+      }
+
+      // ? to show shortcuts
+      if (e.key === "?" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        setShowShortcutsHelp(true);
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [apiError]);
+  }, [apiError, setChatHistory]);
 
   const isValidAuditEntry = (entry: unknown): entry is AuditHistoryEntry => {
     if (!entry || typeof entry !== 'object') return false;
