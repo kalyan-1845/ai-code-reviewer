@@ -127,7 +127,7 @@ def split_file_content(
             "source_file": file_name,
             "fileName": file_name,
             "chunk_index": i,
-            "total_chunks": len(chunks),
+            "total_chunks": min(len(chunks), _MAX_CHUNKS_PER_FILE),
             "language": _detect_language(file_name, content),
             "start_line": line_numbers[i][0],
             "end_line": line_numbers[i][1],
