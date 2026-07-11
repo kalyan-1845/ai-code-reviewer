@@ -177,6 +177,7 @@ test('notebookParser: isNotebookFile returns true for .ipynb files', () => {
   assert.equal(isNotebookFile('notebook.ipynb'), true);
   assert.equal(isNotebookFile('path/to/file.ipynb'), true);
   assert.equal(isNotebookFile('NOTEBOOK.ipynb'), true);
+  assert.equal(isNotebookFile('notebook.IPYNB'), true);
 });
 
 test('notebookParser: isNotebookFile returns false for non-ipynb files', () => {
@@ -184,6 +185,9 @@ test('notebookParser: isNotebookFile returns false for non-ipynb files', () => {
   assert.equal(isNotebookFile('script.js'), false);
   assert.equal(isNotebookFile('notebook.py'), false);
   assert.equal(isNotebookFile('notebook.ipynb.txt'), false);
+  assert.equal(isNotebookFile(null), false);
+  assert.equal(isNotebookFile(undefined), false);
+  assert.equal(isNotebookFile(123), false);
 });
 
 test('notebookParser: formatNotebookFindings adds cellContext to each finding', () => {

@@ -108,7 +108,8 @@ function parseCellsWithMetadata(notebookPath) {
 }
 
 function isNotebookFile(filePath) {
-  return filePath.endsWith('.ipynb');
+  if (!filePath || typeof filePath !== 'string') return false;
+  return filePath.toLowerCase().endsWith('.ipynb');
 }
 
 function formatNotebookFindings(findings, cellIndex) {
