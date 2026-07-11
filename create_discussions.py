@@ -36,8 +36,6 @@ def run_graphql(title, body):
     )
     
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     
     try:
         with urllib.request.urlopen(req, context=ctx) as response:
