@@ -641,7 +641,8 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
   // Enforce boundary limits for batchSize to prevent downstream parsing crashes
   batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
 
-  temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
+  const parsedTemp = parseFloat(temperature);
+  temperature = isNaN(parsedTemp) ? 0.7 : Math.max(0, Math.min(2, parsedTemp));
 
   maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
 
@@ -1131,7 +1132,8 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
     }
 
     batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
-    temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
+    const parsedTemp = parseFloat(temperature);
+    temperature = isNaN(parsedTemp) ? 0.7 : Math.max(0, Math.min(2, parsedTemp));
     maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
 
     const normalizedModel = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
