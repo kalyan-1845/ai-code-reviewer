@@ -643,7 +643,8 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
 
   temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
 
-  maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
+  const AI_ENGINE_MAX_TOKENS = parseInt(process.env.AI_ENGINE_MAX_TOKENS, 10) || 32768;
+  maxTokens = Math.max(1, Math.min(AI_ENGINE_MAX_TOKENS, parseInt(maxTokens, 10) || 2048));
 
   const normalizedModel = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
   if (!normalizedModel) {
@@ -798,6 +799,11 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
           return mockRes;
         }
       }, repoUrl);
+
+      // Propagate AI Engine validation errors instead of silently serving mock data
+      if (reviewResult?._mockWarning && !process.env.USE_MOCK_FALLBACK) {
+        return res.status(502).json({ error: 'AI Engine rejected request parameters', details: reviewResult?._mockError || 'The AI Engine is unavailable or rejected the request. Set USE_MOCK_FALLBACK=true to allow mock reviews.' });
+      }
 
       // 3. Inject Regex-based Secret Detections & Complexity Metrics into the analysis result
       if (reviewResult && reviewResult.fileReviews) {
@@ -1132,7 +1138,8 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
 
     batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
     temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
-    maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
+    const AI_ENGINE_MAX_TOKENS = parseInt(process.env.AI_ENGINE_MAX_TOKENS, 10) || 32768;
+    maxTokens = Math.max(1, Math.min(AI_ENGINE_MAX_TOKENS, parseInt(maxTokens, 10) || 2048));
 
     const normalizedModel = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
     if (!normalizedModel) {
@@ -1184,6 +1191,11 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
       const mockRes = mockAIReview(files, model);
       mockRes._mockWarning = true;
       reviewResult = mockRes;
+    }
+
+    // Propagate AI Engine validation errors instead of silently serving mock data
+    if (reviewResult?._mockWarning && !process.env.USE_MOCK_FALLBACK) {
+      return res.status(502).json({ error: 'AI Engine rejected request parameters', details: reviewResult?._mockError || 'The AI Engine is unavailable or rejected the request. Set USE_MOCK_FALLBACK=true to allow mock reviews.' });
     }
 
     if (reviewResult && reviewResult.fileReviews) {
