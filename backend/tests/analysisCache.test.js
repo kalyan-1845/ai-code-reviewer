@@ -302,3 +302,26 @@ test('AnalysisCache: setMaxEntries does nothing if cache is already below new li
   assert.equal(cache.maxEntries, 100);
   assert.equal(cache.cache.size, 1, 'Single entry should remain');
 });
+
+test('AnalysisCache: invalidateByRepoUrl and clearMockEntries clear index entries to avoid memory leaks', () => {
+  const cache = new AnalysisCache();
+  const repo1 = 'https://github.com/owner/repo';
+  const key1 = cache.generateKey(repo1, [{ name: 'f1.js', content: 'f1' }]);
+  cache.set(key1, { data: 1 }, { repoUrl: repo1, isMock: true });
+
+  assert.ok(cache._repoUrlIndex.has(repo1));
+  assert.ok(cache._repoUrlIndex.get(repo1).has(key1));
+
+  cache.clearMockEntries();
+  assert.equal(cache.cache.size, 0);
+  assert.equal(cache._repoUrlIndex.get(repo1), undefined);
+
+  // Test invalidateByRepoUrl cleans up index too
+  const key2 = cache.generateKey(repo1, [{ name: 'f2.js', content: 'f2' }]);
+  cache.set(key2, { data: 2 }, { repoUrl: repo1 });
+  assert.ok(cache._repoUrlIndex.get(repo1).has(key2));
+
+  cache.invalidateByRepoUrl(repo1);
+  assert.equal(cache.cache.size, 0);
+  assert.equal(cache._repoUrlIndex.get(repo1), undefined);
+});
