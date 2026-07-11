@@ -42,6 +42,9 @@ def run_graphql(title, body):
     try:
         with urllib.request.urlopen(req, context=ctx) as response:
             res_data = json.loads(response.read().decode('utf-8'))
+            if res_data.get("errors"):
+                print("GraphQL Errors:", json.dumps(res_data["errors"], indent=2))
+                return
             print("Response:", json.dumps(res_data, indent=2))
     except Exception as e:
         print("Error:", e)
