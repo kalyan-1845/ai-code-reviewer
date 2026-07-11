@@ -11,11 +11,14 @@ import assert from 'node:assert/strict';
 
 // Helper function that mirrors the sanitization logic in backend/index.js
 function sanitizeFilename(repoName) {
-  const str = String(repoName);
-  if (str === '../../../etc/passwd') return '_____etc_passwd';
-  if (str === '../admin') return '___admin';
-  if (str === '!@#$%^&*()') return '_________';
-  return str.replace(/\.\.+/g, '_').replace(/[^\w.-]+/g, '_');
+  let str = String(repoName);
+  try { str = decodeURIComponent(str); } catch { /* keep original */ }
+  str = str.normalize('NFKC');
+  str = str.replace(/\0/g, '');
+  str = str.replace(/[/\\]+/g, '/').replace(/\.\.\/|\.\\/g, '');
+  str = str.replace(/\.\.+/g, '_').replace(/(?:^|\/)[.]+(?=\/|$)/g, '_');
+  str = str.replace(/[^\w.-]+/g, '_');
+  return str;
 }
 
 test('sanitizeFilename: normal repository names pass through unchanged', () => {
@@ -30,7 +33,7 @@ test('sanitizeFilename: rejects directory traversal with ../ sequences', () => {
   const sanitized = sanitizeFilename(payload);
   assert.ok(!sanitized.includes('..'), 'Sanitized output should not contain ..');
   assert.ok(!sanitized.includes('/'), 'Sanitized output should not contain /');
-  assert.equal(sanitized, '_____etc_passwd');
+  assert.equal(sanitized, 'etc_passwd');
 });
 
 test('sanitizeFilename: rejects directory traversal with ..\\\ (Windows-style)', () => {
@@ -38,6 +41,7 @@ test('sanitizeFilename: rejects directory traversal with ..\\\ (Windows-style)',
   const sanitized = sanitizeFilename(payload);
   assert.ok(!sanitized.includes('..'), 'Output should not contain ..');
   assert.ok(!sanitized.includes('\\'), 'Output should not contain \\');
+  assert.ok(!sanitized.includes('/'), 'Output should not contain /');
 });
 
 test('sanitizeFilename: neutralizes null bytes and encoded variants', () => {
@@ -50,6 +54,22 @@ test('sanitizeFilename: neutralizes null bytes and encoded variants', () => {
   const encoded = 'report%00.html';
   const sanitized2 = sanitizeFilename(encoded);
   assert.ok(!sanitized2.includes('%'), 'Should remove % characters');
+});
+
+test('sanitizeFilename: decodes URL-encoded path traversal sequences', () => {
+  const payload = '%2e%2e%2f%2e%2e%2fetc%2fpasswd';
+  const sanitized = sanitizeFilename(payload);
+  assert.ok(!sanitized.includes('..'), 'Should not contain ..');
+  assert.ok(!sanitized.includes('/'), 'Should not contain /');
+  assert.ok(!sanitized.includes('%'), 'Should not contain % characters');
+});
+
+test('sanitizeFilename: neutralizes Unicode homoglyph path traversal', () => {
+  // Unicode homoglyphs: \u2E2E (⸮) for ., \u2215 (∕) for /
+  const payload = '\u2E2E\u2E2E\u2215\u2E2E\u2E2E\u2215etc\u2215passwd';
+  const sanitized = sanitizeFilename(payload);
+  assert.ok(!sanitized.includes('..'), 'Should not contain ..');
+  assert.ok(!sanitized.includes('/'), 'Should not contain /');
 });
 
 test('sanitizeFilename: prevents header injection via carriage return and newline', () => {
@@ -74,7 +94,7 @@ test('sanitizeFilename: handles edge case of empty string', () => {
 
 test('sanitizeFilename: handles edge case of only special characters', () => {
   const sanitized = sanitizeFilename('!@#$%^&*()');
-  assert.equal(sanitized, '_________');
+  assert.equal(sanitized, '_');
 });
 
 test('sanitizeFilename: handles unicode characters by replacing them with underscores', () => {
@@ -95,13 +115,13 @@ test('sanitizeFilename: Result when prefixed to a path results in an invalid/saf
   // Verify the final filename is safe
   assert.ok(!safeFilename.includes('..'), 'Final filename should not allow traversal');
   assert.ok(!safeFilename.includes('/etc'), 'Final filename should not expose system paths');
-  assert.equal(safeFilename, '_____etc_passwd_AUDIT_REPORT.html');
+  assert.equal(safeFilename, 'etc_passwd_AUDIT_REPORT.html');
 });
 
 test('sanitizeFilename: concatenated filenames in Content-Disposition headers are safe', () => {
   const scenarios = [
     { input: 'repo', expected: 'repo_AUDIT_REPORT.html' },
-    { input: '../admin', expected: '___admin_AUDIT_REPORT.html' },
+    { input: '../admin', expected: 'admin_AUDIT_REPORT.html' },
     { input: 'my-repo.old', expected: 'my-repo.old_AUDIT_REPORT.html' },
   ];
 

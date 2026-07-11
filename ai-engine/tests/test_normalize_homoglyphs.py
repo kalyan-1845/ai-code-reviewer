@@ -62,8 +62,8 @@ class TestNormalizeHomoglyphs:
     def test_homoglyph_map_greek_o(self):
         # Greek omicron (ο, U+03BF) should normalize to 'o'
         assert normalize_homoglyphs('\u03bf') == 'o'
-        # Greek Capital Omicron (Ο, U+039F) is not in the map, passes through
-        assert normalize_homoglyphs('\u039f') == '\u039f'
+        # Greek Capital Omicron (Ο, U+039F) maps to 'O'
+        assert normalize_homoglyphs('\u039f') == 'O'
 
     def test_whitespace_preserved(self):
         result = normalize_homoglyphs('  \t\n  ')

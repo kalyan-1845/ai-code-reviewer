@@ -14,18 +14,18 @@ const btcBech32 = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
 // IPv4 Address Detection
 // ===========================================================================
 
-test('IPv4: detects private network IPs in code', () => {
+test('IPv4: does NOT flag private network IPs in code (192.168.x.x)', () => {
   const content = 'const dbHost = "192.168.1.100";';
   const findings = scanSecrets(content);
   const ipFindings = findings.filter(f => f.type === 'Hardcoded IPv4 Address');
-  assert.ok(ipFindings.length >= 1, 'should detect 192.168.1.100');
+  assert.equal(ipFindings.length, 0, 'should NOT detect 192.168.1.100');
 });
 
-test('IPv4: detects 10.x.x.x range IPs', () => {
+test('IPv4: does NOT flag 10.x.x.x range IPs', () => {
   const content = 'DB_HOST=10.0.0.5';
   const findings = scanSecrets(content);
   const ipFindings = findings.filter(f => f.type === 'Hardcoded IPv4 Address');
-  assert.ok(ipFindings.length >= 1, 'should detect 10.0.0.5');
+  assert.equal(ipFindings.length, 0, 'should NOT detect 10.0.0.5');
 });
 
 test('IPv4: does NOT flag loopback 127.0.0.1', () => {
@@ -67,7 +67,7 @@ test('IPv4: reports correct line number', () => {
   const content = [
     '// config file',
     'const port = 3000;',
-    'const dbHost = "172.16.0.42";',
+    'const dbHost = "8.8.8.8";',
     'module.exports = {};',
   ].join('\n');
   const findings = scanSecrets(content);
@@ -151,7 +151,7 @@ test('BTC: description contains Network/Crypto Leak', () => {
 
 test('scanSecrets: detects IPv4 and ETH wallet in same file', () => {
   const content = [
-    'const server = "10.20.30.40";',
+    'const server = "8.8.8.8";',
     'const wallet = "' + ethAddress + '";',
   ].join('\n');
   const findings = scanSecrets(content);
@@ -162,7 +162,7 @@ test('scanSecrets: detects IPv4 and ETH wallet in same file', () => {
 
 test('scanSecrets: detects all three new types in one file', () => {
   const content = [
-    'const dbHost = "192.168.0.1";',
+    'const dbHost = "8.8.8.8";',
     `const ethWallet = "${ethAddress}";`,
     `const btcWallet = "${btcP2PKH}";`,
   ].join('\n');
@@ -179,7 +179,7 @@ test('scanSecrets: detects all three new types in one file', () => {
 
 test('scanSecretsInChanges: detects IPv4 in PR diff changes', () => {
   const changes = [
-    { line: 5, content: 'const host = "10.0.0.5";' }
+    { line: 5, content: 'const host = "8.8.8.8";' }
   ];
   const results = scanSecretsInChanges(changes);
   assert.ok(results.findings.length >= 1, 'should detect IPv4 in changes');

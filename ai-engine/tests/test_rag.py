@@ -14,10 +14,8 @@ import rag
 @pytest.fixture(autouse=True)
 def fresh_rag_state():
     rag._client = None
-    rag._collection = None
     yield
     rag._client = None
-    rag._collection = None
 
 
 @pytest.fixture

@@ -191,7 +191,7 @@ The project is split into **four independent modules**:
 
 1. Go to **[console.groq.com/keys](https://console.groq.com/keys)** and sign in (or create a free account).
 2. Click **Create API Key**, give it a name (e.g., `reposage`), and copy the key.
-3. The key is used by both the **Backend** (via `GROQ_API_KEY` env var in `backend/.env`) and the **Frontend** (via `VITE_GROQ_API_KEY`). See the backend setup below.
+3. The key is used by the server-side AI Engine via the `GROQ_API_KEY` environment variable. Do not expose it through frontend `VITE_*` variables.
 
 ### 1. Clone the Repository
 
@@ -219,12 +219,21 @@ uvicorn app:app --reload  # Starts on http://localhost:8000
 
 ### 4. Frontend Setup
 
+First, navigate to the frontend directory:
 ```bash
 cd frontend
-npm install
-npm run dev              # Starts on http://localhost:3000
 ```
 
+Install the dependencies:
+```bash
+npm install
+```
+
+Finally, start the development server:
+
+```bash
+npm run dev
+```
 > 💡 **Tip**: Open `http://localhost:3000` in your browser, paste any public GitHub repo URL, and click **Analyze** to see RepoSage in action!
 
 ---

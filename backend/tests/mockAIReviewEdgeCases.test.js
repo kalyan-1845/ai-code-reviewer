@@ -76,7 +76,7 @@ test('mockAIReview review items have correct structure', () => {
   const review = result.fileReviews['app.js'];
   const bug = review.bugs[0];
   assert.ok(typeof bug.type === 'string');
-  assert.ok(typeof bug.line === 'number');
+  assert.ok(bug.line === null);
   assert.ok(typeof bug.description === 'string');
   assert.ok(typeof bug.suggestion === 'string');
 });

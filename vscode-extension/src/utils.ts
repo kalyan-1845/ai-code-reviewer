@@ -1,6 +1,7 @@
 export interface ReviewResponse {
   success: boolean;
   response?: string;
+  data?: BackendResponse;
   error?: string;
 }
 
@@ -39,8 +40,7 @@ export function buildRequestHeaders(apiKey?: string): Record<string, string> {
 
 export function buildRequestBody(fileName: string, content: string) {
   return {
-    code: content,
-    fileName: fileName,
+    files: [{ name: fileName, content }],
     company: "General",
     language: "English",
     model: "llama-3.3-70b-versatile",
@@ -57,6 +57,20 @@ export function formatNetworkError(apiUrl: string, message: string): string {
 
 export function clampLine(line: number): number {
   return Math.max(0, line - 1);
+}
+
+export function debounce<Args extends unknown[]>(
+  fn: (...args: Args) => void,
+  delayMs: number
+): (...args: Args) => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return (...args: Args) => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = undefined;
+      fn(...args);
+    }, delayMs);
+  };
 }
 
 export function formatDiagnosticMessage(category: string, description: string, suggestion?: string): string {

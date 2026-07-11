@@ -71,7 +71,7 @@ export default function TotalIssuesKpiCard({ fileReviews, isLoading = false }: P
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '16px' }}>
-        <div style={{ textAlign: 'center', minWidth: '80px' }}>
+        <div role="status" aria-live="polite" style={{ textAlign: 'center', minWidth: '80px' }}>
           <div style={{ fontSize: '36px', fontWeight: 850, color: colors.text, lineHeight: 1 }}>
             {isLoading ? '...' : total}
           </div>
@@ -90,7 +90,7 @@ export default function TotalIssuesKpiCard({ fileReviews, isLoading = false }: P
             const Icon = item.icon;
             return (
               <div key={item.label} style={{ background: `${item.color}10`, border: `1px solid ${item.color}25`, borderRadius: '8px', padding: '10px 8px', textAlign: 'center', minWidth: 0 }}>
-                <Icon size={16} style={{ color: item.color, marginBottom: '4px' }} />
+                <Icon aria-hidden="true" size={16} style={{ color: item.color, marginBottom: '4px' }} />
                 <div style={{ fontSize: '18px', fontWeight: 800, color: item.color, lineHeight: 1.2 }}>
                   {isLoading ? '...' : item.count}
                 </div>

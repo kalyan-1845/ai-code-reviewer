@@ -19,7 +19,7 @@ export default function SidebarLayout() {
       {/* Sidebar Navigation */}
       <aside style={{ 
         width: '260px', 
-        background: 'rgba(15, 23, 42, 0.6)', 
+        background: 'var(--panel-bg)', 
         borderRight: '1px solid rgba(255,255,255,0.05)',
         display: 'flex',
         flexDirection: 'column',
@@ -29,18 +29,19 @@ export default function SidebarLayout() {
           <div style={{ background: 'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)', padding: '8px', borderRadius: '8px' }}>
             <Sparkles size={20} style={{ color: 'white' }} />
           </div>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#f3f4f6' }}>RepoSage</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--title-color)' }}>RepoSage</h2>
         </div>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <Link 
             to="/dashboard" 
+            aria-current={location.pathname === '/dashboard' ? 'page' : undefined}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '8px',
               textDecoration: 'none', fontSize: '13px', fontWeight: 600,
               background: location.pathname === '/dashboard' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
               color: location.pathname === '/dashboard' ? '#60a5fa' : '#9ca3af',
-              border: location.pathname === '/dashboard' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent'
+              border: location.pathname === '/dashboard' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
             }}
           >
             <LayoutDashboard size={16} /> Analytics Dashboard
@@ -64,7 +65,7 @@ export default function SidebarLayout() {
               fontSize: '13px', fontWeight: 600, color: '#9ca3af',
               background: 'rgba(255,255,255,0.03)',
             }}
-            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            aria-label={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             {theme === "dark" ? "Light Mode" : "Dark Mode"}

@@ -25,16 +25,46 @@ jobs:
       - name: Install Frontend Dependencies
         run: |
           cd frontend
-          npm ci
+          npm install
 
       - name: Compile & Build Frontend
         run: |
           cd frontend
           npm run build
 
+  build-github-action:
+    name: Build GitHub Action (Node.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: github-action/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          cd github-action
+          npm install
+
+      - name: Compile Action
+        run: |
+          cd github-action
+          npm run build
+
   check-backend:
     name: Check Backend & AI Engine
     runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
 
     steps:
       - name: Checkout Repository
@@ -50,7 +80,7 @@ jobs:
       - name: Install Backend Dependencies
         run: |
           cd backend
-          npm ci
+          npm install
 
       - name: Run Backend Tests
         run: |
@@ -72,9 +102,29 @@ jobs:
       - name: Run AI Engine Tests
         run: |
           cd ai-engine
-          pytest --cov=./ --cov-report=xml tests/ -v
+          echo "=== Python version ==="
+          python --version
+          echo "=== Installed packages ==="
+          pip list
+          echo "=== Testing imports ==="
+          python -c "import chromadb; print('chromadb OK')"
+          python -c "from app import sanitize_file_content; print('sanitize_file_content OK')"
+          python -c "from app import app; print('app OK')"
+          python -c "import rag; print('rag OK')"
+          echo "=== Running pytest collection check ==="
+          python -m pytest tests/ --collect-only -v
+          echo "=== Running pytest ==="
+          python -m pytest --cov=./ --cov-report=xml tests/ -v
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-engine-test-output
+          path: ai-engine/test_output.log
 
       - name: Upload coverage reports to Codecov
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

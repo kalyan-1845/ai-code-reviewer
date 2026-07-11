@@ -1,9 +1,9 @@
 export function parseDiff(diffStr) {
   const files = [];
+  const binaryFiles = [];
   if (!diffStr || typeof diffStr !== 'string') {
-    return files;
+    return { files, binaryFiles };
   }
-  files.binaryFiles = [];
   const lines = diffStr.split('\n');
   let currentFile = null;
   let currentLineInNewFile = 0;
@@ -13,8 +13,10 @@ export function parseDiff(diffStr) {
     if (line.startsWith('diff --git')) {
       const match = line.match(/b\/(.+)$/);
       if (match) {
+        const rawPath = match[1];
+        const cleanPath = rawPath.replace(/^"(.*)"$/, '$1');
         currentFile = {
-          path: match[1],
+          path: cleanPath,
           changes: [],
           deletions: []
         };
@@ -28,7 +30,7 @@ export function parseDiff(diffStr) {
       }
     } else if (line.startsWith('Binary files')) {
       if (currentFile) {
-        files.binaryFiles.push(currentFile.path);
+        binaryFiles.push(currentFile.path);
       }
     } else if (currentFile) {
       if (line.startsWith('+') && !line.startsWith('+++')) {
@@ -49,7 +51,7 @@ export function parseDiff(diffStr) {
       }
     }
   }
-  return files;
+  return { files, binaryFiles };
 }
 
 export function countLinesInDiff(files) {

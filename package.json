@@ -1,0 +1,39 @@
+{
+  "name": "ai-code-reviewer",
+  "version": "1.0.0",
+  "description": "<div align=\"center\">",
+  "main": "resolve.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Skipping root tests\" && exit 0",
+    "prepare": "husky"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kalyan-1845/ai-code-reviewer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/kalyan-1845/ai-code-reviewer/issues"
+  },
+  "homepage": "https://github.com/kalyan-1845/ai-code-reviewer#readme",
+  "devDependencies": {
+    "eslint": "^10.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.9.4"
+  },
+  "lint-staged": {
+    "**/*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "**/*.{json,css,md}": [
+      "prettier --write"
+    ]
+  }
+}

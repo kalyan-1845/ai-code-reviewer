@@ -10,7 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 from app import app
 
-client = TestClient(app)
+SERVICE_HEADERS = {"x-ai-engine-key": "test-ai-engine-key"}
+client = TestClient(app, headers=SERVICE_HEADERS)
 
 
 class TestReadRoot:
@@ -26,6 +27,25 @@ class TestReadRoot:
         data = response.json()
         assert isinstance(data["model"], str)
         assert len(data["model"]) > 0
+
+
+class TestInternalServiceAuthentication:
+    def test_protected_route_rejects_missing_service_key(self, monkeypatch):
+        import sys
+        if "pytest" in sys.modules:
+            monkeypatch.delitem(sys.modules, "pytest")
+        response = TestClient(app).post("/api/rag/query", json={"question": "test"})
+        assert response.status_code == 401
+
+    def test_protected_route_rejects_invalid_service_key(self, monkeypatch):
+        import sys
+        if "pytest" in sys.modules:
+            monkeypatch.delitem(sys.modules, "pytest")
+        response = TestClient(
+            app,
+            headers={"x-api-key": "wrong-key"},
+        ).post("/api/rag/query", json={"question": "test"})
+        assert response.status_code == 401
 
 
 class TestAnalyzeRequestValidation:

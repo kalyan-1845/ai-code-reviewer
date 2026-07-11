@@ -26,6 +26,7 @@ class TestQueryChunks:
              patch('rag._get_collection') as mock_get_collection:
             mock_embed_texts.return_value = [[0.1] * 10]
             mock_collection = MagicMock()
+            mock_collection.count.return_value = 10
             mock_collection.query.return_value = {
                 "ids": [["chunk-1"]],
                 "documents": [["def hello():\n    print('hi')"]],
@@ -46,6 +47,7 @@ class TestQueryChunks:
              patch('rag._get_collection') as mock_get_collection:
             mock_embed_texts.return_value = [[0.1] * 10]
             mock_collection = MagicMock()
+            mock_collection.count.return_value = 10
             # ChromaDB returns distances as [[d1, d2, ...]] (one inner list per query)
             # For cosine distance: 0.0 means identical (score=1.0), 1.0 means opposite (score=0.0)
             mock_collection.query.return_value = {
@@ -65,6 +67,7 @@ class TestQueryChunks:
              patch('rag._get_collection') as mock_get_collection:
             mock_embed_texts.return_value = [[0.1] * 10]
             mock_collection = MagicMock()
+            mock_collection.count.return_value = 10
             mock_collection.query.return_value = {}
             mock_get_collection.return_value = mock_collection
 
@@ -76,6 +79,7 @@ class TestQueryChunks:
              patch('rag._get_collection') as mock_get_collection:
             mock_embed_texts.return_value = [[0.1] * 10]
             mock_collection = MagicMock()
+            mock_collection.count.return_value = 10
             # metadata list shorter than documents list
             mock_collection.query.return_value = {
                 "ids": [["chunk-1", "chunk-2"]],
@@ -96,6 +100,7 @@ class TestQueryChunks:
              patch('rag._get_collection') as mock_get_collection:
             mock_embed_texts.return_value = [[0.1] * 10]
             mock_collection = MagicMock()
+            mock_collection.count.return_value = 10
             mock_collection.query.return_value = {
                 "ids": [["c1"], ["c2"], ["c3"]],
                 "documents": [["doc1"], ["doc2"], ["doc3"]],

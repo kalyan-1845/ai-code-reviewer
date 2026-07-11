@@ -5,6 +5,8 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
+    "sync:shared": "node scripts/sync-from-backend.js",
+    "prebuild": "node scripts/sync-from-backend.js",
     "build": "ncc build index.js -o dist --minify --no-cache"
   },
   "dependencies": {

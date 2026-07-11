@@ -5,33 +5,44 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/reposa
 let isConnected = false;
 let connectionPromise = null;
 
-const RECONNECT_INTERVAL_MS = 5000;
-const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 1 : 5000;
+const MAX_RECONNECT_ATTEMPTS = process.env.NODE_ENV === 'test' ? 1 : 5;
 
 export async function connectDatabase() {
   if (isConnected) return;
-  if (connectionPromise && !isConnected) {
-    connectionPromise = null;
-  }
   if (connectionPromise) return connectionPromise;
 
   connectionPromise = mongoose.connect(MONGODB_URI, {
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: process.env.NODE_ENV === 'test' ? 100 : 5000,
     socketTimeoutMS: 45000,
   })
     .then((conn) => {
       isConnected = true;
-      console.log('✅ Connected to MongoDB via config/db.js');
+      displayStartupBanner(true);
       return conn;
     })
     .catch((err) => {
       isConnected = false;
       connectionPromise = null;
-      console.warn('⚠️ MongoDB connection failed, analytics will not be persisted:', err.message);
+      if (process.env.NODE_ENV === 'production') {
+        console.error('❌ Cannot start in production without database connection');
+        process.exit(1);
+      }
+      console.warn('⚠️ MongoDB connection failed:', err.message);
+      displayStartupBanner(false);
       return null;
     });
 
   return connectionPromise;
+}
+
+function displayStartupBanner(connected) {
+  const border = '='.repeat(60);
+  if (connected) {
+    console.log(`\n${border}\n  MongoDB connected - Analytics and Sessions enabled\n${border}\n`);
+  } else {
+    console.warn(`\n${border}\n  MongoDB NOT connected - Running in DEGRADED mode\n  Analytics will not be persisted across restarts.\n  Set MONGODB_URI in your environment to enable persistence.\n${border}\n`);
+  }
 }
 
 export function isDatabaseConnected() {

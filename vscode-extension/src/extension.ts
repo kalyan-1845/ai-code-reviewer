@@ -119,13 +119,8 @@ export async function activate(context: vscode.ExtensionContext) {
         if (result.success) {
           console.log("RepoSage review result:", result.response);
           provider.setContent(result.response || "");
-          if (result.response) {
-            try {
-              const parsed = JSON.parse(result.response);
-              diagnostics.updateFromResponse(parsed, fileName);
-            } catch {
-              console.warn("RepoSage: Could not parse response for diagnostics");
-            }
+          if (result.data) {
+            diagnostics.updateFromResponse(result.data, fileName);
           }
           vscode.window.showInformationMessage(
             "RepoSage review complete! Check the sidebar for details."

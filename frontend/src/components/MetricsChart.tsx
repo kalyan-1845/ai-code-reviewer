@@ -33,11 +33,13 @@ interface MetricsChartProps {
 
 export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sessionId }) => {
   const colors = THEME_COLORS[theme];
-  const [chartData, setChartData] = useState<any[] | null>(null);
+  const [chartData, setChartData] = useState<unknown[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!sessionId) {
       setChartData(null);
       setError(null);
@@ -49,10 +51,12 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sess
 
     apiFetch(`/api/analytics/trends?sessionId=${encodeURIComponent(sessionId)}`)
       .then((res) => {
+        if (cancelled) return null;
         if (!res.ok) throw new Error("Failed to fetch analytics trends");
         return res.json();
       })
       .then((data) => {
+        if (cancelled || !data) return;
         const formatted = (data.trends || []).map((t: any) => ({
           month: t.date ? new Date(t.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "N/A",
           bugs: t.totalBugs || 0,
@@ -63,12 +67,15 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sess
         setLoading(false);
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error("MetricsChart fetch error:", err);
         setError(err.message);
         setChartData([]);
         setLoading(false);
       });
+    return () => { cancelled = true; };
   }, [sessionId]);
+
 
   return (
     <div 
@@ -121,9 +128,9 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sess
               itemStyle={{ color: colors.tooltipItem }}
               labelStyle={{ color: colors.tooltipText, fontWeight: 600 }}
             />
-            <Line type="monotone" dataKey="healthScore" stroke="#22c55e" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Health Score" />
-            <Line type="monotone" dataKey="bugs" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Bugs" />
-            <Line type="monotone" dataKey="security" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Security Issues" />
+            <Line type="monotoneX" dataKey="healthScore" stroke="#22c55e" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Health Score" />
+            <Line type="monotoneX" dataKey="bugs" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Bugs" />
+            <Line type="monotoneX" dataKey="security" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6, strokeWidth: 2 }} name="Security Issues" />
           </LineChart>
         </ResponsiveContainer>
       )}

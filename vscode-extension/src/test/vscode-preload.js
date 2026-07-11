@@ -6,7 +6,7 @@ const Module = require('module');
 const vscodeStub = require('./vscode-stub.js');
 
 const originalLoad = Module._load;
-Module._load = function (request, parent) {
+Module._load = function(request, parent) {
   if (request === 'vscode') {
     return vscodeStub;
   }

@@ -2,9 +2,13 @@ import os
 import hashlib
 from typing import Optional
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pygments.lexers import guess_lexer_for_filename, guess_lexer
+from pygments.util import ClassNotFound
 
 _CHUNK_SIZE = int(os.getenv("TEXT_CHUNK_SIZE", "1000"))
 _CHUNK_OVERLAP = int(os.getenv("TEXT_CHUNK_OVERLAP", "200"))
+_MAX_CHUNKS_PER_FILE = int(os.getenv("MAX_CHUNKS_PER_FILE", "500"))
+_MAX_FILES_PER_BATCH = int(os.getenv("MAX_FILES_PER_BATCH", "100"))
 
 _language_separators = {
     "python": ["\nclass ", "\ndef ", "\n    ", "\n\t", "\n", " ", ""],
@@ -33,18 +37,43 @@ _code_extensions = {
 }
 
 
-def _detect_language(file_name: str) -> str:
+def _detect_language(file_name: str, content: str = "") -> str:
     ext = os.path.splitext(file_name)[1].lower()
-    return _code_extensions.get(ext, "default")
+    if ext and ext in _code_extensions:
+        return _code_extensions[ext]
+
+    if content and content.strip():
+        try:
+            lexer = guess_lexer_for_filename(file_name, content)
+            lex_name = lexer.name.lower()
+            for ext_key, lang in _code_extensions.items():
+                if lang == lex_name or lex_name.startswith(lang.split()[0]):
+                    return lang
+        except (ClassNotFound, Exception):
+            pass
+
+        try:
+            lexer = guess_lexer(content)
+            lex_name = lexer.name.lower()
+            for ext_key, lang in _code_extensions.items():
+                if lang == lex_name or lex_name.startswith(lang.split()[0]):
+                    return lang
+        except (ClassNotFound, Exception):
+            pass
+
+    return "default"
 
 
-def _make_splitter(file_name: str, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> RecursiveCharacterTextSplitter:
-    language = _detect_language(file_name)
+def _make_splitter(file_name: str, content: str = "", chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> RecursiveCharacterTextSplitter:
+    language = _detect_language(file_name, content)
     separators = _language_separators.get(language, _language_separators["default"])
     
     final_chunk_size = chunk_size if chunk_size is not None else _CHUNK_SIZE
     final_chunk_overlap = chunk_overlap if chunk_overlap is not None else _CHUNK_OVERLAP
     
+    if final_chunk_size <= 0:
+        raise ValueError("chunk_size must be > 0")
+        
     if final_chunk_overlap >= final_chunk_size:
         final_chunk_overlap = max(0, final_chunk_size - 1)
         
@@ -53,6 +82,7 @@ def _make_splitter(file_name: str, chunk_size: Optional[int] = None, chunk_overl
         chunk_overlap=final_chunk_overlap,
         separators=separators,
         length_function=len,
+        add_start_index=True,
     )
 
 
@@ -61,19 +91,13 @@ def _generate_chunk_id(file_name: str, chunk_index: int) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def _calculate_line_numbers(content: str, chunks: list[str]) -> list[tuple[int, int]]:
+def _calculate_line_numbers(content: str, chunks: list[str], start_indices: list[int]) -> list[tuple[int, int]]:
     line_numbers = []
-    search_start = 0
-    for chunk in chunks:
-        start_idx = content.find(chunk, search_start)
-        if start_idx == -1:
-            line_numbers.append((0, 0))
-            continue
+    for chunk, start_idx in zip(chunks, start_indices):
         pre = content[:start_idx]
         start_line = pre.count("\n")
         end_line = start_line + chunk.count("\n")
         line_numbers.append((start_line, end_line))
-        search_start = start_idx + 1
     return line_numbers
 
 
@@ -84,21 +108,27 @@ def split_file_content(
     chunk_overlap: Optional[int] = None,
     repo_url: Optional[str] = None,
 ) -> list[dict]:
+    if len(content) > 10 * 1024 * 1024:
+        return []
     if not content or not content.strip():
         return []
 
-    splitter = _make_splitter(file_name, chunk_size, chunk_overlap)
-    chunks = splitter.split_text(content)
-    line_numbers = _calculate_line_numbers(content, chunks)
+    splitter = _make_splitter(file_name, content, chunk_size, chunk_overlap)
+    docs = splitter.create_documents([content])
+    chunks = [d.page_content for d in docs]
+    start_indices = [d.metadata.get("start_index", 0) for d in docs]
+    line_numbers = _calculate_line_numbers(content, chunks, start_indices)
 
     results = []
     for i, chunk in enumerate(chunks):
+        if i >= _MAX_CHUNKS_PER_FILE:
+            break
         metadata = {
             "source_file": file_name,
             "fileName": file_name,
             "chunk_index": i,
             "total_chunks": len(chunks),
-            "language": _detect_language(file_name),
+            "language": _detect_language(file_name, content),
             "start_line": line_numbers[i][0],
             "end_line": line_numbers[i][1],
         }
@@ -119,7 +149,11 @@ def split_files(
     repo_url: Optional[str] = None,
 ) -> list[dict]:
     all_chunks = []
-    for file in files:
+    for idx, file in enumerate(files):
+        if idx >= _MAX_FILES_PER_BATCH:
+            break
+        if not isinstance(file, dict):
+            continue
         if not file.get("name") or not file.get("content"):
             continue
         chunks = split_file_content(

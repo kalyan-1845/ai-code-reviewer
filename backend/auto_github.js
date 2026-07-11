@@ -1,20 +1,57 @@
 import { Octokit } from '@octokit/rest';
 import dotenv from 'dotenv';
-import readline from 'readline';
 
 dotenv.config();
 
-const token = process.env.GITHUB_PAT;
+const GITHUB_TOKEN = process.env.GITHUB_PAT || process.env.GITHUB_TOKEN;
+const GITHUB_OWNER = process.env.GITHUB_OWNER || (process.env.GITHUB_REPOSITORY ? process.env.GITHUB_REPOSITORY.split('/')[0] : null);
+const GITHUB_REPO = process.env.GITHUB_REPO || (process.env.GITHUB_REPOSITORY ? process.env.GITHUB_REPOSITORY.split('/')[1] : null);
 
-if (!token || token.includes('your_github_personal_access_token_here')) {
-  console.error('❌ Error: Please set a valid GITHUB_PAT in backend/.env');
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const parsed = {};
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case '--owner': case '-o': parsed.owner = args[++i]; break;
+      case '--repo': case '-r': parsed.repo = args[++i]; break;
+      case '--token': case '-t': parsed.token = args[++i]; break;
+      case '--help': case '-h':
+        console.log(`Usage: node auto_github.js [options]
+
+Options:
+  --owner, -o <owner>    GitHub repository owner (env: GITHUB_OWNER)
+  --repo, -r <repo>      GitHub repository name (env: GITHUB_REPO)
+  --token, -t <token>    GitHub personal access token (env: GITHUB_PAT)
+  --help, -h             Show this help message`);
+        process.exit(0);
+    }
+  }
+  return parsed;
+}
+
+const cliArgs = parseArgs();
+const token = GITHUB_TOKEN || cliArgs.token;
+const owner = GITHUB_OWNER || cliArgs.owner;
+const repo = GITHUB_REPO || cliArgs.repo;
+
+if (!token || token.includes('your_github_personal_access_token_here') || token.includes('your-github-token')) {
+  console.error('❌ Error: Please set a valid GITHUB_PAT environment variable');
   process.exit(1);
 }
 
+if (!owner) {
+  console.error('❌ Error: GITHUB_OWNER must be set. Use GITHUB_OWNER=my-org or --owner my-org');
+  process.exit(1);
+}
+
+if (!repo) {
+  console.error('❌ Error: GITHUB_REPO must be set. Use GITHUB_REPO=my-repo or --repo my-repo');
+  process.exit(1);
+}
+
+console.log(`🔧 Target repository: ${owner}/${repo}`);
+
 const octokit = new Octokit({ auth: token });
-// Set your repository details here
-const owner = 'kalyan-1845';
-const repo = 'ai-code-reviewer';
 
 async function autoAssignAndMerge() {
   console.log(`🤖 Starting GitHub Automator for ${owner}/${repo}...`);
@@ -22,10 +59,11 @@ async function autoAssignAndMerge() {
   try {
     // 1. Check for 'assign me' in issues
     console.log('\n🔍 Checking for "assign me" comments on open issues...');
-    const { data: issues } = await octokit.rest.issues.listForRepo({
+    const issues = await octokit.paginate(octokit.rest.issues.listForRepo, {
       owner,
       repo,
-      state: 'open'
+      state: 'open',
+      per_page: 100
     });
 
     for (const issue of issues) {
@@ -58,10 +96,11 @@ async function autoAssignAndMerge() {
 
     // 2. Check for Open PRs
     console.log('\n🔍 Checking for open PRs to review and merge...');
-    const { data: prs } = await octokit.rest.pulls.list({
+    const prs = await octokit.paginate(octokit.rest.pulls.list, {
       owner,
       repo,
-      state: 'open'
+      state: 'open',
+      per_page: 100
     });
 
     if (prs.length === 0) {
@@ -71,27 +110,45 @@ async function autoAssignAndMerge() {
         console.log(`\n📦 PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
         console.log(`   URL: ${pr.html_url}`);
-        
-        // Example: To automatically merge if ready
-        // Uncomment the lines below if you want script to blindly merge them (Use with caution!)
-        /*
-        console.log(`   Merging PR #${pr.number}...`);
-        await octokit.rest.pulls.merge({
+        console.log(`   Draft: ${pr.draft ? 'Yes' : 'No'}`);
+
+        if (pr.draft) {
+          console.log(`   ⏭️ Skipping draft PR #${pr.number}`);
+          continue;
+        }
+
+        const { data: labels } = await octokit.rest.issues.listLabelsOnIssue({
           owner,
           repo,
-          pull_number: pr.number,
-          merge_method: 'squash'
+          issue_number: pr.number,
         });
-        console.log(`✅ Merged PR #${pr.number}`);
-        */
+        const labelNames = labels.map(l => l.name);
+        const mergeLabel = process.env.AUTO_MERGE_LABEL || 'gssoc:approved';
+        if (!labelNames.includes(mergeLabel)) {
+          console.log(`   ⏭️ Skipping PR #${pr.number} — missing label "${mergeLabel}"`);
+          continue;
+        }
+
+        console.log(`   Merging PR #${pr.number}...`);
+        try {
+          await octokit.rest.pulls.merge({
+            owner,
+            repo,
+            pull_number: pr.number,
+            merge_method: 'squash'
+          });
+          console.log(`✅ Merged PR #${pr.number}`);
+        } catch (e) {
+          console.error(`❌ Failed to merge PR #${pr.number}:`, e.message);
+        }
       }
-      console.log('\n💡 Please review the above PRs manually on GitHub, or uncomment the merge code in this script to auto-merge them.');
+      console.log('\n💡 Auto-merge complete. Draft PRs and PRs without the configured label are skipped.');
     }
 
-    console.log('\n🎉 Automator finished successfully!');
+    console.log(`\n🎉 Automator finished successfully for ${owner}/${repo}!`);
 
   } catch (error) {
-    console.error('❌ An error occurred:', error.message);
+    console.error(`❌ An error occurred for ${owner}/${repo}:`, error.message);
   }
 }
 

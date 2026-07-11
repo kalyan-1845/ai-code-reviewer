@@ -20,6 +20,7 @@ interface AnalysisData {
 }
 
 export const generateMarkdownReport = (repoName: string, analysis: AnalysisData): string => {
+  const escapeMarkdownCell = (str: string | number) => String(str).replace(/[&<>"`|]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '`': '&#96;', '|': '&#124;'})[c] || c);
   let markdown = `# 🛡️ RepoSage AI Code Audit Report\n\n`;
   markdown += `**Repository Name:** ${repoName}\n`;
   markdown += `**Report Timestamp:** ${new Date().toLocaleString()}\n`;
@@ -36,6 +37,7 @@ export const generateMarkdownReport = (repoName: string, analysis: AnalysisData)
   if (analysis && analysis.fileReviews) {
     Object.keys(analysis.fileReviews).forEach(file => {
       const review = analysis.fileReviews[file];
+      if (!review) return;
       const bugs = review.bugs || [];
       const security = review.security || [];
       const optimization = review.optimization || [];
@@ -55,8 +57,7 @@ export const generateMarkdownReport = (repoName: string, analysis: AnalysisData)
 
       all.forEach(f => {
         hasFindings = true;
-        const escapePipe = (str: string | number) => String(str).replace(/\|/g, '\\|');
-        findingsTableRows += `| ${escapePipe(file)} | ${escapePipe(f.category)} | ${escapePipe(f.line)} | ${escapePipe(f.type)} | ${escapePipe(f.description)} | \`${escapePipe(f.suggestion)}\` |\n`;
+        findingsTableRows += `| ${escapeMarkdownCell(file)} | ${escapeMarkdownCell(f.category)} | ${escapeMarkdownCell(f.line)} | ${escapeMarkdownCell(f.type)} | ${escapeMarkdownCell(f.description)} | <code>${escapeMarkdownCell(f.suggestion)}</code> |\n`;
       });
     });
   }
@@ -87,7 +88,8 @@ export const generateMarkdownReport = (repoName: string, analysis: AnalysisData)
     const metrics = analysis.metrics;
     Object.keys(metrics).forEach(file => {
       const m = metrics[file];
-      markdown += `| ${file} | ${m.totalLines ?? 0} | ${m.codeLines ?? 0} | ${m.commentLines ?? 0} | ${m.emptyLines ?? 0} | ${m.functionCount ?? 0} | ${m.complexityScore ?? 0} | ${m.grade ?? 'A'} |\n`;
+      if (!m) return;
+      markdown += `| ${escapeMarkdownCell(file)} | ${escapeMarkdownCell(m.totalLines ?? 0)} | ${escapeMarkdownCell(m.codeLines ?? 0)} | ${escapeMarkdownCell(m.commentLines ?? 0)} | ${escapeMarkdownCell(m.emptyLines ?? 0)} | ${escapeMarkdownCell(m.functionCount ?? 0)} | ${escapeMarkdownCell(m.complexityScore ?? 0)} | ${escapeMarkdownCell(m.grade ?? 'A')} |\n`;
     });
     markdown += `\n`;
   }
@@ -111,6 +113,47 @@ export const handleMarkdownExport = (repoName: string, analysis: AnalysisData) =
   URL.revokeObjectURL(url);
 };
 
+export const handlePdfExport = async (
+  repoName: string,
+  analysis: AnalysisData,
+  apiFetch: (path: string, options?: RequestInit) => Promise<Response>
+) => {
+  try {
+    const response = await apiFetch('/api/reports/pdf', {
+      method: 'POST',
+      body: JSON.stringify({
+        repoName,
+        analysis: {
+          fileReviews: analysis.fileReviews,
+          metrics: analysis.metrics,
+          generatedReadme: analysis.generatedReadme,
+          mermaidDiagram: analysis.mermaidDiagram,
+        }
+      })
+    });
+
+    if (!response.ok) {
+      let errMsg = 'Failed to export PDF report.';
+      try { const errData = await response.json(); errMsg = errData.error || errMsg; }
+      catch { try { errMsg = (await response.text()) || errMsg; } catch {} }
+      throw new Error(errMsg);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const element = document.createElement('a');
+    element.href = url;
+    element.download = `${repoName || 'RepoSage'}-Audit-Report.pdf`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+    URL.revokeObjectURL(url);
+  } catch (err: any) {
+    console.error(err);
+    alert(err.message || 'Failed to export PDF report.');
+  }
+};
+
 export const handleHtmlExport = async (
   repoName: string,
   analysis: AnalysisData,
@@ -123,14 +166,18 @@ export const handleHtmlExport = async (
         repoName,
         analysis: {
           fileReviews: analysis.fileReviews,
-          metrics: analysis.metrics
+          metrics: analysis.metrics,
+          generatedReadme: analysis.generatedReadme,
+          mermaidDiagram: analysis.mermaidDiagram,
         }
       })
     });
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || 'Failed to export HTML report.');
+      let errMsg = 'Failed to export HTML report.';
+      try { const errData = await response.json(); errMsg = errData.error || errMsg; }
+      catch { try { errMsg = (await response.text()) || errMsg; } catch {} }
+      throw new Error(errMsg);
     }
 
     const blob = await response.blob();

@@ -1,14 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useDebounce } from '../hooks/useDebounce';
 import { useStore, ChatMessage } from '../store/useStore';
 import SettingsModal from "../components/SettingsModal";
-import { MetricsChart } from '../components/MetricsChart';
+import DashboardFooter from "../components/DashboardFooter";
+import KeyboardShortcutsHelp from "../components/KeyboardShortcutsHelp";
+import { VulnerabilitiesBarChart } from '../components/VulnerabilitiesBarChart';
+import MarkdownErrorBoundary from '../components/MarkdownErrorBoundary';
 import CopyToClipboardButton from "../components/CopyToClipboardButton";
+import SectionErrorBoundary from "../components/SectionErrorBoundary";
+import AnalysisForm from "../components/AnalysisForm";
+import AuditHistoryPanel from "../components/AuditHistoryPanel";
+import MentorshipPortal from "../components/MentorshipPortal";
+import HealthScoreSection from "../components/HealthScoreSection";
+import ChatPanel from "../components/ChatPanel";
+import MermaidDiagramViewer from "../components/MermaidDiagramViewer";
 import {
   Terminal,
   ShieldAlert,
   Zap,
   Sparkles,
-  FolderGit,
   FileCode,
   CheckCircle,
   AlertOctagon,
@@ -18,37 +28,38 @@ import {
   Layers,
   Code2,
   MessageSquare,
-  Send,
-  Settings,
-  Clock,
-  Trash2,
   Search,
   X,
+  ChevronsUpDown,
+  ChevronsDownUp,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  FileText,
 } from "lucide-react";
-import { handleMarkdownExport, handleHtmlExport } from "../utils/exportUtils";
-import mermaid from "mermaid";
-import { sanitizeMermaidOutput } from "../utils/sanitize";
+import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../utils/exportUtils";
+import { sanitizeAuditEntry } from "../utils/sanitize";
+// Path resolves correctly: pages/ -> ../utils/api -> frontend/src/utils/api
+import { apiFetch } from "../utils/api";
 
-// Initialize Mermaid outside the component to avoid multiple initializations
-try {
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: window.matchMedia("(prefers-color-scheme: light)").matches ? "base" : "dark",
-    securityLevel: "strict",
-    themeVariables: {
-      background: "#0f172a",
-      primaryColor: "#3b82f6",
-      primaryTextColor: "#e5e7eb",
-      lineColor: "#c084fc",
-      nodeBorder: "#3b82f6",
-      mainBkg: "#1e293b",
-    },
-  });
-} catch (e) {
-  console.error("Failed to initialize Mermaid:", e);
-}
+const LazyMetricsChart = React.lazy(() =>
+  import('../components/MetricsChart').then((module) => ({ default: module.MetricsChart }))
+);
 
-import { apiFetch } from '../utils/api';
+
+
+const getSavedAiSettings = () => {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem("reposage_ai_settings") || "{}"
+    );
+    return saved && typeof saved === "object" ? saved : {};
+  } catch (error) {
+    console.warn("Invalid saved AI settings; using defaults.", error);
+    return {};
+  }
+};
 
 // Define Types
 export interface ReviewItem {
@@ -70,9 +81,32 @@ interface AnalysisData {
   generatedReadme: string;
   mermaidDiagram?: string;
   metrics?: Record<string, any>;
+  repositoryHealth?: any;
+  dependencyReport?: any;
+  _mock?: boolean;
 }
 
 export interface BackendResponse {
+  dependencyReport?: {
+  dependencies: {
+    name: string;
+    currentVersion: string;
+    latestVersion: string;
+    risk: string;
+    deprecated: boolean;
+    vulnerable: boolean;
+    recommendation: string;
+  }[];
+};
+  prSummary?: {
+  overallPurpose: string;
+  filesChanged: number;
+  majorLogicUpdates: string[];
+  potentialRisks: string[];
+  breakingChanges: string[];
+  testingRecommendations: string[];
+};
+  repositoryHealth?: any;
   success: boolean;
   repoName: string;
   filesReviewedCount: number;
@@ -80,9 +114,13 @@ export interface BackendResponse {
   sessionId?: string;
   sessionPersisted?: boolean;
   _mock?: boolean;
+  partial_review?: boolean;
+  warnings?: Array<{ file: string; warning: string }>;
 }
 
-interface AuditHistoryEntry {
+
+
+export interface AuditHistoryEntry {
   id: string;
   repoUrl: string;
   repoName: string;
@@ -92,169 +130,10 @@ interface AuditHistoryEntry {
   response: BackendResponse;
 }
 
-interface MermaidViewerProps {
-  chart: string;
-  repoName: string;
-}
-
-function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
-  const [svg, setSvg] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!chart) return;
-    setError(null);
-    const uniqueId = `mermaid-${Math.floor(Math.random() * 100000)}`;
-    const renderChart = async () => {
-      try {
-        setSvg("");
-        // Clean markdown wraps if present
-        let cleanChart = chart
-          .replace(/```mermaid/g, "")
-          .replace(/```/g, "")
-          .trim();
-        if (
-          !cleanChart.startsWith("graph") &&
-          !cleanChart.startsWith("flowchart")
-        ) {
-          cleanChart = `graph TD\n${cleanChart}`;
-        }
-
-        const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
-        const sanitized = sanitizeMermaidOutput(renderedSvg);
-        setSvg(sanitized);
-      } catch (err: any) {
-        console.error("Mermaid Render Error:", err);
-        setError(
-          "Could not render architecture diagram. The AI-generated flowchart has syntax errors.",
-        );
-      }
-    };
-
-    renderChart();
-  }, [chart]);
-
-  const svgDataUrl = svg
-    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
-    : null;
-
-  const downloadSVG = () => {
-    if (!svg) return;
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${repoName}_architecture.svg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  if (error) {
-    return (
-      <div
-        style={{
-          padding: "20px",
-          color: "#ef4444",
-          background: "rgba(239, 68, 68, 0.1)",
-          border: "1px solid rgba(239, 68, 68, 0.2)",
-          borderRadius: "8px",
-          fontSize: "12px",
-          width: "100%",
-          boxSizing: "border-box",
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: "6px" }}>
-          ⚠️ Mermaid Rendering Failed
-        </div>
-        <p style={{ margin: "0 0 10px 0", fontSize: "11px", color: "#fca5a5" }}>
-          {error}
-        </p>
-        <pre
-          style={{
-            background: "rgba(0,0,0,0.3)",
-            padding: "10px",
-            borderRadius: "6px",
-            fontSize: "10px",
-            color: "#9ca3af",
-            overflowX: "auto",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {chart}
-        </pre>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "14px",
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          onClick={downloadSVG}
-          disabled={!svg}
-          style={{
-            background: "rgba(59, 130, 246, 0.1)",
-            border: "1px solid rgba(59, 130, 246, 0.3)",
-            color: "#60a5fa",
-            borderRadius: "6px",
-            padding: "6px 12px",
-            fontSize: "11px",
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            transition: "all 0.15s ease",
-          }}
-          className="hover:bg-blue-500/20"
-        >
-          <Download size={14} /> Download SVG Diagram
-        </button>
-      </div>
-      <div
-        ref={containerRef}
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          background: "rgba(15,23,42,0.4)",
-          padding: "24px",
-          borderRadius: "8px",
-          overflowX: "auto",
-          border: "1px solid rgba(255,255,255,0.05)",
-          boxSizing: "border-box",
-          width: "100%",
-        }}
-      >
-        {svgDataUrl ? (
-          <img
-            src={svgDataUrl}
-            alt={`Architecture diagram for ${repoName}`}
-            style={{ maxWidth: "100%", height: "auto" }}
-          />
-        ) : (
-          <span style={{ color: "#9ca3af", fontSize: "12px" }}>
-            Generating visual flowchart...
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
 export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   // Input State
   const [repoUrl, setRepoUrl] = useState("");
@@ -269,14 +148,205 @@ export default function Dashboard() {
   // Response & View State
   const { analysisResult, setAnalysisResult, selectedFile, setSelectedFile, chatHistory, setChatHistory } = useStore();
   const [fileFilterQuery, setFileFilterQuery] = useState('');
+  // Debounced search to prevent heavy filtering on every keystroke
+  const debouncedFileFilterQuery = useDebounce(fileFilterQuery, 300);
   const [isClearHovered, setIsClearHovered] = useState(false);
   const [activeExtFilter, setActiveExtFilter] = useState('All');
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'bugs' | 'security' | 'optimization' | 'styling' | 'metrics'>('bugs');
   const [apiError, setApiError] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState(false);
+
+  // Accessibility Announcement State
+  const [announcement, setAnnouncement] = useState("");
+  const hasResult = !!analysisResult;
+
+  useEffect(() => {
+    if (isLoading) {
+      setAnnouncement("Starting AI analysis, please wait...");
+    } else if (hasResult) {
+      setAnnouncement("Analysis complete. Results are now available below.");
+    }
+  }, [isLoading, hasResult]);
+
+  // --- File Tree Utilities ---
+  interface FileTreeNode {
+    name: string;
+    fullPath: string;
+    isFolder: boolean;
+    children: FileTreeNode[];
+  }
+
+  const buildFileTree = (filePaths: string[]): FileTreeNode[] => {
+    const root: FileTreeNode[] = [];
+    const folderMap = new Map<string, FileTreeNode>();
+
+    for (const filePath of filePaths) {
+      const parts = filePath.split('/');
+      let currentLevel = root;
+      let currentPath = '';
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        const isLast = i === parts.length - 1;
+
+        if (isLast) {
+          // It's a file
+          currentLevel.push({
+            name: part,
+            fullPath: filePath,
+            isFolder: false,
+            children: [],
+          });
+        } else {
+          // It's a folder
+          let folder = folderMap.get(currentPath);
+          if (!folder) {
+            folder = {
+              name: part,
+              fullPath: currentPath,
+              isFolder: true,
+              children: [],
+            };
+            folderMap.set(currentPath, folder);
+            currentLevel.push(folder);
+          }
+          currentLevel = folder.children;
+        }
+      }
+    }
+
+    // Sort: folders first, then files, both alphabetically
+    const sortTree = (nodes: FileTreeNode[]): FileTreeNode[] => {
+      nodes.sort((a, b) => {
+        if (a.isFolder && !b.isFolder) return -1;
+        if (!a.isFolder && b.isFolder) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      nodes.forEach(n => { if (n.isFolder) sortTree(n.children); });
+      return nodes;
+    };
+
+    return sortTree(root);
+  };
+
+  const fileTreeData = React.useMemo(() => {
+    if (!analysisResult?.analysis?.fileReviews) return [];
+    
+    const filteredFiles = Object.keys(
+      analysisResult.analysis.fileReviews,
+    ).filter((filePath) => {
+      const matchesSearch = filePath
+        .toLowerCase()
+        .includes(debouncedFileFilterQuery.toLowerCase());
+      if (!matchesSearch) return false;
+
+      const ext = filePath.split(".").pop()?.toLowerCase();
+      if (activeExtFilter === "JS/TS") {
+        return ["js", "jsx", "ts", "tsx"].includes(ext || "");
+      }
+      if (activeExtFilter === "Python") {
+        return ext === "py";
+      }
+      if (activeExtFilter === "CSS/HTML") {
+        return ["css", "html"].includes(ext || "");
+      }
+      return true; // All
+    });
+
+    return buildFileTree(filteredFiles);
+  }, [analysisResult, debouncedFileFilterQuery, activeExtFilter]);
+
+  const collectAllFolderPaths = (nodes: FileTreeNode[]): string[] => {
+    const paths: string[] = [];
+    const traverse = (list: FileTreeNode[]) => {
+      for (const node of list) {
+        if (node.isFolder) {
+          paths.push(node.fullPath);
+          traverse(node.children);
+        }
+      }
+    };
+    traverse(nodes);
+    return paths;
+  };
+
+  const handleExpandAll = (tree: FileTreeNode[]) => {
+    const allPaths = collectAllFolderPaths(tree);
+    setExpandedFolders(new Set(allPaths));
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedFolders(new Set());
+  };
+
+  const toggleFolder = (folderPath: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) {
+        next.delete(folderPath);
+      } else {
+        next.add(folderPath);
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Escape to close modals and clear errors
+      if (e.key === "Escape") {
+        setApiError(null);
+        setShowSettings(false);
+        setShowShortcutsHelp(false);
+        if (document.activeElement === searchInputRef.current) {
+          searchInputRef.current?.blur();
+        }
+      }
+      
+      // Ctrl+K to search files
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+
+      // J/K for navigating views (mocked logic - just toggling tabs)
+      if (e.target === document.body || document.activeElement === document.body) {
+        if (e.key.toLowerCase() === "j" || e.key.toLowerCase() === "k") {
+          // Simply show help or focus first clickable as a demo
+          setShowShortcutsHelp(true);
+        }
+        
+        // ? to show shortcuts
+        if (e.key === "?") {
+          setShowShortcutsHelp(true);
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [apiError]);
+
+  const isValidAuditEntry = (entry: unknown): entry is AuditHistoryEntry => {
+    if (!entry || typeof entry !== 'object') return false;
+    const e = entry as Record<string, unknown>;
+    return typeof e.id === 'string' &&
+      typeof e.repoUrl === 'string' &&
+      typeof e.repoName === 'string' &&
+      typeof e.auditedAt === 'string' &&
+      typeof e.totalFindings === 'number' &&
+      typeof e.overallGrade === 'string' &&
+      e.response !== null && typeof e.response === 'object';
+  };
+
   const [auditHistory, setAuditHistory] = useState<AuditHistoryEntry[]>(() => {
     try {
       const savedHistory = localStorage.getItem('reposage_audit_history');
-      return savedHistory ? JSON.parse(savedHistory) : [];
+      if (!savedHistory) return [];
+      const parsed = JSON.parse(savedHistory);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(isValidAuditEntry);
     } catch (err) {
       console.error('Failed to load audit history:', err);
       return [];
@@ -514,23 +584,6 @@ export default function Dashboard() {
       `---\n` +
       `*Generated automatically by **RepoSage AI Copilot**.*`;
 
-    <button
-      onClick={() => setShowSettings(true)}
-      style={{
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid var(--border-color)",
-        borderRadius: "6px",
-        padding: "6px 10px",
-        cursor: "pointer",
-        color: "var(--text-color)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Settings size={15} />
-    </button>;
-
     const gssoLabel = localStorage.getItem("reposage_gssoc_label") || "gssoc26";
     const labels = isGssocLabelingEnabled
       ? [gssoLabel, "good-first-issue", category]
@@ -558,12 +611,42 @@ export default function Dashboard() {
       } else {
         throw new Error("Response did not contain issue URL");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(`Error creating issue: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      alert(`Error creating issue: ${errorMessage}`);
     } finally {
       setCreatingIssues((prev) => ({ ...prev, [itemKey]: false }));
     }
+  };
+
+  const safeSetItem = (key: string, value: string, maxRetries = 2): boolean => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch (e: unknown) {
+        if (!(e instanceof DOMException && e.name === 'QuotaExceededError')) {
+          console.warn('Failed to save to localStorage:', e);
+          return false;
+        }
+        if (attempt < maxRetries) {
+          // Evict oldest audit and chat entries to free space
+          for (const storageKey of ['reposage_audit_history', CHAT_HISTORY_KEY]) {
+            try {
+              const raw = localStorage.getItem(storageKey);
+              if (!raw) continue;
+              const data = JSON.parse(raw);
+              if (Array.isArray(data) && data.length > 0) {
+                const evicted = data.slice(data.length <= 1 ? 0 : 1);
+                localStorage.setItem(storageKey, JSON.stringify(evicted));
+              }
+            } catch { /* ignore corrupt entries */ }
+          }
+        }
+      }
+    }
+    return false;
   };
 
   // AI Chat with Repository States
@@ -589,34 +672,62 @@ export default function Dashboard() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isChatLoading]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadHistory = async () => {
+      try {
+        const response = await apiFetch('/api/review-history', { signal: controller.signal });
+        if (!response.ok) throw new Error("Failed to fetch");
+        const history = await response.json();
+
+        if (history && !controller.signal.aborted) {
+          setAuditHistory(history);
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error("Failed to load review history", err);
+      }
+    };
+
+    loadHistory();
+    return () => controller.abort();
+  }, []);
+
   const handleSendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
 
     const userMessage = chatInput;
     setChatInput("");
-    setChatHistory((prev) => {
-      const updated = [...prev, { role: "user" as const, content: userMessage }];
-      try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(updated)); } catch {}
-      return updated;
-    });
+
+    // Build the updated history array locally FIRST so it includes the user's
+    // current message when sent to the API, rather than relying on the stale
+    // chatHistory closure value (which would be one message behind).
+    const updatedHistory = truncateChatHistory([
+      ...(chatHistory || []),
+      { role: "user" as const, content: userMessage }
+    ]);
+    setChatHistory(updatedHistory);
+    if (!safeSetItem(CHAT_HISTORY_KEY, JSON.stringify(updatedHistory))) setStorageWarning(true);
+
     setIsChatLoading(true);
 
     try {
-      const chatAiSettings = JSON.parse(
-        localStorage.getItem("reposage_ai_settings") || "{}"
-      );
+      setApiError(null);
+      const chatAiSettings = getSavedAiSettings();
       const response = await apiFetch("/api/chat", {
         method: "POST",
         body: JSON.stringify({
-          message: userMessage,
-          history: truncateChatHistory(chatHistory),
-          model: selectedModel,
-          temperature: chatAiSettings.temperature ?? 0.4,
-          maxTokens: chatAiSettings.maxTokens ?? 2048,
-          sessionId,
-          useRag,
-        }),
+            message: userMessage,
+            history: updatedHistory,
+            model: selectedModel,
+            temperature: chatAiSettings.temperature ?? 0.4,
+            maxTokens: chatAiSettings.maxTokens ?? 2048,
+            sessionId,
+            sessionOwnerToken: localStorage.getItem("sessionOwnerToken") || "",
+            useRag,
+            systemPrompt: chatAiSettings.systemPrompt ?? "",
+          }),
       });
 
       if (!response.ok) {
@@ -624,17 +735,18 @@ export default function Dashboard() {
       }
 
       const data = await response.json();
+      const sources = data.sources || [];
       setChatHistory((prev) => {
         const updated = truncateChatHistory([
           ...prev,
-          { role: "assistant" as const, content: data.response },
+          { role: "assistant" as const, content: data.response, sources: sources.length > 0 ? sources : undefined },
         ]);
-        try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(updated)); } catch {}
+        if (!safeSetItem(CHAT_HISTORY_KEY, JSON.stringify(updated))) setStorageWarning(true);
         return updated;
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      let errMsg = err.message || "Chat service unavailable.";
+      let errMsg = (err instanceof Error ? err.message : String(err)) || "Chat service unavailable.";
       if (errMsg.includes("Failed to fetch") || errMsg.toLowerCase().includes("offline")) {
         errMsg = "Backend AI Engine offline. Please ensure the server is running.";
       } else if (errMsg.toLowerCase().includes("api key") || errMsg.toLowerCase().includes("unauthorized")) {
@@ -712,7 +824,7 @@ export default function Dashboard() {
   };
 
   const calculateTotalFindings = (result: BackendResponse) => {
-    return Object.values(result.analysis.fileReviews || {}).reduce((total, review) => {
+    return Object.values(result.analysis?.fileReviews || {}).reduce((total, review) => {
       return total +
         (review.bugs?.length || 0) +
         (review.security?.length || 0) +
@@ -747,8 +859,9 @@ export default function Dashboard() {
       ].slice(0, 5); // reduced to 5 to save space
 
       try {
-        localStorage.setItem('reposage_audit_history', JSON.stringify(updatedHistory));
-      } catch (e: any) {
+        const sanitized = updatedHistory.map((entry) => sanitizeAuditEntry(entry as unknown as Record<string, unknown>));
+        localStorage.setItem('reposage_audit_history', JSON.stringify(sanitized));
+      } catch (e: unknown) {
         if (e instanceof DOMException && e.name === 'QuotaExceededError') {
           console.warn('localStorage quota exceeded — audit history not saved.');
         } else {
@@ -762,13 +875,14 @@ export default function Dashboard() {
   const loadAuditFromHistory = (entry: AuditHistoryEntry) => {
     setRepoUrl(entry.repoUrl);
     setAnalysisResult(entry.response);
+    setSessionId(entry.response.sessionId ?? null);
     setApiError(null);
     setIsLoading(false);
     setActiveDashboardView('audit');
     setFileFilterQuery('');
     setActiveExtFilter('All');
 
-    const filesList = Object.keys(entry.response.analysis.fileReviews || {});
+    const filesList = Object.keys(entry.response.analysis?.fileReviews || {});
     setSelectedFile(filesList[0] || null);
   };
 
@@ -807,16 +921,8 @@ export default function Dashboard() {
         setLoadingStep(steps[currentStep]);
       }
     }, 1200);
-    let aiSettings: { temperature?: number; maxTokens?: number; systemPrompt?: string } = {};
     try {
-      aiSettings = JSON.parse(
-        localStorage.getItem("reposage_ai_settings") || "{}"
-      );
-    } catch {
-      aiSettings = {};
-    }
-
-    try {
+      const aiSettings = getSavedAiSettings();
       const response = await apiFetch("/api/analyze", {
         method: "POST",
         body: JSON.stringify({
@@ -827,6 +933,7 @@ export default function Dashboard() {
           temperature: aiSettings.temperature ?? 0.7,
           maxTokens: aiSettings.maxTokens ?? 2048,
           systemPrompt: aiSettings.systemPrompt ?? "",
+          batchSize: aiSettings.batchSize ?? 5,
         }),
       });
 
@@ -841,22 +948,20 @@ export default function Dashboard() {
 
       const data: BackendResponse = await response.json();
       setAnalysisResult(data);
-      if (data.sessionId && data.sessionPersisted !== false) {
-        setSessionId(data.sessionId);
-      } else if (data.sessionId && data.sessionPersisted === false) {
-        setSessionId(null);
-      }
+      setSessionId(
+        data.sessionPersisted === true ? data.sessionId ?? null : null
+      );
       persistAuditHistory(data);
       setChatHistory([]);
 
       // Select the first file reviewed automatically
-      const filesList = Object.keys(data.analysis.fileReviews);
+      const filesList = Object.keys(data.analysis?.fileReviews || {});
       if (filesList.length > 0) {
         setSelectedFile(filesList[0]);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      let errMsg = err.message || "Could not connect to the backend server. Make sure node backend is running on port 5000.";
+      let errMsg = (err instanceof Error ? err.message : String(err)) || "Could not connect to the backend server. Make sure node backend is running on port 5000.";
       if (errMsg.includes("Failed to fetch") || errMsg.toLowerCase().includes("offline")) {
         errMsg = "Backend AI Engine offline. Please ensure the server is running.";
       } else if (errMsg.toLowerCase().includes("api key") || errMsg.toLowerCase().includes("unauthorized") || errMsg.includes("not configured")) {
@@ -874,15 +979,18 @@ export default function Dashboard() {
   const downloadReadme = () => {
     if (!analysisResult) return;
     const element = document.createElement("a");
-    const file = new Blob([analysisResult.analysis.generatedReadme], {
+    const file = new Blob([analysisResult.analysis?.generatedReadme || ''], {
       type: "text/plain",
     });
     element.href = URL.createObjectURL(file);
     element.download = "GENERATED_README.md";
     document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
+      element.click();
+      document.body.removeChild(element);
+      URL.revokeObjectURL(element.href);
+    };
+
+  const chatInputEmpty = !chatInput.trim();
 
   return (
     <div
@@ -893,6 +1001,23 @@ export default function Dashboard() {
         boxSizing: "border-box",
       }}
     >
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        style={{
+          position: "absolute",
+          width: "1px",
+          height: "1px",
+          padding: 0,
+          margin: "-1px",
+          overflow: "hidden",
+          clip: "rect(0, 0, 0, 0)",
+          whiteSpace: "nowrap",
+          border: 0,
+        }}
+      >
+        {announcement}
+      </div>
       {/* 🚀 Main Layout Split */}
       <main
         style={{
@@ -908,683 +1033,36 @@ export default function Dashboard() {
         <section
           style={{ display: "flex", flexDirection: "column", gap: "20px" }}
         >
-          {/* Setup Console */}
-          <div className="glass-panel" style={{ padding: "20px" }}>
-            <h2
-              style={{
-                fontSize: "16px",
-                fontWeight: 700,
-                color: "#f3f4f6",
-                margin: "0 0 16px 0",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <FolderGit size={18} style={{ color: "#3b82f6" }} /> Import
-              Repository
-            </h2>
+          <SectionErrorBoundary sectionName="AnalysisForm">
+            <AnalysisForm
+              repoUrl={repoUrl}
+              setRepoUrl={setRepoUrl}
+              company={company}
+              setCompany={setCompany}
+              language={language}
+              setLanguage={setLanguage}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              isLoading={isLoading}
+              handleAnalyze={handleAnalyze}
+            />
+          </SectionErrorBoundary>
 
-            <form
-              onSubmit={handleAnalyze}
-              style={{ display: "flex", flexDirection: "column", gap: "14px" }}
-            >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#9ca3af",
-                    marginBottom: "6px",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  GitHub Repository URL
-                </label>
-                <input
-                  type="url"
-                  required
-                  pattern="https://github\.com/.*"
-                  placeholder="https://github.com/username/repo"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    background: "rgba(15, 23, 42, 0.6)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: "6px",
-                    color: "#fff",
-                    fontSize: "13px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
+          <SectionErrorBoundary sectionName="AuditHistory">
+            <AuditHistoryPanel
+              auditHistory={auditHistory}
+              clearAuditHistory={clearAuditHistory}
+              loadAuditFromHistory={loadAuditFromHistory}
+            />
+          </SectionErrorBoundary>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: "10px",
-                }}
-              >
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#9ca3af",
-                      marginBottom: "6px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Target Company
-                  </label>
-                  <select
-                    value={company}
-                    onChange={(e) => setCompany(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      background: "rgba(15, 23, 42, 0.6)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontSize: "13px",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="General">General</option>
-                    <option value="Google">Google</option>
-                    <option value="Stripe">Stripe</option>
-                    <option value="Meta">Meta</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#9ca3af",
-                      marginBottom: "6px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Language
-                  </label>
-                  <select
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      background: "rgba(15, 23, 42, 0.6)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontSize: "13px",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="English">English</option>
-                    <option value="Hindi">Hindi</option>
-                    <option value="Telugu">Telugu</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#9ca3af",
-                      marginBottom: "6px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    AI Model
-                  </label>
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      background: "rgba(15, 23, 42, 0.6)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontSize: "13px",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="llama-3.3-70b-versatile">
-                      Llama 3.3 (70B)
-                    </option>
-                    <option value="deepseek-r1-distill-llama-70b">
-                      DeepSeek R1 (70B)
-                    </option>
-                    <option value="llama-3.1-8b-instant">Llama 3.1 (8B)</option>
-                    <option value="gemma2-9b-it">Google Gemma 2 (9B)</option>
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="glow-btn"
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  marginTop: "6px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                }}
-              >
-                {isLoading ? (
-                  <>
-                    <span
-                      className="spin-slow"
-                      style={{
-                        display: "inline-block",
-                        width: "14px",
-                        height: "14px",
-                        border: "2px solid white",
-                        borderTopColor: "transparent",
-                        borderRadius: "50%",
-                      }}
-                    ></span>
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} /> Scan & Document Repo
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Recent Audit History */}
-          <div className="glass-panel" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Clock size={18} style={{ color: '#60a5fa' }} /> Recent Audits
-                </h2>
-                <p style={{ margin: 0, fontSize: '11px', color: '#9ca3af' }}>Reload cached repository scans</p>
-              </div>
-              {auditHistory.length > 0 && (
-                <button
-                  onClick={clearAuditHistory}
-                  title="Clear audit history"
-                  style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-
-            {auditHistory.length === 0 ? (
-              <div style={{ padding: '12px', borderRadius: '6px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.08)', color: '#9ca3af', fontSize: '11px', lineHeight: 1.5 }}>
-                Completed scans will appear here after a successful analysis.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {auditHistory.slice(0, 5).map(entry => (
-                  <button
-                    key={entry.id}
-                    onClick={() => loadAuditFromHistory(entry)}
-                    style={{ width: '100%', textAlign: 'left', padding: '10px', borderRadius: '6px', background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.12)', color: '#e5e7eb', cursor: 'pointer' }}
-                  >
-                    <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.repoName}</span>
-                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '6px', fontSize: '10px', color: '#9ca3af' }}>
-                      <span>{new Date(entry.auditedAt).toLocaleDateString()}</span>
-                      <span>{entry.totalFindings} findings · Grade {entry.overallGrade}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* GSSoC Contributor & Mentorship Portal */}
-          <div className="glass-panel" style={{ padding: "20px" }}>
-            <h2
-              style={{
-                fontSize: "15px",
-                fontWeight: 700,
-                color: "#f3f4f6",
-                margin: "0 0 4px 0",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <Layers size={18} style={{ color: "#a855f7" }} /> Mentorship
-              Portal
-            </h2>
-            <p
-              style={{
-                margin: "0 0 16px 0",
-                fontSize: "11px",
-                color: "#9ca3af",
-              }}
-            >
-              GSSoC Assigned Contributor Issues
-            </p>
-
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(168,85,247,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(168,85,247,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Copy Code Button
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#a855f7" }}>
-                    🏷️ good first issue
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("copy-code-button")}
-                  style={{
-                    background:
-                      assignedContributors["copy-code-button"] === "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["copy-code-button"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(59,130,246,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(59,130,246,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Expand Security Rules
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#3b82f6" }}>
-                    🏷️ backend / security
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    handleAssignContributor("secret-scanning-rules")
-                  }
-                  style={{
-                    background:
-                      assignedContributors["secret-scanning-rules"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["secret-scanning-rules"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(168,85,247,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(168,85,247,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    API Endpoint Spec
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#a855f7" }}>
-                    🏷️ documentation
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("api-documentation")}
-                  style={{
-                    background:
-                      assignedContributors["api-documentation"] === "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["api-documentation"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(34,197,94,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(34,197,94,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Persist Contributor State
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#22c55e" }}>
-                    🏷️ frontend
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("persist-assignments")}
-                  style={{
-                    background:
-                      assignedContributors["persist-assignments"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["persist-assignments"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(168,85,247,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(168,85,247,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Implement Theme Toggle
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#a855f7" }}>
-                    🏷️ frontend / styling
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("theme-toggle")}
-                  style={{
-                    background:
-                      assignedContributors["theme-toggle"] === "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["theme-toggle"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(59,130,246,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(59,130,246,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    File tree filter search
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#3b82f6" }}>
-                    🏷️ frontend
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("file-filter-search")}
-                  style={{
-                    background:
-                      assignedContributors["file-filter-search"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["file-filter-search"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(168,85,247,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(168,85,247,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Export Report to HTML
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#a855f7" }}>
-                    🏷️ backend
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    handleAssignContributor("html-report-exporter")
-                  }
-                  style={{
-                    background:
-                      assignedContributors["html-report-exporter"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["html-report-exporter"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(34,197,94,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(34,197,94,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Complexity Metrics Analyzer
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#22c55e" }}>
-                    🏷️ backend
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("complexity-metrics")}
-                  style={{
-                    background:
-                      assignedContributors["complexity-metrics"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["complexity-metrics"]}
-                </button>
-              </div>
-              <button
-                onClick={handleResetAssignments}
-                style={{
-                  marginTop: "14px",
-                  width: "100%",
-                  padding: "8px",
-                  borderRadius: "6px",
-                  background: "rgba(239, 68, 68, 0.1)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  color: "#f87171",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "all 0.2s ease-in-out",
-                }}
-              >
-                Reset Assignments
-              </button>
-            </div>
-          </div>
+          <SectionErrorBoundary sectionName="MentorshipPortal">
+            <MentorshipPortal
+              assignedContributors={assignedContributors}
+              handleAssignContributor={handleAssignContributor}
+              handleResetAssignments={handleResetAssignments}
+            />
+          </SectionErrorBoundary>
         </section>
 
         {/* RIGHT COLUMN: Loading, Dashboard Audit, or Fallback Welcome Screen */}
@@ -1621,7 +1099,47 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* 2. Loading State */}
+          {/* 2. Storage Warning Banner */}
+          {storageWarning && (
+            <div
+              style={{
+                background: "rgba(234, 179, 8, 0.1)",
+                border: "1px solid rgba(234, 179, 8, 0.3)",
+                borderRadius: "8px",
+                padding: "14px 20px",
+                color: "#fde047",
+                fontSize: "13px",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                marginBottom: "20px",
+              }}
+            >
+              <AlertTriangle size={20} style={{ color: "#eab308" }} />
+              <div>
+                <strong style={{ display: "block" }}>
+                  Storage Quota Exceeded
+                </strong>
+                <span>Chat history could not be saved. Local storage is full. Clear old history or export it to free space.</span>
+              </div>
+              <button
+                onClick={() => setStorageWarning(false)}
+                style={{
+                  marginLeft: "auto",
+                  background: "transparent",
+                  border: "none",
+                  color: "#fde047",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  padding: "4px 8px",
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          {/* 3. Loading State */}
           {isLoading && (
             <div
               style={{
@@ -1764,7 +1282,7 @@ export default function Dashboard() {
                 boxSizing: "border-box",
               }}
             >
-              {analysisResult._mock && (
+              {(analysisResult._mock || analysisResult.analysis?._mock) && (
                 <div
                   style={{
                     background: "rgba(251,191,36,0.12)",
@@ -1786,6 +1304,62 @@ export default function Dashboard() {
                   </span>
                 </div>
               )}
+              {analysisResult.partial_review && (
+                <div
+                  style={{
+                    background: "rgba(251,191,36,0.12)",
+                    border: "1px solid rgba(251,191,36,0.35)",
+                    borderRadius: "8px",
+                    padding: "12px 16px",
+                    color: "#fbbf24",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <AlertTriangle size={18} style={{ color: "#fbbf24" }} />
+                  <span>
+                    Warning: Repository size exceeded AI context limits. This is a partial review of the core files.
+                  </span>
+                </div>
+              )}
+              {analysisResult.warnings && analysisResult.warnings.length > 0 && (
+                <div
+                  style={{
+                    background: "rgba(239,68,68,0.1)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                    borderRadius: "8px",
+                    padding: "12px 16px",
+                    color: "#fca5a5",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "8px",
+                    flexDirection: "column",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <ShieldAlert size={16} style={{ color: "#ef4444" }} />
+                    <span>Potential prompt injection detected in repository files</span>
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: "24px", fontSize: "11px", fontWeight: 400 }}>
+                    {analysisResult.warnings.map((w, i) => (
+                      <li key={i}>
+                        <strong>{w.file}</strong>: {w.warning}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <SectionErrorBoundary sectionName="HealthScore">
+                <HealthScoreSection
+                  analysisResult={analysisResult}
+                  isLoading={isLoading}
+                />
+              </SectionErrorBoundary>
               {/* Dashboard View Selection Tabs & Export Controls */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "100%" }}>
                 <div style={{ display: "flex", gap: "10px" }}>
@@ -1916,6 +1490,27 @@ export default function Dashboard() {
                   >
                     <FileDown size={14} /> Export Markdown
                   </button>
+                  <button
+                    onClick={() => analysisResult && handlePdfExport(analysisResult.repoName, analysisResult.analysis, apiFetch)}
+                    style={{
+                      background: "rgba(220, 38, 38, 0.1)",
+                      border: "1px solid rgba(220, 38, 38, 0.3)",
+                      color: "#f87171",
+                      borderRadius: "6px",
+                      padding: "8px 16px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      transition: "all 0.2s ease-in-out",
+                    }}
+                    className="hover:bg-red-500/20"
+                    title="Export the complete audit report as PDF"
+                  >
+                    <FileText size={14} /> Export PDF
+                  </button>
                 </div>
               </div>
 
@@ -1933,7 +1528,55 @@ export default function Dashboard() {
               >
                 {/* File Tree List */}
                 <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '72vh' }}>
-                  <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.5px' }}>File Navigator</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', margin: 0, letterSpacing: '0.5px' }}>File Navigator</h3>
+                    <div style={{ display: 'flex', gap: '2px' }}>
+                      <button
+                        onClick={() => {
+                          handleExpandAll(fileTreeData);
+                        }}
+                        title="Expand All Folders"
+                        style={{
+                          padding: '4px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#9ca3af',
+                          cursor: 'pointer',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#f3f4f6'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.background = 'transparent'; }}
+                        aria-label="Expand all folders"
+                      >
+                        <ChevronsUpDown size={15} />
+                      </button>
+                      <button
+                        onClick={handleCollapseAll}
+                        title="Collapse All Folders"
+                        style={{
+                          padding: '4px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#9ca3af',
+                          cursor: 'pointer',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#f3f4f6'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.background = 'transparent'; }}
+                        aria-label="Collapse all folders"
+                      >
+                        <ChevronsDownUp size={15} />
+                      </button>
+                    </div>
+                  </div>
                   <div
                     style={{
                       position: 'relative',
@@ -1954,10 +1597,11 @@ export default function Dashboard() {
                     />
 
                     <input
+                      ref={searchInputRef}
                       type="text"
                       value={fileFilterQuery}
                       onChange={(e) => setFileFilterQuery(e.target.value)}
-                      placeholder="Search files..."
+                      placeholder="Search files... (Ctrl+K)"
                       style={{
                         width: '100%',
                         padding: '6px 30px 6px 28px',
@@ -2029,28 +1673,7 @@ export default function Dashboard() {
                     ))}
                   </div>
                   {(() => {
-                    const filteredFiles = Object.keys(
-                      analysisResult.analysis.fileReviews,
-                    ).filter((filePath) => {
-                      const matchesSearch = filePath
-                        .toLowerCase()
-                        .includes(fileFilterQuery.toLowerCase());
-                      if (!matchesSearch) return false;
-
-                      const ext = filePath.split(".").pop()?.toLowerCase();
-                      if (activeExtFilter === "JS/TS") {
-                        return ["js", "jsx", "ts", "tsx"].includes(ext || "");
-                      }
-                      if (activeExtFilter === "Python") {
-                        return ext === "py";
-                      }
-                      if (activeExtFilter === "CSS/HTML") {
-                        return ["css", "html"].includes(ext || "");
-                      }
-                      return true; // All
-                    });
-
-                    if (filteredFiles.length === 0) {
+                    if (fileTreeData.length === 0) {
                       return (
                         <div
                           style={{
@@ -2069,51 +1692,111 @@ export default function Dashboard() {
                       );
                     }
 
-                    return filteredFiles.map((filePath) => (
-                      <button
-                        key={filePath}
-                        onClick={() => setSelectedFile(filePath)}
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          borderRadius: "6px",
-                          background:
-                            selectedFile === filePath
-                              ? "rgba(59,130,246,0.1)"
-                              : "transparent",
-                          border:
-                            selectedFile === filePath
-                              ? "1px solid rgba(59,130,246,0.3)"
-                              : "1px solid transparent",
-                          color:
-                            selectedFile === filePath
-                              ? "#60a5fa"
-                              : "var(--text-color)",
-                          textAlign: "left",
-                          fontSize: "12px",
-                          fontWeight: selectedFile === filePath ? 600 : 500,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          transition: "all 0.15s",
-                        }}
-                      >
-                        <FileCode
-                          size={14}
+                    const renderTreeNode = (node: FileTreeNode, depth: number = 0) => {
+                      if (node.isFolder) {
+                        const isExpanded = expandedFolders.has(node.fullPath);
+                        return (
+                          <div key={node.fullPath}>
+                            <button
+                              onClick={() => toggleFolder(node.fullPath)}
+                              style={{
+                                width: '100%',
+                                padding: '5px 8px',
+                                paddingLeft: `${8 + depth * 14}px`,
+                                borderRadius: '4px',
+                                background: 'transparent',
+                                border: '1px solid transparent',
+                                color: '#d1d5db',
+                                textAlign: 'left',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                transition: 'all 0.15s',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown size={12} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                              ) : (
+                                <ChevronRight size={12} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                              )}
+                              {isExpanded ? (
+                                <FolderOpen size={14} style={{ color: '#60a5fa', flexShrink: 0 }} />
+                              ) : (
+                                <Folder size={14} style={{ color: '#60a5fa', flexShrink: 0 }} />
+                              )}
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+                            </button>
+                            {isExpanded && (
+                              <div style={{ transition: 'all 0.15s ease-in-out' }}>
+                                {node.children.map(child => renderTreeNode(child, depth + 1))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // File node
+                      return (
+                        <button
+                          key={node.fullPath}
+                          onClick={() => setSelectedFile(node.fullPath)}
                           style={{
+                            width: '100%',
+                            padding: '5px 8px',
+                            paddingLeft: `${8 + depth * 14}px`,
+                            borderRadius: '4px',
+                            background:
+                              selectedFile === node.fullPath
+                                ? 'rgba(59,130,246,0.1)'
+                                : 'transparent',
+                            border:
+                              selectedFile === node.fullPath
+                                ? '1px solid rgba(59,130,246,0.3)'
+                                : '1px solid transparent',
                             color:
-                              selectedFile === filePath
-                                ? "#60a5fa"
-                                : "var(--subtext-color)",
+                              selectedFile === node.fullPath
+                                ? '#60a5fa'
+                                : 'var(--text-color)',
+                            textAlign: 'left',
+                            fontSize: '12px',
+                            fontWeight: selectedFile === node.fullPath ? 600 : 500,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.15s',
                           }}
-                        />
-                        {filePath}
-                      </button>
-                    ));
+                          onMouseEnter={(e) => {
+                            if (selectedFile !== node.fullPath) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (selectedFile !== node.fullPath) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <FileCode
+                            size={14}
+                            style={{
+                              color:
+                                selectedFile === node.fullPath
+                                  ? '#60a5fa'
+                                  : 'var(--subtext-color)',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+                        </button>
+                      );
+                    };
+
+                    return fileTreeData.map(node => renderTreeNode(node, 0));
                   })()}
                 </div>
 
@@ -2129,6 +1812,17 @@ export default function Dashboard() {
                         boxSizing: "border-box",
                       }}
                     >
+                      {analysisResult && (() => {
+                        const fileReviews = analysisResult.analysis.fileReviews || {};
+                        const breakdown: Record<string, number> = { bugs: 0, security: 0, optimization: 0, styling: 0 };
+                        Object.values(fileReviews).forEach((fr: any) => {
+                          breakdown.bugs += fr.bugs?.length || 0;
+                          breakdown.security += fr.security?.length || 0;
+                          breakdown.optimization += fr.optimization?.length || 0;
+                          breakdown.styling += fr.styling?.length || 0;
+                        });
+                        return <div style={{ marginBottom: "16px" }}><VulnerabilitiesBarChart data={breakdown} /></div>;
+                      })()}
                       <div
                         style={{
                           borderBottom: "1px solid rgba(255,255,255,0.08)",
@@ -2288,6 +1982,7 @@ export default function Dashboard() {
                       >
                         <button
                           onClick={() => setActiveTab("bugs")}
+                          aria-current={activeTab === "bugs" ? "true" : undefined}
                           style={{
                             padding: "6px",
                             borderRadius: "6px",
@@ -2314,6 +2009,7 @@ export default function Dashboard() {
                         </button>
                         <button
                           onClick={() => setActiveTab("security")}
+                          aria-current={activeTab === "security" ? "true" : undefined}
                           style={{
                             padding: "6px",
                             borderRadius: "6px",
@@ -2341,6 +2037,7 @@ export default function Dashboard() {
                         </button>
                         <button
                           onClick={() => setActiveTab("optimization")}
+                          aria-current={activeTab === "optimization" ? "true" : undefined}
                           style={{
                             padding: "6px",
                             borderRadius: "6px",
@@ -2370,6 +2067,7 @@ export default function Dashboard() {
                         </button>
                         <button
                           onClick={() => setActiveTab("styling")}
+                          aria-current={activeTab === "styling" ? "true" : undefined}
                           style={{
                             padding: "6px",
                             borderRadius: "6px",
@@ -2397,6 +2095,7 @@ export default function Dashboard() {
                         </button>
                         <button
                           onClick={() => setActiveTab("metrics")}
+                          aria-current={activeTab === "metrics" ? "true" : undefined}
                           style={{
                             padding: "6px",
                             borderRadius: "6px",
@@ -2475,7 +2174,7 @@ export default function Dashboard() {
                                 : 0;
                             const emptyPct =
                               fileMetrics.totalLines > 0
-                                ? 100 - codePct - commentPct
+                                ? Math.max(0, 100 - codePct - commentPct)
                                 : 0;
 
                             const gradeColors = {
@@ -2971,7 +2670,9 @@ export default function Dashboard() {
                                     </div>
                                   </div>
                                 </div>
-                                <MetricsChart sessionId={sessionId} />
+                                <React.Suspense fallback={<div style={{ height: 350, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--subtext-color)', fontSize: '12px' }}>Loading codebase metrics...</div>}>
+                                  <LazyMetricsChart sessionId={sessionId} />
+                                </React.Suspense>
                               </div>
                             );
                           })()
@@ -3053,40 +2754,68 @@ export default function Dashboard() {
                                   }}
                                 >
                                   <div
-                                    style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      alignItems: "center",
-                                      marginBottom: "4px",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        display: "block",
-                                        fontSize: "9px",
-                                        fontWeight: 700,
-                                        color: "#9ca3af",
-                                        textTransform: "uppercase",
-                                      }}
-                                    >
-                                      💡 AI Recommendation
-                                    </span>
-                                    <CopyToClipboardButton
-                                      textToCopy={item.suggestion}
-                                      style={{ padding: "2px" }}
-                                    />
-                                  </div>
-                                  <code
-                                    style={{
-                                      fontSize: "11px",
-                                      color: "#d8b4fe",
-                                      wordBreak: "break-all",
-                                    }}
-                                  >
-                                    {item.suggestion}
-                                  </code>
+  style={{
+    marginTop: "12px",
+    padding: "12px",
+    borderRadius: "8px",
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+  }}
+>
+  <h4
+    style={{
+      color: "#60a5fa",
+      marginBottom: "8px",
+      fontSize: "13px",
+    }}
+  >
+    AI Fix Suggestion
+  </h4>
+
+  <p
+    style={{
+      color: "#e5e7eb",
+      fontSize: "12px",
+      marginBottom: "10px",
+    }}
+  >
+    <strong>Explanation:</strong>
+    <br />
+    {item.description}
+  </p>
+
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: "6px",
+    }}
+  >
+    <strong style={{ color: "#c084fc" }}>
+      Suggested Fix
+    </strong>
+
+    <CopyToClipboardButton
+      textToCopy={item.suggestion}
+      style={{ padding: "2px" }}
+    />
+  </div>
+
+  <code
+    style={{
+      display: "block",
+      whiteSpace: "pre-wrap",
+      wordBreak: "break-word",
+      fontSize: "11px",
+      color: "#d8b4fe",
+    }}
+  >
+    {item.suggestion}
+  </code>
+</div>
                                 </div>
-                                {!analysisResult?._mock && <div
+                                {!(analysisResult?._mock || analysisResult?.analysis?._mock) && <div
                                   style={{
                                     marginTop: "10px",
                                     display: "flex",
@@ -3378,9 +3107,11 @@ export default function Dashboard() {
                             flexDirection: "column",
                           }}
                         >
-                          {renderMarkdown(
-                            analysisResult.analysis.generatedReadme,
-                          )}
+                          <MarkdownErrorBoundary>
+                            {renderMarkdown(
+                              analysisResult.analysis.generatedReadme,
+                            )}
+                          </MarkdownErrorBoundary>
                         </div>
                       )}
                     </div>
@@ -3388,40 +3119,55 @@ export default function Dashboard() {
                 )}
 
                 {activeDashboardView === "chat" && (
-                  <div
-                    className="glass-panel"
-                    style={{
-                      padding: "20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      boxSizing: "border-box",
-                      minHeight: "68vh",
-                    }}
-                  >
-                    {/* Chat Header */}
+                  <SectionErrorBoundary sectionName="ChatPanel">
+                    <ChatPanel
+                      chatHistory={chatHistory}
+                      isChatLoading={isChatLoading}
+                      chatInput={chatInput}
+                      setChatInput={setChatInput}
+                      chatInputEmpty={chatInputEmpty}
+                      selectedModel={selectedModel}
+                      sessionId={sessionId}
+                      useRag={useRag}
+                      setUseRag={setUseRag}
+                      handleSendChatMessage={handleSendChatMessage}
+                      renderMarkdown={renderMarkdown}
+                    />
+                  </SectionErrorBoundary>
+                )}
+
+                {activeDashboardView === "diagram" && (
+                  <SectionErrorBoundary sectionName="MermaidDiagram">
                     <div
+                      className="glass-panel"
                       style={{
-                        borderBottom: "1px solid rgba(255,255,255,0.08)",
-                        paddingBottom: "12px",
-                        marginBottom: "16px",
+                        padding: "20px",
                         display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
+                        flexDirection: "column",
+                        boxSizing: "border-box",
+                        minHeight: "68vh",
+                        width: "100%",
                       }}
                     >
-                      <div>
+                      <div
+                        style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.08)",
+                          paddingBottom: "12px",
+                          marginBottom: "16px",
+                        }}
+                      >
                         <span
                           style={{
                             fontSize: "10px",
-                            background: "#a855f7",
-                            color: "#fae8ff",
+                            background: "#22c55e",
+                            color: "#dcfce7",
                             padding: "2px 8px",
                             borderRadius: "20px",
                             fontWeight: 600,
                             textTransform: "uppercase",
                           }}
                         >
-                          Interactive Chat
+                          Visualizer
                         </span>
                         <h3
                           style={{
@@ -3431,397 +3177,29 @@ export default function Dashboard() {
                             margin: "4px 0 0 0",
                           }}
                         >
-                          💬 Chat with Codebase
+                          Codebase Dependency Flow
                         </h3>
                       </div>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "#9ca3af",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        Active:{" "}
-                        <strong style={{ color: "#c084fc" }}>
-                          {selectedModel.split("-")[0].toUpperCase()}
-                        </strong>
-                      </span>
-                    </div>
-
-                    {/* Messages Scroller */}
-                    <div
-                      style={{
-                        flexGrow: 1,
-                        overflowY: "auto",
-                        paddingRight: "4px",
-                        marginBottom: "16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "14px",
-                        maxHeight: "52vh",
-                      }}
-                    >
-                      {chatHistory.length === 0 ? (
-                        <div
-                          style={{
-                            textAlign: "center",
-                            padding: "30px 20px",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            minHeight: "40vh",
-                            gap: "16px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              background: "rgba(168, 85, 247, 0.1)",
-                              padding: "16px",
-                              borderRadius: "50%",
-                            }}
-                          >
-                            <Sparkles size={32} style={{ color: "#a855f7" }} />
-                          </div>
-                          <div style={{ maxWidth: "400px" }}>
-                            <span
-                              style={{
-                                fontSize: "13px",
-                                fontWeight: 700,
-                                color: "#f3f4f6",
-                                display: "block",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              Ask anything about your repository
-                            </span>
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                color: "#9ca3af",
-                                lineHeight: 1.5,
-                                display: "block",
-                              }}
-                            >
-                              I have parsed the codebase source code. Ask
-                              questions like:
-                            </span>
-                          </div>
-
-                          {/* Suggested Queries */}
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "1fr",
-                              gap: "6px",
-                              width: "100%",
-                              maxWidth: "380px",
-                              marginTop: "6px",
-                            }}
-                          >
-                            {[
-                              "Explain the overall architecture and setup of this repo.",
-                              "What are the main entry points and critical API paths?",
-                              "Can you find any security flaws or logic bugs here?",
-                              "Write a simple automated test suite for this module structure.",
-                            ].map((queryText, qIdx) => (
-                              <button
-                                key={qIdx}
-                                onClick={() => {
-                                  setChatInput(queryText);
-                                }}
-                                style={{
-                                  background: "rgba(255,255,255,0.02)",
-                                  border: "1px solid rgba(255,255,255,0.05)",
-                                  borderRadius: "6px",
-                                  padding: "8px 12px",
-                                  fontSize: "11px",
-                                  color: "#d1d5db",
-                                  cursor: "pointer",
-                                  textAlign: "left",
-                                  transition: "all 0.15s ease",
-                                }}
-                                className="hover:bg-white/5"
-                              >
-                                💡 {queryText}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        chatHistory.map((msg, index) => (
-                          <div
-                            key={`chat-msg-${index}`}
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              alignSelf:
-                                msg.role === "user" ? "flex-end" : "flex-start",
-                              maxWidth: "85%",
-                              background:
-                                msg.role === "user"
-                                  ? "rgba(59, 130, 246, 0.15)"
-                                  : "rgba(15, 23, 42, 0.4)",
-                              border: "1px solid",
-                              borderColor:
-                                msg.role === "user"
-                                  ? "rgba(59, 130, 246, 0.2)"
-                                  : "rgba(255, 255, 255, 0.05)",
-                              borderRadius:
-                                msg.role === "user"
-                                  ? "12px 12px 0 12px"
-                                  : "12px 12px 12px 0",
-                              padding: "10px 14px",
-                              boxSizing: "border-box",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                              <span
-                                style={{
-                                  fontSize: "9px",
-                                  fontWeight: 700,
-                                  color:
-                                    msg.role === "user" ? "#60a5fa" : "#c084fc",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                {msg.role === "user"
-                                  ? "You"
-                                  : "RepoSage Assistant"}
-                              </span>
-                              <CopyToClipboardButton
-                                textToCopy={msg.content}
-                                style={{ padding: "2px" }}
-                              />
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "12px",
-                                color: "#e5e7eb",
-                                lineHeight: 1.5,
-                                whiteSpace: "pre-wrap",
-                                fontFamily:
-                                  msg.role === "assistant"
-                                    ? "monospace"
-                                    : "inherit",
-                              }}
-                            >
-                              {msg.content}
-                            </div>
-                          </div>
-                        ))
-                      )}
-
-                      {isChatLoading && (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignSelf: "flex-start",
-                            background: "rgba(15, 23, 42, 0.4)",
-                            border: "1px solid rgba(255, 255, 255, 0.05)",
-                            borderRadius: "12px 12px 12px 0",
-                            padding: "10px 14px",
-                            gap: "6px",
-                            width: "80px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "9px",
-                              fontWeight: 700,
-                              color: "#c084fc",
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            RepoSage
-                          </span>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: "4px",
-                              padding: "2px 0",
-                            }}
-                          >
-                            <span
-                              className="typing-dot"
-                              style={{
-                                width: "5px",
-                                height: "5px",
-                                background: "#c084fc",
-                                borderRadius: "50%",
-                                display: "inline-block",
-                              }}
-                            ></span>
-                            <span
-                              className="typing-dot"
-                              style={{
-                                width: "5px",
-                                height: "5px",
-                                background: "#c084fc",
-                                borderRadius: "50%",
-                                display: "inline-block",
-                                animationDelay: "0.2s",
-                              }}
-                            ></span>
-                            <span
-                              className="typing-dot"
-                              style={{
-                                width: "5px",
-                                height: "5px",
-                                background: "#c084fc",
-                                borderRadius: "50%",
-                                display: "inline-block",
-                                animationDelay: "0.4s",
-                              }}
-                            ></span>
-                          </div>
-                        </div>
-                      )}
-                      <div ref={chatEndRef} />
-                    </div>
-
-                    {/* Chat Input form */}
-                    {!sessionId && (
-                      <div style={{
-                        background: "rgba(245, 158, 11, 0.1)",
-                        border: "1px solid rgba(245, 158, 11, 0.3)",
-                        borderRadius: "6px",
-                        padding: "8px 12px",
-                        marginBottom: "8px",
-                        fontSize: "11px",
-                        color: "#fbbf24",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}>
-                        <AlertTriangle size={14} />
-                        <span>Please analyze a repository first to enable codebase-aware chat.</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#9ca3af", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={useRag}
-                          onChange={(e) => setUseRag(e.target.checked)}
-                          style={{ accentColor: "#a855f7" }}
+                      {analysisResult.analysis?.mermaidDiagram ? (
+                        <MermaidDiagramViewer
+                          chart={analysisResult.analysis.mermaidDiagram}
+                          repoName={analysisResult.repoName}
                         />
-                        Use RAG context retrieval
-                      </label>
+                      ) : (
+                        <div
+                          style={{
+                            color: "#9ca3af",
+                            fontSize: "12px",
+                            padding: "20px",
+                            textAlign: "center",
+                          }}
+                        >
+                          No architecture diagram was generated for this
+                          repository. Try re-running the analysis.
+                        </div>
+                      )}
                     </div>
-                    <form
-                      onSubmit={handleSendChatMessage}
-                      style={{
-                        display: "flex",
-                        gap: "10px",
-                        marginTop: "auto",
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder="Ask a question about the codebase files..."
-                        style={{
-                          flexGrow: 1,
-                          background: "rgba(0, 0, 0, 0.2)",
-                          border: "1px solid rgba(255, 255, 255, 0.08)",
-                          borderRadius: "6px",
-                          color: "#f3f4f6",
-                          padding: "10px 14px",
-                          fontSize: "12px",
-                          outline: "none",
-                        }}
-                      />
-                      <button
-                        type="submit"
-                        disabled={isChatLoading || !chatInput.trim()}
-                        style={{
-                          background:
-                            "linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "10px 18px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          opacity: isChatLoading || !chatInput.trim() ? 0.6 : 1,
-                          transition: "opacity 0.15s ease",
-                        }}
-                      >
-                        <Send size={14} />
-                      </button>
-                    </form>
-                  </div>
-                )}
-
-                {activeDashboardView === "diagram" && (
-                  <div
-                    className="glass-panel"
-                    style={{
-                      padding: "20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      boxSizing: "border-box",
-                      minHeight: "68vh",
-                      width: "100%",
-                    }}
-                  >
-                    <div
-                      style={{
-                        borderBottom: "1px solid rgba(255,255,255,0.08)",
-                        paddingBottom: "12px",
-                        marginBottom: "16px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "10px",
-                          background: "#22c55e",
-                          color: "#dcfce7",
-                          padding: "2px 8px",
-                          borderRadius: "20px",
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Visualizer
-                      </span>
-                      <h3
-                        style={{
-                          fontSize: "15px",
-                          fontWeight: 700,
-                          color: "#f3f4f6",
-                          margin: "4px 0 0 0",
-                        }}
-                      >
-                        📊 Codebase Dependency Flow
-                      </h3>
-                    </div>
-                    {analysisResult.analysis.mermaidDiagram ? (
-                      <MermaidViewer
-                        chart={analysisResult.analysis.mermaidDiagram}
-                        repoName={analysisResult.repoName}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          color: "#9ca3af",
-                          fontSize: "12px",
-                          padding: "20px",
-                          textAlign: "center",
-                        }}
-                      >
-                        No architecture diagram was generated for this
-                        repository. Try re-running the analysis.
-                      </div>
-                    )}
-                  </div>
+                  </SectionErrorBoundary>
                 )}
               </div>
             </div>
@@ -3831,29 +3209,9 @@ export default function Dashboard() {
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
       )}
-      {/* 🚀 Sleek Footer */}
-      <footer
-        style={{
-          marginTop: "auto",
-          background: "rgba(15, 23, 42, 0.4)",
-          padding: "12px 24px",
-          borderTop: "1px solid rgba(255,255,255,0.05)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: "11px",
-          color: "#9ca3af",
-        }}
-      >
-        <span>
-          RepoSage AI © 2026. Made with 💜 for GirlScript Summer of Code
-          (GSSoC).
-        </span>
-        <div style={{ display: "flex", gap: "16px" }}>
-          <span>Mentors: Kalyan Reddy Bhoompally</span>
-          <span>Status: Production MVP Ready</span>
-        </div>
-      </footer>
+      {showShortcutsHelp && <KeyboardShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
+
+      <DashboardFooter />
     </div>
   );
 }

@@ -39,6 +39,20 @@ const AnalyticsDateRangePicker: React.FC<AnalyticsDateRangePickerProps> = ({
   className,
   style,
 }) => {
+  const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = (idx + 1) % DATE_RANGE_OPTIONS.length;
+      onChange(DATE_RANGE_OPTIONS[next].value);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const prev = (idx - 1 + DATE_RANGE_OPTIONS.length) % DATE_RANGE_OPTIONS.length;
+      onChange(DATE_RANGE_OPTIONS[prev].value);
+    }
+  };
+
+  const currentIdx = DATE_RANGE_OPTIONS.findIndex((o) => o.value === value);
+
   return (
     <div
       className={className}
@@ -75,7 +89,7 @@ const AnalyticsDateRangePicker: React.FC<AnalyticsDateRangePickerProps> = ({
           boxSizing: "border-box",
         }}
       >
-        {DATE_RANGE_OPTIONS.map((option) => {
+        {DATE_RANGE_OPTIONS.map((option, idx) => {
           const isSelected = option.value === value;
 
           return (
@@ -85,6 +99,8 @@ const AnalyticsDateRangePicker: React.FC<AnalyticsDateRangePickerProps> = ({
               aria-label={option.ariaLabel}
               aria-pressed={isSelected}
               onClick={() => onChange(option.value)}
+              onKeyDown={(e) => handleKeyDown(e, idx)}
+              tabIndex={idx === currentIdx ? 0 : -1}
               style={{
                 flex: "1 1 120px",
                 minWidth: "0",

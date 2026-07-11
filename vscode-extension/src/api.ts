@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  BackendResponse,
   ReviewResponse,
   buildRequestBody,
   buildRequestHeaders,
@@ -11,7 +12,7 @@ export { ReviewItem, FileReview, AnalysisData, BackendResponse, ReviewResponse }
 
 function getConfig() {
   const config = vscode.workspace.getConfiguration("reposage");
-  const apiUrl = config.get<string>("apiUrl", "http://localhost:5000");
+  const apiUrl = config.get<string>("apiUrl", "https://localhost:5000");
   return { apiUrl };
 }
 
@@ -25,11 +26,15 @@ export async function reviewFileContent(
   const headers = buildRequestHeaders(apiKey);
 
   try {
-    const response = await fetch(`${apiUrl}/api/analyze`, {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    const response = await fetch(`${apiUrl}/api/analyze-file`, {
       method: "POST",
       headers,
       body: JSON.stringify(buildRequestBody(fileName, content)),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -39,9 +44,13 @@ export async function reviewFileContent(
       };
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as BackendResponse;
     console.log("RepoSage API response:", data);
-    return { success: true, response: JSON.stringify(data, null, 2) };
+    return {
+      success: true,
+      response: JSON.stringify(data, null, 2),
+      data,
+    };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("RepoSage API fetch failed:", err);

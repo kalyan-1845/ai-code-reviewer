@@ -21,7 +21,7 @@ export const rules = [
   },
   {
     type: "Database Connection Credentials",
-    regex: /(mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/|mysql:\/\/)[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
+    regex: /(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql):\/\/[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@/gi,
     description: "Database connection credentials detected directly in code. Exposes the database tables to global read/write breaches."
   },
   {
@@ -36,7 +36,7 @@ export const rules = [
   },
   {
     type: "Common Environment Credential",
-    regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*(['"])([^\n]*?)\1/gi,
+    regex: /(?:password|passwd|secret|secret_key|private_key|api_key|token|auth_token)\s*=\s*['"][^'"]{1,255}['"]/gi,
     description: "Hardcoded credential (e.g. password, secret key, token) detected. Storing raw configurations in code commits is a major security risk."
   },
   {
@@ -51,17 +51,17 @@ export const rules = [
   },
   {
     type: "JWT Token Check",
-    regex: /\beyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*\b/g,
+    regex: /\beyJ[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+\b/g,
     description: "Potential hardcoded JSON Web Token (JWT) detected. Exposing JWT credentials allows authentication bypass or identity impersonation."
   },
   {
     type: "Generic API Key / Token",
-    regex: /(?:api_key|apikey|secret_key|auth_token|client_secret)\b\s*[:=]\s*(['"])([A-Za-z0-9-_]{16,64})\1/gi,
+    regex: /(?:api_key|apikey|secret_key|auth_token|client_secret)\b\s*[:=]\s*['"][A-Za-z0-9_-]{16,64}['"]/gi,
     description: "Potential hardcoded Generic API Key or Token detected. This can lead to unauthorized service integration access."
   },
   {
     type: "Hardcoded IPv4 Address",
-    regex: /\b(?!127\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)(?!0\.0\.0\.0\b)(?!255\.255\.255\.255\b)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
+    regex: /\b(?!10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)(?!127\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)(?!172\.1[6-9]\.\d{1,3}\.\d{1,3}\b)(?!172\.2\d\.\d{1,3}\.\d{1,3}\b)(?!172\.3[01]\.\d{1,3}\.\d{1,3}\b)(?!169\.254\.\d{1,3}\.\d{1,3}\b)(?!192\.168\.\d{1,3}\.\d{1,3}\b)(?!192\.0\.2\.\d{1,3}\b)(?!198\.51\.100\.\d{1,3}\b)(?!203\.0\.113\.\d{1,3}\b)(?!0\.0\.0\.0\b)(?!255\.255\.255\.255\b)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
     description: "🌐 [Network/Crypto Leak] Hardcoded IPv4 address detected. Exposing internal or public IP addresses in source code reveals network topology and can assist attackers in reconnaissance or lateral movement."
   },
   {
@@ -73,38 +73,65 @@ export const rules = [
     type: "Bitcoin (BTC) Wallet Address",
     regex: /\b(?:1[1-9A-HJ-NP-Za-km-z]{25,34}|3[1-9A-HJ-NP-Za-km-z]{25,34}|bc1[0-9a-z]{25,39})\b/g,
     description: "🪙 [Network/Crypto Leak] Hardcoded Bitcoin wallet address detected. Committing cryptocurrency wallet addresses to public repositories exposes them to scraping bots and targeted attacks."
+  },
+  {
+    type: "Slack Token Check",
+    regex: /xox[baprs]-[0-9a-zA-Z]{10,48}/g,
+    description: "Potential hardcoded Slack token (User, Bot, App, or Workspace) detected. Unauthorized users can interact with your Slack workspace APIs."
+  },
+  {
+    type: "Discord Bot Token",
+    regex: /[a-zA-Z0-9_-]{24}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}/g,
+    description: "Potential hardcoded Discord Bot Token detected. This allows attackers to fully control your Discord bot and access guilds/channels."
   }
 ];
 
-const MAX_LINE_LENGTH = parseInt(process.env.SECRETS_MAX_LINE_LENGTH, 10) || 10000;
-const SCAN_TIMEOUT_MS = parseInt(process.env.SECRETS_SCAN_TIMEOUT_MS, 10) || 100;
+function getMaxLineLength() {
+  const n = parseInt(process.env.SECRETS_MAX_LINE_LENGTH, 10);
+  return Number.isFinite(n) ? n : 2000;
+}
+function getScanTimeoutMs() {
+  const n = parseInt(process.env.SECRETS_SCAN_TIMEOUT_MS, 10);
+  return Number.isFinite(n) ? n : 100;
+}
 
 export function scanSecrets(fileContent) {
   if (typeof fileContent !== 'string') return [];
   const findings = [];
   const lines = fileContent.split('\n');
   const startTime = Date.now();
-  lines.forEach((line, idx) => {
-    if (Date.now() - startTime > SCAN_TIMEOUT_MS) return;
-    if (line.length > MAX_LINE_LENGTH) return;
-    rules.forEach(rule => {
-      if (Date.now() - startTime > SCAN_TIMEOUT_MS) return;
+  const maxLineLength = getMaxLineLength();
+  const scanTimeoutMs = getScanTimeoutMs();
+  for (let idx = 0; idx < lines.length; idx++) {
+    if (Date.now() - startTime > scanTimeoutMs) break;
+    const line = lines[idx];
+    if (line.length > maxLineLength) continue;
+    for (const rule of rules) {
+      if (Date.now() - startTime > scanTimeoutMs) break;
       rule.regex.lastIndex = 0;
-      if (rule.regex.test(line)) {
+      let match;
+      while ((match = rule.regex.exec(line)) !== null) {
         findings.push({
           type: rule.type,
           line: idx + 1,
+          column: match.index,
           description: rule.description,
           suggestion: "Move this secret immediately to a protected environment configuration file (.env) and reference it as a dynamic variable instead."
         });
+        if (rule.regex.lastIndex === match.index) {
+          rule.regex.lastIndex++;
+        }
       }
-    });
-  });
+    }
+  }
 
   return findings;
 }
 
-const MAX_CHANGES_PROCESSED = parseInt(process.env.SECRETS_MAX_CHANGES, 10) || 500;
+function getMaxChangesProcessed() {
+  const n = parseInt(process.env.SECRETS_MAX_CHANGES, 10);
+  return Number.isFinite(n) ? n : 500;
+}
 
 export function scanSecretsInChanges(changes) {
   if (!Array.isArray(changes)) return { findings: [], truncated: false, totalChanges: 0, skippedReason: null };
@@ -113,34 +140,52 @@ export function scanSecretsInChanges(changes) {
   let changesProcessed = 0;
   let stoppedEarly = false;
   let reason = null;
+  const maxChanges = getMaxChangesProcessed();
+  const maxLineLen = getMaxLineLength();
+  const timeoutMs = getScanTimeoutMs();
 
   for (const change of changes) {
-    if (changesProcessed >= MAX_CHANGES_PROCESSED) {
+    if (changesProcessed >= maxChanges) {
       stoppedEarly = true;
-      reason = `Reached maximum of ${MAX_CHANGES_PROCESSED} changes processed.`;
+      reason = `Reached maximum of ${maxChanges} changes processed.`;
       break;
     }
-    if (Date.now() - startTime > SCAN_TIMEOUT_MS) {
+    if (Date.now() - startTime > timeoutMs) {
       stoppedEarly = true;
-      reason = `Scan timeout of ${SCAN_TIMEOUT_MS}ms exceeded.`;
+      reason = `Scan timeout of ${timeoutMs}ms exceeded.`;
       break;
     }
     changesProcessed++;
     if (!change || typeof change.content !== 'string') continue;
-    if (change.content.length > MAX_LINE_LENGTH) continue;
-    for (const rule of rules) {
-      if (Date.now() - startTime > SCAN_TIMEOUT_MS) {
+    const lines = change.content.split('\n');
+    const baseLine = typeof change.line === 'number' ? change.line : 1;
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      if (Date.now() - startTime > timeoutMs) {
         stoppedEarly = true;
-        reason = `Scan timeout of ${SCAN_TIMEOUT_MS}ms exceeded.`;
+        reason = `Scan timeout of ${timeoutMs}ms exceeded.`;
         break;
       }
-      rule.regex.lastIndex = 0;
-      if (rule.regex.test(change.content)) {
-        findings.push({
-          line: change.line,
-          type: "security",
-          comment: `### 🛡️ Hardcoded Secret Warning\n\nI have detected a hardcoded **${rule.type}** on line **${change.line}**.\n\n#### 💡 Actionable Suggestion\nMove this credential immediately to a protected environment variable (e.g. GitHub Secrets or \`.env\`) and load it dynamically at runtime. DO NOT commit plain secrets to public Git repositories!`
-        });
+      const lineContent = lines[lineIdx];
+      if (lineContent.length > maxLineLen) continue;
+      for (const rule of rules) {
+        if (Date.now() - startTime > timeoutMs) {
+          stoppedEarly = true;
+          reason = `Scan timeout of ${timeoutMs}ms exceeded.`;
+          break;
+        }
+        rule.regex.lastIndex = 0;
+        let match;
+        while ((match = rule.regex.exec(lineContent)) !== null) {
+          findings.push({
+            line: baseLine + lineIdx,
+            column: match.index,
+            type: "security",
+            comment: `### 🛡️ Hardcoded Secret Warning\n\nI have detected a hardcoded **${rule.type}** on line **${baseLine + lineIdx}**.\n\n#### 💡 Actionable Suggestion\nMove this credential immediately to a protected environment variable (e.g. GitHub Secrets or \`.env\`) and load it dynamically at runtime. DO NOT commit plain secrets to public Git repositories!`
+          });
+          if (rule.regex.lastIndex === match.index) {
+            rule.regex.lastIndex++;
+          }
+        }
       }
     }
     if (stoppedEarly) break;

@@ -15,6 +15,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const handleSaveRef = useRef<() => void>(() => {});
 
   const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -43,11 +44,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     previousFocusRef.current = document.activeElement as HTMLElement;
     const saved = localStorage.getItem("reposage_ai_settings");
     if (saved) {
-      setSettings(JSON.parse(saved));
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object") {
+          setSettings({ ...DEFAULT_SETTINGS, ...parsed });
+        }
+      } catch (error) {
+        console.warn("Invalid saved AI settings; using defaults.", error);
+        setSettings(DEFAULT_SETTINGS);
+      }
     }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        handleSaveRef.current();
         return;
       }
       trapFocus(e);
@@ -60,11 +73,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   }, [onClose, trapFocus]);
 
   const handleSave = () => {
+    if (settings.maxTokens < 1 || settings.maxTokens > 2048) {
+      alert("Max Tokens must be between 1 and 2048.");
+      return;
+    }
     localStorage.setItem(
       "reposage_ai_settings",
       JSON.stringify(settings)
     );
     onClose();
+  };
+  handleSaveRef.current = handleSave;
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSave();
   };
 
   const handleReset = () => {
@@ -95,6 +118,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         justifyContent: "center",
         alignItems: "center",
         zIndex: 9999,
+        transition: "background 0.3s ease",
       }}
     >
       <div
@@ -107,9 +131,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           borderRadius: "12px",
           background: "var(--panel-bg)",
           color: "var(--text-color)",
-          border: "1px solid var(--border-color)",
+        border: "1px solid var(--border-color)",
         }}
       >
+        <form onSubmit={handleFormSubmit}>
         <div
           style={{
             display: "flex",
@@ -155,12 +180,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           >
             Temperature: {settings.temperature}
           </label>
+          <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#9ca3af", lineHeight: 1.4 }}>Controls randomness in output. Lower values (0.1) produce focused results, higher values (0.9) are more creative.</p>
 
           <input
             type="range"
             min="0"
-            max="1"
-            step="0.1"
+            max="2"
+            step="0.05"
             value={settings.temperature}
             onChange={(e) =>
               setSettings({
@@ -190,6 +216,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
           <input
             type="number"
+            min="1"
+            max="2048"
             value={settings.maxTokens}
             onChange={(e) =>
               setSettings({
@@ -207,6 +235,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               outline: "none",
             }}
           />
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize: "11px",
+              color: "#9ca3af",
+            }}
+          >
+            Recommended range: 128 – 2048
+          </div>
         </div>
 
         {/* Batch Size */}
@@ -269,6 +306,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               })
             }
             placeholder="Override default AI review instructions..."
+            aria-describedby="system-prompt-warning"
             style={{
               width: "100%",
               padding: "12px",
@@ -289,7 +327,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               color: "#9ca3af",
             }}
           >
-            <span>⚠️ Malicious prompts may override AI behavior. Use only trusted instructions.</span>
+            <span id="system-prompt-warning">⚠️ Malicious prompts may override AI behavior. Use only trusted instructions.</span>
             <span>{settings.systemPrompt.length}/2000</span>
           </div>
         </div>
@@ -303,6 +341,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           }}
         >
           <button
+            type="button"
             onClick={handleReset}
             style={{
               background: "rgba(15, 23, 42, 0.6)",
@@ -324,6 +363,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             }}
           >
             <button
+              type="button"
               onClick={onClose}
               style={{
                 background: "rgba(15, 23, 42, 0.6)",
@@ -339,7 +379,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </button>
 
             <button
-              onClick={handleSave}
+              type="submit"
               style={{
                 background: "#2563eb",
                 color: "#ffffff",
@@ -354,6 +394,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </button>
           </div>
         </div>
+        </form>
       </div>
     </div>
   );

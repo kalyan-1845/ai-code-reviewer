@@ -15,6 +15,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-async-errors": "^3.1.1",
     "express-rate-limit": "^8.5.2",
     "ioredis": "^5.3.2",
     "js-yaml": "^5.2.1",
@@ -27,5 +28,12 @@
   "devDependencies": {
     "c8": "^11.0.0",
     "nodemon": "^3.1.9"
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "analytics_trends.json",
+      "temp_repos/*",
+      "temp_repos/**/*"
+    ]
   }
 }

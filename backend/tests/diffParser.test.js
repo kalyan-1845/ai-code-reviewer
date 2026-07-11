@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDiff, countLinesInDiff } from '../utils/diffParser.js';
 
-test('parseDiff should return empty array for invalid input', () => {
-  assert.deepEqual(parseDiff(null), []);
-  assert.deepEqual(parseDiff(undefined), []);
-  assert.deepEqual(parseDiff(123), []);
-  assert.deepEqual(parseDiff(''), []);
+test('parseDiff should return empty result for invalid input', () => {
+  assert.deepEqual(parseDiff(null), { files: [], binaryFiles: [] });
+  assert.deepEqual(parseDiff(undefined), { files: [], binaryFiles: [] });
+  assert.deepEqual(parseDiff(123), { files: [], binaryFiles: [] });
+  assert.deepEqual(parseDiff(''), { files: [], binaryFiles: [] });
 });
 
 test('parseDiff should parse a valid single-file diff correctly', () => {
@@ -21,7 +21,7 @@ index 123456..789012 100644
 +const c = 3;
 +const d = 4;
    `;
-  const result = parseDiff(diff);
+  const { files: result } = parseDiff(diff);
   assert.equal(result.length, 1);
   assert.equal(result[0].path, 'backend/index.js');
   assert.equal(result[0].changes.length, 2);
@@ -42,7 +42,7 @@ diff --git a/file2.js b/file2.js
 @@ -5,1 +5,2 @@
 +console.log("file2");
   `;
-  const result = parseDiff(diff);
+  const { files: result } = parseDiff(diff);
   assert.equal(result.length, 2);
   assert.equal(result[0].path, 'file1.js');
   assert.equal(result[0].changes[0].line, 1);
@@ -91,7 +91,7 @@ index abc1234..def5678 100644
 -old content
 +new content
   `;
-  const result = parseDiff(diff);
+  const { files: result } = parseDiff(diff);
   // Should extract path from "b/new_name.txt"
   assert.equal(result.length, 1);
   assert.equal(result[0].path, 'new_name.txt');
@@ -106,11 +106,13 @@ new file mode 100644
 index 0000000..1234567
 Binary files /dev/null and b/image.png differ
   `;
-  const result = parseDiff(diff);
+  const { files: result, binaryFiles } = parseDiff(diff);
   // Binary diff has no additions starting with +, so file should have 0 changes
   assert.equal(result.length, 1);
   assert.equal(result[0].path, 'image.png');
   assert.equal(result[0].changes.length, 0);
+  assert.equal(binaryFiles.length, 1);
+  assert.equal(binaryFiles[0], 'image.png');
 });
 
 test('parseDiff handles newly added file', () => {
@@ -125,7 +127,7 @@ index 0000000..1234567
 +const y = 2;
 +const z = 3;
   `;
-  const result = parseDiff(diff);
+  const { files: result } = parseDiff(diff);
   assert.equal(result.length, 1);
   assert.equal(result[0].path, 'newfile.js');
   assert.equal(result[0].changes.length, 3);
@@ -144,7 +146,7 @@ index abc1234..0000000
 -const old = 1;
 -const removed = 2;
   `;
-  const result = parseDiff(diff);
+  const { files: result } = parseDiff(diff);
   assert.equal(result.length, 1);
   assert.equal(result[0].path, 'deleted.js');
   assert.equal(result[0].changes.length, 0);
@@ -163,7 +165,7 @@ index abc..def 100644
  const b = 5;
 +second addition
   `;
-  const result = parseDiff(diff);
+  const { files: result } = parseDiff(diff);
   assert.equal(result.length, 1);
   assert.equal(result[0].changes.length, 2);
   // Line numbers reset after each @@ marker
@@ -177,7 +179,7 @@ diff --git a/script.sh b/script.sh
 old mode 100644
 new mode 100755
   `;
-  const result = parseDiff(diff);
+  const { files: result } = parseDiff(diff);
   // No additions, no @@ markers -> file with empty changes
   assert.equal(result.length, 1);
   assert.equal(result[0].changes.length, 0);
@@ -195,7 +197,7 @@ test('countLinesInDiff handles files with null changes', () => {
 test('parseDiff handles diff with no trailing newline', () => {
   // Diff string without trailing newline
   const diff = 'diff --git a/test.js b/test.js\n--- a/test.js\n+++ b/test.js\n@@ -1 +1,2 @@\n+new line';
-  const result = parseDiff(diff);
+  const { files: result } = parseDiff(diff);
   assert.equal(result.length, 1);
   assert.equal(result[0].path, 'test.js');
   assert.equal(result[0].changes.length, 1);

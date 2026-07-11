@@ -41,6 +41,54 @@ const analyticsSchema = new mongoose.Schema({
     type: Number,
     default: 100,
   },
+  prSummary: {
+  overallPurpose: {
+    type: String,
+    default: "",
+  },
+  filesChanged: {
+    type: Number,
+    default: 0,
+  },
+  majorLogicUpdates: {
+    type: [String],
+    default: [],
+  },
+  potentialRisks: {
+    type: [String],
+    default: [],
+  },
+  breakingChanges: {
+    type: [String],
+    default: [],
+  },
+  testingRecommendations: {
+    type: [String],
+    default: [],
+  },
+},
+dependencyReport: {
+  type: Array,
+  default: [],
+},
+  repositoryHealth: {
+  score: {
+    type: Number,
+    default: 100,
+  },
+  grade: {
+    type: String,
+    default: "A",
+  },
+  breakdown: {
+    type: Object,
+    default: {},
+  },
+  recommendations: {
+    type: [String],
+    default: [],
+  },
+},
   language: {
     type: String,
     default: 'General',
@@ -49,9 +97,19 @@ const analyticsSchema = new mongoose.Schema({
     type: String,
     default: 'llama-3.3-70b-versatile',
   },
+  branch: {
+  type: String,
+  default: "main",
+},
+
+commitHash: {
+  type: String,
+  default: "",
+},
   analyzedAt: {
     type: Date,
     default: Date.now,
+    expires: 2592000,
   },
 });
 

@@ -25,11 +25,11 @@ class TestGetGroqModel:
 
     def test_maps_llama_31_alias(self):
         result = get_groq_model("llama-3.1-70b")
-        assert result == "llama-3.1-8b-instant"
+        assert result == "llama-3.1-70b-versatile"
 
     def test_maps_8b_alias(self):
         result = get_groq_model("8b-model")
-        assert result == "llama-3.1-8b-instant"
+        assert result == "llama-3.3-70b-versatile"
 
     def test_maps_gemma(self):
         result = get_groq_model("gemma2-9b-it")
