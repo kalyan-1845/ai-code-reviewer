@@ -72,15 +72,15 @@ suite('api.ts - reviewFileContent', function () {
     if (vscodeStub) vscodeStub.reset();
   });
 
-  test('calls fetch with correct endpoint /api/analyze', async function () {
+  test('calls fetch with correct endpoint /api/analyze-file', async function () {
     setupFetchMock({ ok: true, status: 200, body: { analysis: {} } }, null);
     setApiUrl('http://localhost:5000');
 
     await api.reviewFileContent('test.js', 'const x = 1;', 'test-key');
 
     assert.strictEqual(mockFetchCalled, true, 'fetch should have been called');
-    assert.ok(mockFetchUrl.includes('/api/analyze'),
-      'Expected URL to contain /api/analyze, got: ' + mockFetchUrl);
+    assert.ok(mockFetchUrl.includes('/api/analyze-file'),
+      'Expected URL to contain /api/analyze-file, got: ' + mockFetchUrl);
   });
 
   test('sets Content-Type application/json header', async function () {
@@ -148,7 +148,7 @@ suite('api.ts - reviewFileContent', function () {
       'error should mention network failure, got: ' + result.error);
   });
 
-  test('sends correct request body with fileName, code, company, language, model', async function () {
+  test('sends correct request body with files array, company, language, model', async function () {
     setupFetchMock({ ok: true, status: 200, body: {} }, null);
     setApiUrl('http://localhost:5000');
 
@@ -156,8 +156,10 @@ suite('api.ts - reviewFileContent', function () {
 
     assert.strictEqual(mockFetchCalled, true);
     const sentBody = JSON.parse(mockFetchOptions.body);
-    assert.strictEqual(sentBody.code, 'const x = 42;');
-    assert.strictEqual(sentBody.fileName, 'myfile.ts');
+    assert.ok(Array.isArray(sentBody.files), 'body.files should be an array');
+    assert.strictEqual(sentBody.files.length, 1);
+    assert.strictEqual(sentBody.files[0].name, 'myfile.ts');
+    assert.strictEqual(sentBody.files[0].content, 'const x = 42;');
     assert.strictEqual(sentBody.company, 'General');
     assert.strictEqual(sentBody.language, 'English');
     assert.strictEqual(sentBody.model, 'llama-3.3-70b-versatile');
