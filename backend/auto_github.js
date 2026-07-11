@@ -76,7 +76,7 @@ async function autoAssignAndMerge() {
       });
 
       for (const comment of comments) {
-        if (comment.body.toLowerCase().includes('assign me')) {
+        if ((comment.body || '').toLowerCase().includes('assign me')) {
           const userToAssign = comment.user.login;
           const assignees = issue.assignees.map(a => a.login);
           
