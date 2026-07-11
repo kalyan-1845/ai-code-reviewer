@@ -37,6 +37,9 @@ query($owner: String!, $name: String!, $number: Int!) {
 }
 """
 res = run_query(get_id_query, {"owner": "kalyan-1845", "name": "ai-code-reviewer", "number": 482})
+if not res.get('data', {}).get('repository', {}).get('discussion'):
+    print("Error: Discussion not found or GraphQL errors:", res.get('errors', 'unknown'))
+    exit(1)
 discussion_id = res['data']['repository']['discussion']['id']
 
 # 2. Update Discussion

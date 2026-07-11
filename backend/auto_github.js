@@ -69,10 +69,11 @@ async function autoAssignAndMerge() {
     for (const issue of issues) {
       if (issue.pull_request) continue; // Skip PRs, only process issues
 
-      const { data: comments } = await octokit.rest.issues.listComments({
+      const comments = await octokit.paginate(octokit.rest.issues.listComments, {
         owner,
         repo,
-        issue_number: issue.number
+        issue_number: issue.number,
+        per_page: 100
       });
 
       for (const comment of comments) {
