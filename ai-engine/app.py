@@ -1045,7 +1045,7 @@ async def delete_vectors(request: VectorDeleteRequest):
 
 # 🟢 Route: AI Pull Request Review (Reviews specific file code additions/diffs)
 @app.post("/review-diff")
-async def review_diff(request: ReviewDiffRequest):
+async def review_diff(request: ReviewDiffRequest, raw_request: Request):
     if not groq_client:
         raise HTTPException(status_code=500, detail="Groq API client is not configured on this engine.")
     
@@ -1067,9 +1067,17 @@ async def review_diff(request: ReviewDiffRequest):
 
     print(f"📡 Forwarding PR diff reviews to Groq using model: {groq_model}")
 
-    for file in files_to_review:
-        if len(file.changes) == 0:
-            continue
+    # Overall timeout mirroring /analyze to prevent unbounded resource consumption
+    try:
+        async with asyncio.timeout(ANALYSIS_TIMEOUT_SECONDS):
+            for file in files_to_review:
+                # Stop processing if the client has disconnected
+                if await raw_request.is_disconnected():
+                    print("⚠️ Client disconnected, stopping review-diff processing")
+                    break
+
+                if len(file.changes) == 0:
+                    continue
         
         changes_text = "\n".join([f"Line {c.line}: {c.content}" for c in file.changes])
         changes_text = sanitize_file_content(changes_text)
@@ -1144,6 +1152,8 @@ If no issues are found, reply with: {{ "reviews": [] }}"""
                         })
         except Exception as e:
             print(f"⚠️ Error reviewing file {file.path} on Groq: {sanitize_error(str(e), api_key)}")
+    except asyncio.TimeoutError:
+        print(f"⚠️ review-diff timed out after {int(ANALYSIS_TIMEOUT_SECONDS)}s, returning partial results")
 
     result = {"comments": comments}
     if truncated:
