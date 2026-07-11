@@ -87,8 +87,18 @@ export function analyzeComplexity(fileContent, filePath) {
         inBlockComment = true;
       }
     } else if (usesHtmlBlocks) {
+      if (inBlockComment) {
+        commentLines++;
+        if (trimmed.includes('-->')) {
+          inBlockComment = false;
+        }
+        return;
+      }
       if (trimmed.startsWith('<!--')) {
         commentLines++;
+        if (!trimmed.includes('-->')) {
+          inBlockComment = true;
+        }
       }
     }
 
