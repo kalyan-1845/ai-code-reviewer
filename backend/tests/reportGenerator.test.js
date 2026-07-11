@@ -126,6 +126,31 @@ test('reportGenerator: generateHTMLReport writes valid HTML with finding rows', 
   }
 });
 
+test('reportGenerator: generateHTMLReport handles custom or unknown severities in sorting without throwing', () => {
+  const outputPath = path.join(TMPDIR, `test-custom-severity-${Date.now()}.html`);
+  try {
+    const repoName = 'custom-severity-repo';
+    const files = [{ name: 'src/app.js' }];
+    const result = generateHTMLReport(repoName, files, {
+      fileReviews: {
+        'src/app.js': {
+          bugs: [
+            { line: 5, description: 'Normal bug', rule: 'bug-rule' },
+            { line: 6, description: 'Unknown severity bug', rule: 'custom-rule', severity: 'critical' }
+          ],
+          security: [],
+          optimization: [],
+          styling: [],
+        }
+      }
+    }, outputPath);
+    assert.equal(result.success, true);
+    assert.equal(result.findingCount, 2);
+  } finally {
+    if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+  }
+});
+
 test('reportGenerator: generateHTMLReport returns success:false when write fails', () => {
   const result = generateHTMLReport('repo', [], null, '/nonexistent-dir/fail.html');
   assert.equal(result.success, false);
