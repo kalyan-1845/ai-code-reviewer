@@ -6,6 +6,7 @@ import simpleGit from 'simple-git';
 import { isValidRepoUrl } from './urlValidator.js';
 import { loadIgnorePatterns, isIgnored } from './ignoreHelper.js';
 import { deleteFolderRecursive } from './fileHelper.js';
+import { loadRepoConfig } from './configParser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -145,6 +146,12 @@ export function readCodeFilesFromLocalDir(localDir, options = {}) {
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const extensionSet = new Set(extensions);
   const ignorePatterns = loadIgnorePatterns(localDir);
+  
+  const repoConfig = loadRepoConfig(localDir);
+  if (repoConfig?.review?.ignore_paths && Array.isArray(repoConfig.review.ignore_paths)) {
+    ignorePatterns.push(...repoConfig.review.ignore_paths);
+  }
+
   return walkForExtensions(localDir, extensionSet, ignorePatterns, maxFiles, maxDepth, maxBytes);
 }
 
@@ -195,6 +202,11 @@ export async function readCodeFilesFromRepo(repoUrl, options = {}) {
     await git.clone(repoUrl, clonePath, ['--depth', '1']);
 
     const ignorePatterns = loadIgnorePatterns(clonePath);
+    const repoConfig = loadRepoConfig(clonePath);
+    if (repoConfig?.review?.ignore_paths && Array.isArray(repoConfig.review.ignore_paths)) {
+      ignorePatterns.push(...repoConfig.review.ignore_paths);
+    }
+
     return walkForExtensions(
       clonePath,
       extensionSet,

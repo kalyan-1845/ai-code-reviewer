@@ -14,6 +14,7 @@ import RedisStore from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
 import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
+import { loadRepoConfig } from './utils/configParser.js';
 import { isValidRepoUrl, parseRepoUrl } from './utils/urlValidator.js';
 import simpleGit from 'simple-git';
 import escapeHtml from 'lodash.escape';
@@ -369,6 +370,25 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
     try {
       // 1. Load ignore patterns and read files
       const ignorePatterns = loadIgnorePatterns(clonePath);
+      
+      const repoConfig = loadRepoConfig(clonePath);
+      if (repoConfig && repoConfig.review) {
+        let additionalPrompt = "";
+        if (repoConfig.review.focus_areas && Array.isArray(repoConfig.review.focus_areas) && repoConfig.review.focus_areas.length > 0) {
+          additionalPrompt += "\nFocus Areas:\n" + repoConfig.review.focus_areas.map(a => `- ${a}`).join('\n');
+        }
+        if (repoConfig.review.custom_rules && Array.isArray(repoConfig.review.custom_rules) && repoConfig.review.custom_rules.length > 0) {
+          additionalPrompt += "\nCustom Rules:\n" + repoConfig.review.custom_rules.map(r => `- ${r}`).join('\n');
+        }
+        if (additionalPrompt) {
+          validatedPrompt = (validatedPrompt || "") + "\n\nRepository Specific AI Configurations:" + additionalPrompt;
+        }
+
+        if (repoConfig.review.ignore_paths && Array.isArray(repoConfig.review.ignore_paths) && repoConfig.review.ignore_paths.length > 0) {
+          ignorePatterns.push(...repoConfig.review.ignore_paths);
+        }
+      }
+
       const files = readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
       
       if (files.length === 0) {
