@@ -32,8 +32,7 @@ describe("Utils Unit Tests", () => {
     it("should construct request body correctly", () => {
       const body = buildRequestBody("index.js", "const a = 1;");
       expect(body).to.deep.equal({
-        code: "const a = 1;",
-        fileName: "index.js",
+        files: [{ name: "index.js", content: "const a = 1;" }],
         company: "General",
         language: "English",
         model: "llama-3.3-70b-versatile",

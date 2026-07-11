@@ -20,6 +20,10 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copy the production build from the builder stage
 COPY --from=builder /usr/src/app/dist /usr/share/nginx/html
 
+RUN echo '#!/bin/sh' > /docker-entrypoint.d/40-env-config.sh && \
+    echo 'echo "window.__RUNTIME_API_URL__ = \"${VITE_API_URL}\";" > /usr/share/nginx/html/config.js' >> /docker-entrypoint.d/40-env-config.sh && \
+    chmod +x /docker-entrypoint.d/40-env-config.sh
+
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]

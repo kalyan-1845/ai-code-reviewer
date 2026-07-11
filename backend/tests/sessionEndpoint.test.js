@@ -9,8 +9,9 @@ import assert from 'node:assert/strict';
 
 import { createFrontendSessionCookie, requireApiKey } from '../utils/authMiddleware.js';
 
-// Set up a test API key for all tests
+// Set up a test API key and session secret for all tests
 process.env.REPOSAGE_API_KEY = 'test-session-key-123';
+process.env.SESSION_SECRET = 'test-session-secret-456';
 
 function makeMockReqRes(overrides = {}) {
   const headers = {};
@@ -32,6 +33,9 @@ function makeMockReqRes(overrides = {}) {
     },
     json(data) {
       this.body = data;
+      return this;
+    },
+    cookie(name, value, options) {
       return this;
     },
   };
@@ -56,6 +60,9 @@ function makeSessionReqRes() {
       return this;
     },
     json(data) {
+      return this;
+    },
+    cookie(name, value, options) {
       return this;
     },
   };
@@ -116,47 +123,48 @@ test('requireApiKey accepts session cookie as alternative auth', () => {
   assert.strictEqual(nextCalled, true);
 });
 
-test('createFrontendSessionCookie returns a non-empty string with valid API key', () => {
+test('createFrontendSessionCookie returns a non-empty cookieHeader with valid API key', () => {
   const { res } = makeSessionReqRes();
-  const cookie = createFrontendSessionCookie(res);
-  assert.strictEqual(typeof cookie, 'string');
-  assert.ok(cookie.length > 0, 'cookie string should not be empty');
+  const session = createFrontendSessionCookie(res);
+  assert.ok(typeof session === 'object' && session.cookieHeader, 'should return an object with cookieHeader');
+  assert.ok(session.cookieHeader.length > 0, 'cookieHeader should not be empty');
+  assert.ok(typeof session.clientId === 'string', 'should return a clientId');
 });
 
 test('createFrontendSessionCookie includes HttpOnly flag', () => {
   const { res } = makeSessionReqRes();
-  const cookie = createFrontendSessionCookie(res);
-  assert.ok(cookie.includes('HttpOnly'), 'cookie should have HttpOnly flag');
+  const session = createFrontendSessionCookie(res);
+  assert.ok(session.cookieHeader.includes('HttpOnly'), 'cookie should have HttpOnly flag');
 });
 
 test('createFrontendSessionCookie includes SameSite=Strict', () => {
   const { res } = makeSessionReqRes();
-  const cookie = createFrontendSessionCookie(res);
-  assert.ok(cookie.includes('SameSite=Strict'), 'cookie should have SameSite=Strict');
+  const session = createFrontendSessionCookie(res);
+  assert.ok(session.cookieHeader.includes('SameSite=Strict'), 'cookie should have SameSite=Strict');
 });
 
 test('createFrontendSessionCookie includes Path=/', () => {
   const { res } = makeSessionReqRes();
-  const cookie = createFrontendSessionCookie(res);
-  assert.ok(cookie.includes('Path=/'), 'cookie should have Path=/');
+  const session = createFrontendSessionCookie(res);
+  assert.ok(session.cookieHeader.includes('Path=/'), 'cookie should have Path=/');
 });
 
 test('createFrontendSessionCookie includes Max-Age', () => {
   const { res } = makeSessionReqRes();
-  const cookie = createFrontendSessionCookie(res);
-  assert.ok(cookie.includes('Max-Age='), 'cookie should have Max-Age');
+  const session = createFrontendSessionCookie(res);
+  assert.ok(session.cookieHeader.includes('Max-Age='), 'cookie should have Max-Age');
 });
 
-test('createFrontendSessionCookie includes reposage_session name prefix', () => {
+test('createFrontendSessionCookie includes rps_v1_session name prefix', () => {
   const { res } = makeSessionReqRes();
-  const cookie = createFrontendSessionCookie(res);
-  assert.ok(cookie.startsWith('reposage_session='), 'cookie name should be reposage_session');
+  const session = createFrontendSessionCookie(res);
+  assert.ok(session.cookieHeader.startsWith('rps_v1_session='), 'cookie name should be rps_v1_session');
 });
 
 test('createFrontendSessionCookie value has payload.signature format', () => {
   const { res } = makeSessionReqRes();
-  const cookie = createFrontendSessionCookie(res);
-  const nameValuePart = cookie.split(';')[0]; // "reposage_session=base64.sig"
+  const session = createFrontendSessionCookie(res);
+  const nameValuePart = session.cookieHeader.split(';')[0]; // "rps_v1_session=base64.sig"
   const value = nameValuePart.split('=')[1];
   assert.ok(value.includes('.'), 'cookie value should have payload.signature format');
   const segments = value.split('.');
@@ -165,8 +173,8 @@ test('createFrontendSessionCookie value has payload.signature format', () => {
 
 test('createFrontendSessionCookie payload is valid base64url', () => {
   const { res } = makeSessionReqRes();
-  const cookie = createFrontendSessionCookie(res);
-  const nameValuePart = cookie.split(';')[0];
+  const session = createFrontendSessionCookie(res);
+  const nameValuePart = session.cookieHeader.split(';')[0];
   const value = nameValuePart.split('=')[1];
   const payload = value.split('.')[0];
   // Verify it decodes as valid base64url (no invalid chars)

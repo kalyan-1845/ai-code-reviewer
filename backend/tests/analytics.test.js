@@ -187,6 +187,8 @@ test('Analytics schema definition contains expected fields', () => {
   assert.ok('totalStylingIssues' in paths, 'schema should have totalStylingIssues path');
   assert.ok('totalFindings' in paths, 'schema should have totalFindings path');
   assert.ok('healthScore' in paths, 'schema should have healthScore path');
+  assert.ok('prSummary.overallPurpose' in paths, 'schema should have nested prSummary.overallPurpose path');
+  assert.ok('dependencyReport' in paths, 'schema should have top-level dependencyReport path');
   assert.ok('language' in paths, 'schema should have language path');
   assert.ok('model' in paths, 'schema should have model path');
   assert.ok('analyzedAt' in paths, 'schema should have analyzedAt path');

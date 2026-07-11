@@ -1,0 +1,23 @@
+{
+  "phases": [
+    {"id":7,"title":"Phase 7 – Repository Chunking Engine","description":"Implement language‑aware and AST‑aware chunking, metadata enrichment, and deduplication.","acceptance":["CLI creates a GitHub issue titled \"Phase 7 – Repository Chunking Engine\"","Issue body contains detailed description and acceptance criteria"]},
+    {"id":8,"title":"Phase 8 – Repository Intelligence Graph","description":"Build a dependency graph for the repository using NetworkX.","acceptance":["Graph endpoint added","Tests for graph generation"]},
+    {"id":9,"title":"Phase 9 – Architecture Discovery Engine","description":"Detect architectural layers (controllers, services, etc.) and expose via API.","acceptance":["Architecture map returned in analysis response"]},
+    {"id":10,"title":"Phase 10 – AI Repository Chat","description":"Add conversation memory and history endpoints.","acceptance":["Chat history persisted","Frontend stores history"]},
+    {"id":11,"title":"Phase 11 – Code Review Recommendation Engine","description":"Structured review with best‑practice scoring.","acceptance":["Maintainability score added"]},
+    {"id":12,"title":"Phase 12 – Security Vulnerability Detection","description":"OWASP scanner and LLM security analysis.","acceptance":["SecurityScore field added"]},
+    {"id":13,"title":"Phase 13 – Performance Analysis Engine","description":"Static performance heuristics and score.","acceptance":["PerformanceScore field added"]},
+    {"id":14,"title":"Phase 14 – Code Smell Detection Platform","description":"Detect duplicate code, dead code, and anti‑patterns.","acceptance":["Smells array in response"]},
+    {"id":15,"title":"Phase 15 – Technical Debt Analyzer","description":"Aggregate debt score and breakdown.","acceptance":["DebtScore and DebtBreakdown fields added"]},
+    {"id":16,"title":"Phase 16 – AI README Intelligence Generator","description":"Generate README with architecture and API docs.","acceptance":["README generation endpoint"]},
+    {"id":17,"title":"Phase 17 – Pull Request Intelligence Layer","description":"Impact analysis and risk scoring for PRs.","acceptance":["prRiskScore added"]},
+    {"id":18,"title":"Phase 18 – GitHub Action Review Bot 2.0","description":"Enhanced comment templates for security and performance.","acceptance":["Configurable verbosity"]},
+    {"id":19,"title":"Phase 19 – Repository Health Dashboard","description":"Add debt, security, and quality charts.","acceptance":["New frontend components and API"]},
+    {"id":20,"title":"Phase 20 – Multi‑Repository Analytics","description":"MongoDB backed analytics across repos.","acceptance":["Portfolio view implemented"]},
+    {"id":21,"title":"Phase 21 – Developer Productivity Intelligence","description":"GitHub metrics integration and productivity panel.","acceptance":["Productivity endpoint and UI"]},
+    {"id":22,"title":"Phase 22 – VS Code Extension Core","description":"Core VS Code extension with commands.","acceptance":["Extension activates and calls backend"]},
+    {"id":23,"title":"Phase 23 – VS Code AI Assistant","description":"Inline AI suggestions via code lens.","acceptance":["AI assistant works in editor"]},
+    {"id":24,"title":"Phase 24 – Enterprise Governance Layer","description":"RBAC, audit logs, and policy enforcement.","acceptance":["Governance routes added"]},
+    {"id":25,"title":"Phase 25 – RepoSage Enterprise Platform","description":"Full enterprise dashboard integrating all phases.","acceptance":["Enterprise UI and APIs"]}
+  ]
+}

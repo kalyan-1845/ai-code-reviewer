@@ -23,9 +23,9 @@ class TestGetGrokModel:
         result2 = get_groq_model("LLaMA-3.1-8B")
         assert result2 == "llama-3.1-8b-instant"
 
-    def test_8b_alone_maps_to_instant(self):
+    def test_8b_alone_maps_to_default(self):
         result = get_groq_model("8b")
-        assert result == "llama-3.1-8b-instant"
+        assert result == "llama-3.3-70b-versatile"
         result2 = get_groq_model("8b-instant")
         assert result2 == "llama-3.1-8b-instant"
 

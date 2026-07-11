@@ -12,13 +12,17 @@ except Exception as exc:
 
 _EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 _FALLBACK_EMBEDDING_DIMENSION = 384
+_USE_SENTENCE_TRANSFORMER = os.getenv("USE_SENTENCE_TRANSFORMER", "false").lower() == "true"
 _model = None
 _fallback_active = False
 
 _MAX_CACHE_SIZE = int(os.getenv("MAX_EMBEDDING_CACHE_SIZE", "10000"))
 _cache_enabled = os.getenv("EMBEDDING_CACHE_ENABLED", "true").lower() == "true"
 _embedding_cache = collections.OrderedDict()
+_cache_access_order = _embedding_cache
 _cache_lock = threading.Lock()
+_per_key_locks: dict[str, threading.Lock] = {}
+_per_key_locks_lock = threading.Lock()
 _embedding_dimension = None
 
 
@@ -70,7 +74,7 @@ def is_fallback_active() -> bool:
 def _get_model():
     global _model, _fallback_active
     if _model is None:
-        if SentenceTransformer is None:
+        if not _USE_SENTENCE_TRANSFORMER or SentenceTransformer is None:
             _fallback_active = True
             _model = _DeterministicEmbeddingModel()
         else:
@@ -112,6 +116,20 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     return [v.tolist() for v in vecs]
 
 
+def _get_per_key_lock(file_path: str) -> threading.Lock:
+    with _per_key_locks_lock:
+        lock = _per_key_locks.get(file_path)
+        if lock is None:
+            lock = threading.Lock()
+            _per_key_locks[file_path] = lock
+        return lock
+
+
+def _cleanup_per_key_lock(file_path: str) -> None:
+    with _per_key_locks_lock:
+        _per_key_locks.pop(file_path, None)
+
+
 def get_or_compute_embedding(file_path: str, content: str) -> list[float]:
     if not _cache_enabled:
         return embed_text(content)
@@ -121,15 +139,19 @@ def get_or_compute_embedding(file_path: str, content: str) -> list[float]:
         if cached is not None and cached["content_hash"] == content_hash:
             _embedding_cache.move_to_end(file_path)
             return cached["embedding"]
-    embedding = embed_text(content)
-    with _cache_lock:
-        cached = _embedding_cache.get(file_path)
-        if cached is not None and cached["content_hash"] == content_hash:
-            return cached["embedding"]
-        _embedding_cache[file_path] = {"content_hash": content_hash, "embedding": embedding}
-        _embedding_cache.move_to_end(file_path)
-        if len(_embedding_cache) > _MAX_CACHE_SIZE:
-            _embedding_cache.popitem(last=False)
+    per_key_lock = _get_per_key_lock(file_path)
+    with per_key_lock:
+        with _cache_lock:
+            cached = _embedding_cache.get(file_path)
+            if cached is not None and cached["content_hash"] == content_hash:
+                _embedding_cache.move_to_end(file_path)
+                return cached["embedding"]
+        embedding = embed_text(content)
+        with _cache_lock:
+            _embedding_cache[file_path] = {"content_hash": content_hash, "embedding": embedding}
+            _embedding_cache.move_to_end(file_path)
+            if len(_embedding_cache) > _MAX_CACHE_SIZE:
+                _embedding_cache.popitem(last=False)
     return embedding
 
 
@@ -151,3 +173,16 @@ def get_cache_stats() -> dict:
             "max_size": _MAX_CACHE_SIZE,
             "keys": list(_embedding_cache.keys()),
         }
+
+
+import asyncio
+
+
+async def async_embed_text(text: str) -> list[float]:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, embed_text, text)
+
+
+async def async_embed_texts(texts: list[str]) -> list[list[float]]:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, embed_texts, texts)

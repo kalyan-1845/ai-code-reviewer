@@ -1,3 +1,7 @@
+// Prepared for future use — not yet wired into the backend pipeline.
+// Tests exist at backend/tests/repoReader*.test.js.
+// Remove this notice when the first consumer import is added.
+
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -192,7 +196,12 @@ export async function readCodeFilesFromRepo(repoUrl, options = {}) {
 
   try {
     const git = simpleGit({ timeout: { block: cloneTimeoutMs } });
-    await git.clone(repoUrl, clonePath, ['--depth', '1']);
+    await git.clone(repoUrl, clonePath, [
+      '--depth', '1',
+      '--single-branch',
+      '--no-checkout'
+    ]);
+    await git.cwd(clonePath).checkout(['HEAD']);
 
     const ignorePatterns = loadIgnorePatterns(clonePath);
     return walkForExtensions(

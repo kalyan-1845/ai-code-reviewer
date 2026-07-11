@@ -45,8 +45,8 @@ test('rules is an array with at least one entry', () => {
   assert.ok(rules.length > 0, 'rules should not be empty');
 });
 
-test('rules has exactly 15 entries', () => {
-  assert.equal(rules.length, 15, 'rules array should have 15 entries');
+test('rules has exactly 17 entries', () => {
+  assert.equal(rules.length, 17, 'rules array should have 17 entries');
 });
 
 test('every rule has a type string', () => {
@@ -205,10 +205,13 @@ test('Hardcoded IPv4 Address rule exists and matches non-loopback IPs', () => {
   assert.ok(ipRule, 'IPv4 rule should exist');
 
   ipRule.regex.lastIndex = 0;
-  assert.ok(ipRule.regex.test('192.168.1.100'), 'should match private network IP');
+  assert.ok(!ipRule.regex.test('192.168.1.100'), 'should NOT match private network IP');
 
   ipRule.regex.lastIndex = 0;
-  assert.ok(ipRule.regex.test('10.0.0.5'), 'should match 10.x.x.x IP');
+  assert.ok(!ipRule.regex.test('10.0.0.5'), 'should NOT match 10.x.x.x IP');
+
+  ipRule.regex.lastIndex = 0;
+  assert.ok(ipRule.regex.test('8.8.8.8'), 'should match public IP');
 
   ipRule.regex.lastIndex = 0;
   assert.ok(!ipRule.regex.test('127.0.0.1'), 'should NOT match loopback 127.0.0.1');

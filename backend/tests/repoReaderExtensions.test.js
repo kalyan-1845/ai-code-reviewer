@@ -154,3 +154,59 @@ test('REPO_READER_DEFAULTS clone is not affected by mutation attempts', () => {
     'Frozen object should not be affected by mutation attempts'
   );
 });
+
+test('readCodeFilesFromLocalDir returns empty array for empty directory', async () => {
+  const fs = await import('fs');
+  const path = await import('path');
+  const os = await import('os');
+  const emptyDir = path.join(os.tmpdir(), `repo_reader_empty_${Date.now()}`);
+  fs.mkdirSync(emptyDir, { recursive: true });
+  try {
+    const result = readCodeFilesFromLocalDir(emptyDir);
+    assert.deepEqual(result, [], 'Empty directory should return empty array');
+  } finally {
+    fs.rmdirSync(emptyDir);
+  }
+});
+
+test('readCodeFilesFromLocalDir returns empty array when only unsupported file types exist', async () => {
+  const fs = await import('fs');
+  const path = await import('path');
+  const os = await import('os');
+  const unsuppDir = path.join(os.tmpdir(), `repo_reader_unsupp_${Date.now()}`);
+  fs.mkdirSync(unsuppDir, { recursive: true });
+  try {
+    fs.writeFileSync(path.join(unsuppDir, 'data.csv'), 'a,b,c\n1,2,3');
+    fs.writeFileSync(path.join(unsuppDir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    fs.writeFileSync(path.join(unsuppDir, 'config.toml'), '[section]\nkey=value');
+    const result = readCodeFilesFromLocalDir(unsuppDir);
+    // csv, png, and toml are not in the default extension set (.js, .py, .ts)
+    assert.deepEqual(result, [], 'Only unsupported extensions should return empty array');
+  } finally {
+    fs.rmSync(unsuppDir, { recursive: true, force: true });
+  }
+});
+
+test('readCodeFilesFromLocalDir returns files when extension filter includes unsupported types', async () => {
+  const fs = await import('fs');
+  const path = await import('path');
+  const os = await import('os');
+  const mixedDir = path.join(os.tmpdir(), `repo_reader_mixed_${Date.now()}`);
+  fs.mkdirSync(mixedDir, { recursive: true });
+  try {
+    fs.writeFileSync(path.join(mixedDir, 'script.py'), 'x = 1');
+    fs.writeFileSync(path.join(mixedDir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const result = readCodeFilesFromLocalDir(mixedDir, { extensions: ['.py', '.png'] });
+    assert.equal(result.length, 2, 'Should include both py and png when both extensions are specified');
+    const extensions = result.map(e => path.extname(e.path).toLowerCase()).sort();
+    assert.deepEqual(extensions, ['.png', '.py']);
+  } finally {
+    fs.rmSync(mixedDir, { recursive: true, force: true });
+  }
+});
+
+test('REPO_READER_DEFAULTS cloneTimeoutMs is a positive integer in milliseconds', () => {
+  assert.equal(Number.isInteger(REPO_READER_DEFAULTS.cloneTimeoutMs), true);
+  assert.ok(REPO_READER_DEFAULTS.cloneTimeoutMs > 0, 'cloneTimeoutMs should be positive');
+  assert.ok(REPO_READER_DEFAULTS.cloneTimeoutMs >= 1000, 'cloneTimeoutMs should be at least 1 second');
+});

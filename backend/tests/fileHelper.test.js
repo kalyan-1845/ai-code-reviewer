@@ -9,6 +9,20 @@ import { deleteFolderRecursive } from '../utils/fileHelper.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const canCreateSymlinks = (() => {
+  try {
+    const tempTarget = path.join(os.tmpdir(), `symlink-test-target-${Date.now()}`);
+    const tempLink = path.join(os.tmpdir(), `symlink-test-link-${Date.now()}`);
+    fs.writeFileSync(tempTarget, 'test');
+    fs.symlinkSync(tempTarget, tempLink);
+    fs.unlinkSync(tempLink);
+    fs.unlinkSync(tempTarget);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 test('deleteFolderRecursive should delete nested directories and files correctly', async () => {
   const tempDir = path.join(__dirname, 'temp_test_delete');
   if (!fs.existsSync(tempDir)) {
@@ -34,7 +48,7 @@ test('deleteFolderRecursive should not throw if directory does not exist', () =>
   });
 });
 
-test('deleteFolderRecursive skips valid symlinks without following them', () => {
+test('deleteFolderRecursive skips valid symlinks without following them', { skip: !canCreateSymlinks }, () => {
   // Create a real external directory as the symlink target
   const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'symlink-external-'));
   const safeFile = path.join(externalDir, 'safe_file.txt');
@@ -64,7 +78,7 @@ test('deleteFolderRecursive skips valid symlinks without following them', () => 
   fs.rmdirSync(externalDir);
 });
 
-test('deleteFolderRecursive skips broken symlinks without throwing', () => {
+test('deleteFolderRecursive skips broken symlinks without throwing', { skip: !canCreateSymlinks }, () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'broken_symlink_test-'));
   const brokenLink = path.join(tempDir, 'broken_link');
   // symlink to nonexistent target

@@ -59,12 +59,14 @@ To claim an issue:
   - Define CSS variables for key colors (backgrounds, text, borders) in `frontend/src/index.css` and use them dynamically.
   - Persist theme preference in `localStorage`.
 
-### 6. 🎨 Frontend: Interactive File Tree Filter & Search
+### 6. ~~🎨 Frontend: Interactive File Tree Filter & Search~~ ✅ Completed
 * **Description**: Add a search input box at the top of the File Navigator side panel to quickly filter files by name or extension in repositories with large directory structures.
+* **Status**: ✅ Implemented — includes debounced search input, extension filter tags (`All`, `JS/TS`, `Python`, `CSS/HTML`), and a clear-filter ("X") button ([#998](https://github.com/kalyan-1845/ai-code-reviewer/issues/998)) that resets the search state instantly.
 * **Suggested Labels**: `gssoc26`, `good-first-issue`, `frontend`
 * **Implementation Hints**:
-  - Open `frontend/src/App.tsx` and find the File Tree List rendering block.
-  - Add an input filter textbox with search/filter queries, and only render matching keys.
+  - Open `frontend/src/pages/Dashboard.tsx` and find the File Navigator panel (line ~1971).
+  - The search input uses `fileFilterQuery` state with a 300ms debounce via `useDebounce`.
+  - A conditional `<X>` icon button clears the filter when visible.
 
 ### 7. ⚙️ Backend: Add Endpoint to Export Review Reports to HTML
 * **Description**: Extend the Express backend with a new endpoint to convert and download structured AI reviews as a nicely formatted HTML page.

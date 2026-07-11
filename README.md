@@ -191,7 +191,7 @@ The project is split into **four independent modules**:
 
 1. Go to **[console.groq.com/keys](https://console.groq.com/keys)** and sign in (or create a free account).
 2. Click **Create API Key**, give it a name (e.g., `reposage`), and copy the key.
-3. The key is used by both the **Backend** (via `GROQ_API_KEY` env var in `backend/.env`) and the **Frontend** (via `VITE_GROQ_API_KEY`). See the backend setup below.
+3. The key is used by the server-side AI Engine via the `GROQ_API_KEY` environment variable. Do not expose it through frontend `VITE_*` variables.
 
 ### 1. Clone the Repository
 
@@ -228,13 +228,6 @@ Install the dependencies:
 ```bash
 npm install
 ```
-
-**Configure Environment Variables:**
-You need to provide your Groq API key for the frontend to function. Copy the example environment file and add your key:
-```bash
-cp .env.example .env
-```
-*(Open the newly created `.env` file and set `VITE_GROQ_API_KEY=your_api_key_here`)*
 
 Finally, start the development server:
 

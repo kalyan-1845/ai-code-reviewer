@@ -32,13 +32,31 @@ class TestIngestChunks:
             mock_get_col.return_value = mock_collection
 
             chunks = ["chunk-a", "chunk-b", "chunk-c"]
+            metadatas = [{"f": "1"}, {"f": "2"}, {"f": "3"}]
+            ids = ["id-1", "id-2", "id-3"]
             result = ingest_chunks(
                 chunks,
-                [{"f": "1"}],
-                ["id-1"],
+                metadatas,
+                ids,
             )
 
+            assert result == 3
             mock_embed.assert_called_once_with(chunks)
+
+    def test_rejects_mismatched_input_lengths(self):
+        with patch('rag.embed_texts') as mock_embed, \
+             patch('rag._get_collection') as mock_get_col:
+            chunks = ["chunk-a", "chunk-b", "chunk-c"]
+
+            with pytest.raises(ValueError, match="same length"):
+                ingest_chunks(
+                    chunks,
+                    [{"f": "1"}],
+                    ["id-1"],
+                )
+
+            mock_embed.assert_not_called()
+            mock_get_col.assert_not_called()
 
     def test_passes_correct_arguments_to_collection_add(self):
         with patch('rag.embed_texts') as mock_embed, \
@@ -70,7 +88,8 @@ class TestIngestChunks:
             result = ingest_chunks([], [], [])
 
             assert result == 0
-            mock_embed.assert_called_once_with([])
+            mock_embed.assert_not_called()
+            mock_get_col.assert_not_called()
 
     def test_ingests_large_batch_correctly(self):
         with patch('rag.embed_texts') as mock_embed, \

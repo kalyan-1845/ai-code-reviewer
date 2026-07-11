@@ -12,7 +12,7 @@ export { ReviewItem, FileReview, AnalysisData, BackendResponse, ReviewResponse }
 
 function getConfig() {
   const config = vscode.workspace.getConfiguration("reposage");
-  const apiUrl = config.get<string>("apiUrl", "http://localhost:5000");
+  const apiUrl = config.get<string>("apiUrl", "https://localhost:5000");
   return { apiUrl };
 }
 
@@ -28,7 +28,7 @@ export async function reviewFileContent(
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
-    const response = await fetch(`${apiUrl}/api/analyze`, {
+    const response = await fetch(`${apiUrl}/api/analyze-file`, {
       method: "POST",
       headers,
       body: JSON.stringify(buildRequestBody(fileName, content)),

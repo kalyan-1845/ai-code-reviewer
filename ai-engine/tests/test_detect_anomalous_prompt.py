@@ -50,8 +50,10 @@ class TestDetectAnomalousPrompt:
     def test_prompt_with_only_greek_script_flagged(self):
         # Entirely Greek prompt should also be flagged
         prompt = '\u0391\u0392\u0393'  # Greek letters Alpha Beta Gamma
-        result = detect_anomalous_prompt(prompt)
-        assert result is None
+        import pytest
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException):
+            detect_anomalous_prompt(prompt)
 
     def test_mixed_latin_and_cyrillic_low_proportion(self):
         # Mixed scripts with majority Latin should not raise

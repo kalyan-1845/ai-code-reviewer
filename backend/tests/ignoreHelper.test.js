@@ -73,3 +73,40 @@ test('readFilesRecursively should list valid files and respect ignore list', () 
   fs.unlinkSync(path.join(tempDir, 'ignored.log'));
   fs.rmdirSync(tempDir);
 });
+
+test('readFilesRecursively should skip files exceeding 100KB limit', () => {
+  const tempDir = path.join(__dirname, 'temp_test_size');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir);
+  }
+
+  // Create a small file (e.g. 12 bytes)
+  const smallFilePath = path.join(tempDir, 'small.js');
+  fs.writeFileSync(smallFilePath, 'const a = 1;');
+
+  // Create a large file exceeding 100KB (101KB)
+  const largeFilePath = path.join(tempDir, 'large.js');
+  const largeContent = 'a'.repeat(101 * 1024);
+  fs.writeFileSync(largeFilePath, largeContent);
+
+  const skippedFiles = [];
+  const files = readFilesRecursively(tempDir, [], tempDir, [], 0, skippedFiles);
+  const fileNames = files.map(f => f.name);
+
+  // Should include small.js
+  assert.ok(fileNames.includes('small.js'));
+  // Should exclude large.js
+  assert.equal(fileNames.includes('large.js'), false);
+
+  // Should record large.js in skippedFiles
+  assert.equal(skippedFiles.length, 1);
+  assert.equal(skippedFiles[0].name, 'large.js');
+  assert.equal(skippedFiles[0].reason, 'File exceeds size limit of 100KB');
+  assert.equal(skippedFiles[0].size, 101 * 1024);
+
+  // Clean up
+  fs.unlinkSync(smallFilePath);
+  fs.unlinkSync(largeFilePath);
+  fs.rmdirSync(tempDir);
+});
+

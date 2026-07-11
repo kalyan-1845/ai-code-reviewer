@@ -3,6 +3,23 @@ import path from 'path';
 
 // Helper to delete a folder recursively
 export function deleteFolderRecursive(directoryPath) {
+  let isTopLevelSymlink = false;
+  try {
+    isTopLevelSymlink = fs.lstatSync(directoryPath).isSymbolicLink();
+  } catch {
+    // Path does not exist or is inaccessible; fall through to the exists check below.
+  }
+  if (isTopLevelSymlink) {
+    // If the directory path itself is a symlink, remove only the link and
+    // never recurse into the target (prevents deleting the symlink target's
+    // contents, e.g. /etc or a sibling project directory).
+    try {
+      fs.unlinkSync(directoryPath);
+    } catch {
+      // Skip if the symlink cannot be removed (e.g., permission error).
+    }
+    return;
+  }
   if (fs.existsSync(directoryPath)) {
     fs.readdirSync(directoryPath).forEach((file) => {
       const curPath = path.join(directoryPath, file);
@@ -60,9 +77,9 @@ export async function getFolderSize(dirPath) {
     const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
     for (const file of files) {
       const filePath = path.join(dirPath, file.name);
-      if (file.isDirectory()) {
+      if (file.isDirectory() && !file.isSymbolicLink()) {
         size += await getFolderSize(filePath);
-      } else {
+      } else if (!file.isSymbolicLink()) {
         const stats = await fs.promises.stat(filePath);
         size += stats.size;
       }

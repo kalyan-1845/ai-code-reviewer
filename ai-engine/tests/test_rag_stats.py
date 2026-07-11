@@ -82,13 +82,13 @@ class TestCleanupStaleChunks:
         with patch('rag._get_collection') as mock_get_col:
             mock_col = MagicMock()
             # Simulate three chunks across two files
-            mock_col.get.return_value = {
+            mock_col.get.side_effect = [{
                 "metadatas": [
                     {"source_file": "stale.go"},
                     {"source_file": "stale.go"},
                     {"source_file": "keep.ts"},
                 ]
-            }
+            }, {"metadatas": []}, {"metadatas": []}, {"metadatas": []}]
             # delete_chunks_for_file will be called for stale.go
             mock_col.count.return_value = 1
             mock_get_col.return_value = mock_col
@@ -104,12 +104,12 @@ class TestCleanupStaleChunks:
     def test_returns_empty_when_all_files_are_current(self):
         with patch('rag._get_collection') as mock_get_col:
             mock_col = MagicMock()
-            mock_col.get.return_value = {
+            mock_col.get.side_effect = [{
                 "metadatas": [
                     {"source_file": "a.py"},
                     {"source_file": "b.py"},
                 ]
-            }
+            }, {"metadatas": []}]
             mock_col.count.return_value = 2
             mock_get_col.return_value = mock_col
 
@@ -121,12 +121,12 @@ class TestCleanupStaleChunks:
     def test_returns_all_paths_when_current_files_is_empty(self):
         with patch('rag._get_collection') as mock_get_col:
             mock_col = MagicMock()
-            mock_col.get.return_value = {
+            mock_col.get.side_effect = [{
                 "metadatas": [
                     {"source_file": "old.py"},
                     {"source_file": "old.tsx"},
                 ]
-            }
+            }, {"metadatas": []}, {"metadatas": []}, {"metadatas": []}, {"metadatas": []}]
             mock_col.count.return_value = 0
             mock_get_col.return_value = mock_col
 
@@ -137,13 +137,13 @@ class TestCleanupStaleChunks:
     def test_skips_metadata_entries_without_source_file(self):
         with patch('rag._get_collection') as mock_get_col:
             mock_col = MagicMock()
-            mock_col.get.return_value = {
+            mock_col.get.side_effect = [{
                 "metadatas": [
                     {"source_file": "valid.py"},
                     {},
                     {"other_field": "value"},
                 ]
-            }
+            }, {"metadatas": []}]
             mock_col.count.return_value = 1
             mock_get_col.return_value = mock_col
 

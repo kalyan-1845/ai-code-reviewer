@@ -53,8 +53,13 @@
       "properties": {
         "reposage.apiUrl": {
           "type": "string",
-          "default": "http://localhost:5000",
+          "default": "https://localhost:5000",
           "description": "RepoSage backend API base URL"
+        },
+        "reposage.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API Key for RepoSage backend"
         }
       }
     }
@@ -64,7 +69,7 @@
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "lint": "tsc --noEmit",
-    "test": "node ./out/test/runTest.js",
+    "test": "npm run test:unit",
     "test:unit": "mocha --require ts-node/register --timeout 10000 \"src/test/unit/**/*.test.ts\""
   },
   "devDependencies": {

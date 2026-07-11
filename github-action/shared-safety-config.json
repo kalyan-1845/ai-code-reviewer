@@ -1,0 +1,38 @@
+{
+  "_warning": "This file is the SINGLE SOURCE OF TRUTH for homoglyph maps and dangerous phrases. All consumers (backend/index.js, backend/shared/dangerousPhrases.js, ai-engine/app.py) MUST read from this file at runtime.",
+  "version": "1.0.0",
+  "homoglyph_map": {
+    "\u0430": "a", "\u0435": "e", "\u043E": "o", "\u0441": "c", "\u0440": "p",
+    "\u0445": "x", "\u0443": "y", "\u0432": "b", "\u043D": "h", "\u043A": "k",
+    "\u043C": "m", "\u0438": "i",
+    "\u0410": "A", "\u0412": "B", "\u0415": "E", "\u0421": "C", "\u041D": "H",
+    "\u041A": "K", "\u041C": "M", "\u041E": "O", "\u0420": "P", "\u0423": "Y",
+    "\u0425": "X",
+    "\u0428": "W",
+    "\u03BF": "o", "\u03B5": "e", "\u03B1": "a",
+    "\u039F": "O", "\u0395": "E", "\u0391": "A"
+  },
+  "dangerous_phrases": [
+    "ignore all", "ignore all previous instructions", "ignore all instructions",
+    "ignore previous", "ignore above", "ignore the above",
+    "ignore previous instructions",
+    "forget all", "forget all previous", "forget previous", "forget your",
+    "you are not", "you will now", "you must now", "you have been",
+    "you are programmed",
+    "from now on",
+    "override all", "override protocol",
+    "system override",
+    "new directive",
+    "protocol change",
+    "disregard", "disregard all", "disregard all previous",
+    "do not follow",
+    "instead follow",
+    "roleplay mode",
+    "real instruction", "actual instruction",
+    "replace all",
+    "disobey", "unauthorized", "breach", "bypass",
+    "your true purpose",
+    "listen to me",
+    "disable all"
+  ]
+}
