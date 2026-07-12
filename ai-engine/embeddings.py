@@ -158,6 +158,7 @@ def get_or_compute_embedding(file_path: str, content: str) -> list[float]:
 def invalidate_cache_for_file(file_path: str) -> None:
     with _cache_lock:
         _embedding_cache.pop(file_path, None)
+    _cleanup_per_key_lock(file_path)
 
 
 def clear_embedding_cache() -> None:

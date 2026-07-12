@@ -155,6 +155,13 @@ app.use((req, res, next) => {
     let totalBytes = 0;
     let responseAlreadySent = false;
     req.on('error', () => {});
+    req.on('close', () => {
+      if (!responseAlreadySent) {
+        responseAlreadySent = true;
+        req.removeAllListeners('data');
+        req.removeAllListeners('end');
+      }
+    });
     req.on('data', chunk => {
       if (responseAlreadySent) return;
       totalBytes += chunk.length;
@@ -680,7 +687,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
 
   // Generate unique folder name (needed early for logging/caching)
   const parsed = parseRepoUrl(repoUrl);
-  const repoName = parsed.repo.replace(/[^a-zA-Z0-9_-]/g, '');
+  const repoName = parsed.repo.replace(/[^a-zA-Z0-9_.-]/g, '');
   const owner = parsed.owner;
   const maxRepoSizeMB = parseInt(process.env.MAX_REPO_SIZE_MB, 10) || 100;
   const maxSizeBytes = maxRepoSizeMB * 1024 * 1024;
@@ -925,6 +932,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
                 }
                 break;
               } else {
+                await ingestResp.body?.cancel();
                 throw new Error(`Ingest responded with ${ingestResp.status}`);
               }
             } catch (ingestErr) {
@@ -939,6 +947,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
             }
           }
         } else {
+          await splitResp.body?.cancel();
           ragStatus = 'split_failed';
         }
       } catch (ragErr) {
@@ -1052,8 +1061,9 @@ const prSummary = {
       // 6. Clean up folder
       await deleteFolderRecursive(clonePath);
 
-      // Enhance findings with AI fix suggestions
+      // Enhance findings with AI fix suggestions (deep clone to avoid cache corruption)
 if (reviewResult?.fileReviews) {
+  reviewResult = JSON.parse(JSON.stringify(reviewResult));
   Object.values(reviewResult.fileReviews).forEach((review) => {
     ["bugs", "security", "optimization", "styling"].forEach((category) => {
       (review[category] || []).forEach((finding) => {

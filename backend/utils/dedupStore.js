@@ -39,7 +39,7 @@ class DedupStore {
     return val !== null && val !== undefined;
   }
 
-  async addToSet(key, member) {
+  async addToSet(key, member, ttlMs = 300000) {
     if (this.redisClient) {
       try {
         await this.redisClient.sadd(key, member);
@@ -49,7 +49,7 @@ class DedupStore {
       }
     }
     if (!this.memoryStore.has(key)) {
-      this.memoryStore.set(key, { value: new Set(), expiresAt: Infinity });
+      this.memoryStore.set(key, { value: new Set(), expiresAt: Date.now() + ttlMs });
     }
     this.memoryStore.get(key).value.add(member);
   }
