@@ -351,3 +351,28 @@ test('analyzeComplexity Ruby file with only comment returns zero code lines', ()
   assert.equal(result.codeLines, 0);
   assert.equal(result.totalLines, 2);
 });
+
+test('analyzeComplexity ignores function keywords inside string literals', () => {
+  const code = `
+  const msg1 = "Click => to submit";
+  const msg2 = 'This function is deprecated';
+  const msg3 = \`another => arrow function\`;
+  `;
+  const result = analyzeComplexity(code, 'index.js');
+  assert.equal(result.functionCount, 0, 'Should not match function indicators inside strings');
+});
+
+test('analyzeComplexity tracks Python triple-quoted docstrings and ignores inner defs', () => {
+  const code = `
+def real_func():
+    """
+    def fake_func_inside_docstring():
+        pass
+    """
+    pass
+  `;
+  const result = analyzeComplexity(code, 'app.py');
+  // comment lines are: triple quotes block (4 lines)
+  assert.equal(result.commentLines, 4);
+  assert.equal(result.functionCount, 1, 'Should only count real_func, ignoring fake_func_inside_docstring');
+});

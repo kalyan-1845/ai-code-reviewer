@@ -27,6 +27,8 @@ export function analyzeComplexity(fileContent, filePath) {
   const usesCStyleBlocks = cStyleExts.includes(ext);
   const usesHtmlBlocks = (ext === '.html');
   let inBlockComment = false;
+  let inPyBlockComment = false;
+  let pyBlockQuoteChar = null;
 
   lines.forEach(line => {
     const trimmed = line.trim();
@@ -67,6 +69,27 @@ export function analyzeComplexity(fileContent, filePath) {
         commentLines++;
       }
     } else if (ext === '.py' || ext === '.rb') {
+      if (ext === '.py') {
+        if (inPyBlockComment) {
+          commentLines++;
+          if (trimmed.includes(pyBlockQuoteChar)) {
+            inPyBlockComment = false;
+            pyBlockQuoteChar = null;
+          }
+          return;
+        }
+        if (trimmed.startsWith('"""') || trimmed.startsWith("'''")) {
+          commentLines++;
+          const quoteChar = trimmed.startsWith('"""') ? '"""' : "'''";
+          if (trimmed.slice(3).includes(quoteChar)) {
+            // Closed on same line
+          } else {
+            inPyBlockComment = true;
+            pyBlockQuoteChar = quoteChar;
+          }
+          return;
+        }
+      }
       if (trimmed.startsWith('#')) {
         commentLines++;
       }
@@ -93,20 +116,26 @@ export function analyzeComplexity(fileContent, filePath) {
     }
 
     // --- Function Detection ---
+    let codeWithoutStrings = trimmed;
+    codeWithoutStrings = codeWithoutStrings
+      .replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, '""')
+      .replace(/'[^'\\]*(?:\\.[^'\\]*)*'/g, "''")
+      .replace(/`[^`\\]*(?:\\.[^`\\]*)*`/g, "``");
+
     if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
-      if (trimmed.includes('function ') || trimmed.includes('=>') || /^\s*(?:async\s+)?(?!(?:if|for|while|switch|catch)\b)\w+\s*\([^)]*\)\s*\{/.test(trimmed)) {
+      if (codeWithoutStrings.includes('function ') || codeWithoutStrings.includes('=>') || /^\s*(?:async\s+)?(?!(?:if|for|while|switch|catch)\b)\w+\s*\([^)]*\)\s*\{/.test(codeWithoutStrings)) {
         functionCount++;
       }
     } else if (ext === '.py') {
-      if (trimmed.startsWith('def ') || trimmed.startsWith('async def ')) {
+      if (codeWithoutStrings.startsWith('def ') || codeWithoutStrings.startsWith('async def ')) {
         functionCount++;
       }
     } else if (ext === '.go') {
-      if (trimmed.startsWith('func ')) {
+      if (codeWithoutStrings.startsWith('func ')) {
         functionCount++;
       }
     } else if (['.java', '.cpp', '.cs'].includes(ext)) {
-      if (/(?:public|private|protected|static|(?!(?:if|else|for|while|switch|catch)\b)\w+)\s+(?!(?:if|else|for|while|switch|catch)\b)\w+\s*\([^)]*\)\s*(?:\{|const)?/.test(trimmed)) {
+      if (/(?:public|private|protected|static|(?!(?:if|else|for|while|switch|catch)\b)\w+)\s+(?!(?:if|else|for|while|switch|catch)\b)\w+\s*\([^)]*\)\s*(?:\{|const)?/.test(codeWithoutStrings)) {
         functionCount++;
       }
     }
