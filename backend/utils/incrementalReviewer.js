@@ -5,12 +5,43 @@ import path from 'path';
 import simpleGit from 'simple-git';
 
 const CACHE_FILENAME = '.codereview-cache.json';
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const CLEANUP_PROBABILITY = 0.1; // 10% chance on each save to trigger cleanup
 
 function getCacheDir(repoPath) {
   const hash = crypto.createHash('sha256').update(repoPath).digest('hex').substring(0, 16);
   const cacheDir = path.join(os.tmpdir(), 'reposage-review-cache', hash);
   try { fs.mkdirSync(cacheDir, { recursive: true }); } catch {}
   return cacheDir;
+}
+
+function getBaseCacheDir() {
+  return path.join(os.tmpdir(), 'reposage-review-cache');
+}
+
+function cleanupOldCache() {
+  const baseDir = getBaseCacheDir();
+  try {
+    if (!fs.existsSync(baseDir)) return;
+    const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+    const now = Date.now();
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const cacheFilePath = path.join(baseDir, entry.name, CACHE_FILENAME);
+      try {
+        if (fs.existsSync(cacheFilePath)) {
+          const stats = fs.statSync(cacheFilePath);
+          if (now - stats.mtimeMs > CACHE_TTL_MS) {
+            fs.rmSync(path.join(baseDir, entry.name), { recursive: true, force: true });
+          }
+        }
+      } catch {
+        // skip entries that fail during cleanup
+      }
+    }
+  } catch {
+    // silently fail if cleanup encounters errors
+  }
 }
 
 function getFileContentHash(filePath) {
@@ -51,6 +82,10 @@ function saveCacheFile(cachePath, cache) {
   const fullPath = path.join(getCacheDir(cachePath), CACHE_FILENAME);
   try {
     fs.writeFileSync(fullPath, JSON.stringify(cache, null, 2), 'utf-8');
+    // Probabilistic cleanup to prevent unbounded cache growth
+    if (Math.random() < CLEANUP_PROBABILITY) {
+      cleanupOldCache();
+    }
   } catch (err) {
     console.warn(`Failed to save cache file at ${fullPath}: ${err.message}`);
   }

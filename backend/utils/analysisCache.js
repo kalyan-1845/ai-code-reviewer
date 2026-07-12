@@ -47,7 +47,7 @@ class AnalysisCache {
     this.pending = new Map();
     this._locks = new Map();
     this._repoUrlIndex = new Map();
-    this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0 };
+    this.stats = { hits: 0, misses: 0, dedupSaves: 0, evictions: 0, absoluteExpiries: 0, slidingExpiries: 0 };
     this._startSweeper();
   }
 
@@ -234,26 +234,6 @@ class AnalysisCache {
   }
 
   /**
-   * Invalidate all cache entries whose key contains the given repo URL.
-   * Used by push-event webhook handling to evict stale analysis data.
-   */
-  invalidateByRepoUrl(repoUrl) {
-    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
-    let removed = 0;
-    for (const [key] of this.cache) {
-      const keyStr = key;
-      if (keyStr.includes(normalized)) {
-        this.cache.delete(key);
-        removed++;
-      }
-    }
-    if (removed > 0) {
-      console.log(`🗑️  Invalidated ${removed} cache entries for ${repoUrl}`);
-    }
-    return removed;
-  }
-
-  /**
    * Get cache statistics for monitoring and debugging.
    */
   _startSweeper(intervalMs = 60000) {
@@ -358,8 +338,8 @@ class AnalysisCache {
       return 0;
     }
     let removed = 0;
-      for (const key of keys) {
-        if (this.cache.delete(key)) {
+    for (const key of keys) {
+      if (this.cache.delete(key)) {
         removed++;
       }
     }

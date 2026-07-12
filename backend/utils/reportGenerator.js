@@ -109,7 +109,9 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
 
   const sortedFindings = allFindings.sort((a, b) => {
     const severityOrder = { error: 0, warning: 1, info: 2 };
-    return severityOrder[a.severity] - severityOrder[b.severity];
+    const aOrder = severityOrder[a.severity] ?? 99;
+    const bOrder = severityOrder[b.severity] ?? 99;
+    return aOrder - bOrder;
   });
 
   const findingRows = sortedFindings.map(f => `
