@@ -71,14 +71,19 @@ export class CircuitBreaker {
   onSuccess() {
     this._failureCount = 0;
     this._successCount++;
-    this._halfOpenRequests = 0;
     if (this._state === STATES.HALF_OPEN) {
-      this._state = STATES.CLOSED;
+      if (this._successCount >= this._halfOpenMaxRequests) {
+        this._state = STATES.CLOSED;
+        this._halfOpenRequests = 0;
+      }
+    } else {
+      this._halfOpenRequests = 0;
     }
   }
 
   onFailure() {
     this._failureCount++;
+    this._successCount = 0;
     this._lastFailureTime = Date.now();
     if (this._state === STATES.HALF_OPEN) {
       this._state = STATES.OPEN;
