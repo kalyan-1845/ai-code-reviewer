@@ -75,7 +75,6 @@ class ReviewQueue {
                 await new Promise(r => setTimeout(r, delay));
               } else {
                 console.error(`ReviewQueue: item permanently failed for "${key}" after ${this._maxRetries + 1} attempts:`, err);
-                this._circuitBreaker.onFailure();
               }
             }
           }

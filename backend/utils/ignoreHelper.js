@@ -73,7 +73,8 @@ export function isIgnored(filePath, patterns, baseDir) {
         if (new RegExp(`^${escaped}$`).test(relative)) return true;
       } catch { /* skip invalid pattern */ }
     } else {
-      if (relative === pattern || relative.startsWith(pattern + '/')) {
+      const normalized = pattern.startsWith('/') ? pattern.slice(1) : pattern;
+      if (relative === normalized || relative.startsWith(normalized + '/')) {
         return true;
       }
     }

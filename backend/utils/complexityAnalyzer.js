@@ -95,19 +95,25 @@ export function analyzeComplexity(fileContent, filePath) {
     // --- Function Detection ---
     if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
       if (trimmed.includes('function ') || trimmed.includes('=>') || /^\s*(?:async\s+)?(?!(?:if|for|while|switch|catch)\b)\w+\s*\([^)]*\)\s*\{/.test(trimmed)) {
-        functionCount++;
+        if (!trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('*') && !trimmed.startsWith('#')) {
+          functionCount++;
       }
     } else if (ext === '.py') {
       if (trimmed.startsWith('def ') || trimmed.startsWith('async def ')) {
-        functionCount++;
+        if (!trimmed.startsWith('#')) {
+          functionCount++;
+        }
       }
     } else if (ext === '.go') {
       if (trimmed.startsWith('func ')) {
-        functionCount++;
+        if (!trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('*')) {
+          functionCount++;
+        }
       }
     } else if (['.java', '.cpp', '.cs'].includes(ext)) {
       if (/(?:public|private|protected|static|(?!(?:if|else|for|while|switch|catch)\b)\w+)\s+(?!(?:if|else|for|while|switch|catch)\b)\w+\s*\([^)]*\)\s*(?:\{|const)?/.test(trimmed)) {
-        functionCount++;
+        if (!trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('*')) {
+          functionCount++;
       }
     }
   });

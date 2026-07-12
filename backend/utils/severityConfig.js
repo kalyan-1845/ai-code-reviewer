@@ -38,6 +38,7 @@ function mergeWithDefaults(userConfig) {
 }
 
 function categorizeFinding(finding) {
+  if (!finding || typeof finding !== 'object') return 'medium';
   const message = (finding.message || '').toLowerCase();
   const ruleId = (finding.rule_id || '').toLowerCase();
 

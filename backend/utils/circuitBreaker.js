@@ -47,7 +47,9 @@ export class CircuitBreaker {
       );
     }
 
-    this._halfOpenRequests++;
+    if (this._state === STATES.HALF_OPEN) {
+      this._halfOpenRequests++;
+    }
 
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
