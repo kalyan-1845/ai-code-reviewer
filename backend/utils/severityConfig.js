@@ -66,7 +66,10 @@ function applySeverityConfig(findings, config) {
   const severityMap = config.severity || DEFAULT_CONFIG.severity;
 
   return findings
-    .filter(finding => !suppressedRules.has(finding.rule_id))
+    .filter(finding => {
+      const ruleId = finding.rule_id || finding.rule;
+      return !suppressedRules.has(ruleId);
+    })
     .map(finding => {
       const category = categorizeFinding(finding);
       const mappedSeverity = severityMap[category] || finding.severity;

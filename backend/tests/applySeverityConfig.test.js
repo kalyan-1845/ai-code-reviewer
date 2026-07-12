@@ -150,3 +150,16 @@ test('applySeverityConfig uses DEFAULT_CONFIG when config is empty object', () =
   assert.equal(result[0].severity, 'error');
   assert.equal(result[0].category, 'security');
 });
+
+test('applySeverityConfig suppresses findings using fallback rule field when rule_id is missing', () => {
+  const findings = [
+    { rule: 'suppressed-rule-name', message: 'style issue' },
+    { rule: 'kept-rule-name', message: 'performance issue' },
+  ];
+  const config = {
+    suppress: ['suppressed-rule-name'],
+  };
+  const result = applySeverityConfig(findings, config);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].rule, 'kept-rule-name');
+});
