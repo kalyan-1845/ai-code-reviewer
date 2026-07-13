@@ -95,14 +95,27 @@ app.use((req, res, next) => {
 // correct. A custom function that reads X-Forwarded-For directly would trust the
 // leftmost (client-controlled) value, allowing IP spoofing to bypass rate limits.
 
-// Enable CORS with explicit origin
+// Enable CORS with explicit origin and exposed headers
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173').split(',').map(s => s.trim());
 app.use(cors({
   origin: ALLOWED_ORIGINS,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-api-key'],
-  credentials: true
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-api-key', 'X-Requested-With'],
+  exposedHeaders: ['X-CSRF-Token', 'Content-Disposition', 'Content-Length'],
+  credentials: true,
+  maxAge: 86400,
 }));
+
+// Handle OPTIONS preflight for all routes explicitly
+app.options('*', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.includes(req.headers.origin) ? req.headers.origin : ALLOWED_ORIGINS[0] || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, x-api-key, X-Requested-With');
+  res.setHeader('Access-Control-Expose-Headers', 'X-CSRF-Token, Content-Disposition, Content-Length');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  res.status(204).end();
+});
 
 // Optional Redis configuration for distributed rate limiting
 let redisClient;
@@ -673,8 +686,14 @@ function requireJsonContentType(req, res, next) {
 // ≡ƒƒó Route: GitHub Import & AI Review
 app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, async (req, res) => {
   let { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
-     maxTokens = 2048, systemPrompt = '', batchSize = 5, githubToken
+     maxTokens = 2048, systemPrompt = '', batchSize = 5, githubToken,
+     limit, offset
    } = req.body;
+  // Also support query-string pagination params
+  if (limit === undefined && req.query.limit !== undefined) limit = parseInt(req.query.limit, 10);
+  if (offset === undefined && req.query.offset !== undefined) offset = parseInt(req.query.offset, 10);
+  limit = Math.max(1, Math.min(200, parseInt(limit, 10) || 200));
+  offset = Math.max(0, parseInt(offset, 10) || 0);
 
   // Enforce boundary limits for batchSize to prevent downstream parsing crashes
   batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
@@ -709,6 +728,14 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
     validatedPrompt = validatePrompt(systemPrompt);
   } catch (err) {
     return res.status(400).json({ error: err.message });
+  }
+
+  // Request-level dedup: if an identical request is already in-flight, wait for it
+  const dedupKey = `analyze:${repoUrl}:${model}:${language}:${company}:${validatedPrompt}:${temperature}:${maxTokens}:${batchSize}`;
+  const existingDedup = await dedupStore.get(dedupKey);
+  if (existingDedup) {
+    console.log(`≡ƒÅ╗ Deduplicating to in-flight analysis for ${repoUrl}`);
+    return res.json(JSON.parse(existingDedup));
   }
 
   // Generate unique folder name (needed early for logging/caching)
@@ -760,6 +787,15 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
     await deleteFolderRecursive(clonePath);
     return res.status(500).json({ error: 'Failed to clone repository. Make sure the URL is public and within size limits.' });
   }
+
+    // Set dedup before analysis work begins; clear on response finish or error
+    const dedupTtlMs = Math.max(ANALYSIS_TIMEOUT_MS, 120000);
+    await dedupStore.set(dedupKey, 'pending', dedupTtlMs);
+    const clearDedup = () => { dedupStore.delete(dedupKey).catch(() => {}); };
+    const originalJson = res.json.bind(res);
+    res.json = function(body) { clearDedup(); return originalJson(body); };
+    res.on('error', clearDedup);
+    res.on('close', clearDedup);
 
     try {
       // 1. Load ignore patterns and read files
@@ -1117,6 +1153,15 @@ if (reviewResult?.fileReviews) {
           path: '/',
           secure: process.env.NODE_ENV === 'production',
         });
+      }
+
+      // 8. Apply pagination (limit/offset) to fileReviews
+      if (reviewResult && reviewResult.fileReviews) {
+        const fileEntries = Object.entries(reviewResult.fileReviews);
+        const totalFiles = fileEntries.length;
+        const paginated = fileEntries.slice(offset, offset + limit);
+        reviewResult.fileReviews = Object.fromEntries(paginated);
+        reviewResult._pagination = { total: totalFiles, limit, offset, returned: paginated.length };
       }
 
       // 8. Return result
@@ -2590,6 +2635,71 @@ const errorHandler = (err, req, res, next) => {
 app.use(errorHandler);
 
 async function startServer() {
+  // Restore analysis cache from disk snapshot, then start periodic persistence
+  analysisCache.restoreFromDisk();
+  analysisCache.startPersistTimer(parseInt(process.env.CACHE_PERSIST_INTERVAL_MS || '300000', 10));
+
+  // Persist in-memory CSRF token stores on shutdown
+  function persistCsrfTokens() {
+    try {
+      const csrfDir = path.join(__dirname, 'data');
+      if (!fs.existsSync(csrfDir)) fs.mkdirSync(csrfDir, { recursive: true });
+      const now = Date.now();
+      const validTokens = [];
+      for (const [token, expiry] of csrfTokenStore) {
+        if (now <= expiry) validTokens.push({ token, expiry });
+      }
+      for (const [token, expiry] of csrfGraceTokenStore) {
+        if (now <= expiry) validTokens.push({ token, expiry, grace: true });
+      }
+      fs.writeFileSync(path.join(csrfDir, 'csrf_tokens.json'), JSON.stringify(validTokens));
+    } catch (err) {
+      console.warn('⚠️ CSRF token persist failed:', err.message);
+    }
+  }
+
+  // Periodic CSRF token persistence (every 2 minutes)
+  const csrfPersistTimer = setInterval(persistCsrfTokens, 120000);
+  csrfPersistTimer.unref();
+
+  // Restore CSRF tokens from disk
+  try {
+    const csrfPath = path.join(__dirname, 'data', 'csrf_tokens.json');
+    if (fs.existsSync(csrfPath)) {
+      const raw = fs.readFileSync(csrfPath, 'utf-8');
+      const tokens = JSON.parse(raw);
+      const now = Date.now();
+      for (const t of tokens) {
+        if (now > t.expiry) continue;
+        if (t.grace) {
+          csrfGraceTokenStore.set(t.token, t.expiry);
+        } else {
+          csrfTokenStore.set(t.token, t.expiry);
+        }
+      }
+      console.log(`📂 Restored ${tokens.length} CSRF tokens from disk`);
+    }
+  } catch (err) {
+    console.warn('⚠️ CSRF token restore failed:', err.message);
+  }
+
+  // Persist in-memory state on shutdown
+  function persistAllState() {
+    analysisCache.persistToDisk();
+    persistCsrfTokens();
+  }
+  const originalOnShutdown = onShutdown;
+  const origCleanupTimers = cleanupTimers;
+  cleanupTimers = function() {
+    persistAllState();
+    if (origCleanupTimers) origCleanupTimers();
+    clearInterval(csrfPersistTimer);
+  };
+  process.removeListener('SIGINT', onShutdown);
+  process.removeListener('SIGTERM', onShutdown);
+  process.on('SIGINT', () => { persistAllState(); onShutdown(); });
+  process.on('SIGTERM', () => { persistAllState(); onShutdown(); });
+
   await connectDatabase();
   if (!isDatabaseConnected()) {
     console.log('Server started in degraded mode (no database). Analytics will use file-based storage.');

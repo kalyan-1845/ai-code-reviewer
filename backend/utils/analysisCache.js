@@ -12,28 +12,30 @@ import crypto from 'crypto';
  * TODO: For distributed deployments, migrate to Redis-backed cache.
  */
 
+import fs from 'fs';
+import path from 'path';
+
+const PERSIST_PATH = path.join(new URL('..', import.meta.url).pathname, 'cache_snapshot.json');
+
 class AsyncLock {
   constructor() {
-    this._promise = null;
-    this._resolve = null;
+    this._lock = Promise.resolve();
   }
   async acquire(fn) {
-    while (this._promise) {
-      await this._promise;
-    }
-    this._promise = new Promise(resolve => { this._resolve = resolve; });
+    let release;
+    const next = new Promise(resolve => { release = resolve; });
+    const prev = this._lock;
+    this._lock = this._lock.then(() => next);
+    await prev;
     try {
       return await fn();
     } finally {
-      const resolve = this._resolve;
-      this._promise = null;
-      this._resolve = null;
-      if (resolve) resolve();
+      release();
     }
   }
 
   isFree() {
-    return this._promise === null;
+    return this._lock === Promise.resolve();
   }
 }
 
@@ -380,6 +382,75 @@ class AnalysisCache {
         }
         this.stats.evictions++;
       }
+    }
+  }
+
+  persistToDisk(filePath = PERSIST_PATH) {
+    try {
+      const snapshot = [];
+      for (const [key, entry] of this.cache) {
+        snapshot.push({
+          key,
+          result: entry.result,
+          expiresAt: entry.expiresAt,
+          absoluteExpiresAt: entry.absoluteExpiresAt,
+          repoUrl: entry.repoUrl,
+          isMock: entry.isMock,
+        });
+      }
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(filePath + '.tmp', JSON.stringify(snapshot));
+      fs.renameSync(filePath + '.tmp', filePath);
+      console.log(`💾 Persisted ${snapshot.length} cache entries to ${filePath}`);
+    } catch (err) {
+      console.warn(`⚠️ Cache persist failed: ${err.message}`);
+    }
+  }
+
+  restoreFromDisk(filePath = PERSIST_PATH) {
+    try {
+      if (!fs.existsSync(filePath)) return 0;
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const snapshot = JSON.parse(raw);
+      let restored = 0;
+      const now = Date.now();
+      for (const entry of snapshot) {
+        if (now > entry.absoluteExpiresAt) continue;
+        if (now > entry.expiresAt) continue;
+        this.cache.set(entry.key, {
+          result: entry.result,
+          expiresAt: entry.expiresAt,
+          absoluteExpiresAt: entry.absoluteExpiresAt,
+          repoUrl: entry.repoUrl,
+          isMock: entry.isMock,
+        });
+        if (entry.repoUrl) {
+          if (!this._repoUrlIndex.has(entry.repoUrl)) {
+            this._repoUrlIndex.set(entry.repoUrl, new Set());
+          }
+          this._repoUrlIndex.get(entry.repoUrl).add(entry.key);
+        }
+        restored++;
+      }
+      console.log(`📂 Restored ${restored} cache entries from ${filePath}`);
+      return restored;
+    } catch (err) {
+      console.warn(`⚠️ Cache restore failed: ${err.message}`);
+      return 0;
+    }
+  }
+
+  startPersistTimer(intervalMs = 300000) {
+    if (this._persistTimer) clearInterval(this._persistTimer);
+    this._persistTimer = setInterval(() => this.persistToDisk(), intervalMs);
+    if (this._persistTimer.unref) this._persistTimer.unref();
+  }
+
+  stopPersistTimer() {
+    if (this._persistTimer) {
+      clearInterval(this._persistTimer);
+      this._persistTimer = null;
     }
   }
 }
