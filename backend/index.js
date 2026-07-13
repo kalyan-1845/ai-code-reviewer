@@ -88,8 +88,13 @@ app.use(cors({
 // Optional Redis configuration for distributed rate limiting
 let redisClient;
 if (process.env.REDIS_URL) {
-  redisClient = new Redis(process.env.REDIS_URL);
-  redisClient.on('error', (err) => console.error('Redis Client Error', err));
+  try {
+    redisClient = new Redis(process.env.REDIS_URL);
+    redisClient.on('error', (err) => console.error('Redis Client Error', err));
+  } catch (err) {
+    console.error('Failed to connect to Redis:', err.message);
+    redisClient = null;
+  }
 }
 const dedupStore = new DedupStore(redisClient);
 
@@ -670,12 +675,13 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
     return res.status(400).json({ error: 'GitHub Repository URL is required.' });
   }
 
-  if (githubToken && !isValidGithubToken(githubToken)) {
-    return res.status(400).json({ error: 'Invalid GitHub Token format provided' });
-  }
-
+  // Validate repo URL format before any other processing
   if (!isValidRepoUrl(repoUrl)) {
     return res.status(400).json({ error: 'Invalid GitHub repository URL. Only https://github.com/owner/repo URLs are allowed.' });
+  }
+
+  if (githubToken && !isValidGithubToken(githubToken)) {
+    return res.status(400).json({ error: 'Invalid GitHub Token format provided' });
   }
 
   // Validate systemPrompt: reject prompts containing dangerous directives
@@ -1126,7 +1132,8 @@ if (reviewResult?.fileReviews) {
 });
 
     } catch (err) {
-      console.error(err);
+      console.error('Analysis failed:', err.message);
+      if (err.stack) console.error(err.stack);
       await deleteFolderRecursive(clonePath);
       return res.status(500).json({ error: 'An error occurred during repository analysis.' });
     }

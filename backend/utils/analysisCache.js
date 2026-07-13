@@ -97,6 +97,7 @@ class AnalysisCache {
     // are expired regardless of sliding TTL activity
     if (now > entry.absoluteExpiresAt) {
       this.cache.delete(key);
+      this._removeFromRepoUrlIndex(key, entry);
       this.stats.absoluteExpiries++;
       this.stats.misses++;
       console.log(`⏰ Analysis cache entry reached absolute max lifetime for key ${key.slice(0, 8)}...`);
@@ -106,6 +107,7 @@ class AnalysisCache {
     if (now > entry.expiresAt) {
       // Entry has expired via sliding TTL, remove it
       this.cache.delete(key);
+      this._removeFromRepoUrlIndex(key, entry);
       this.stats.slidingExpiries++;
       this.stats.misses++;
       console.log(`⏰ Analysis cache sliding TTL expired for key ${key.slice(0, 8)}...`);
@@ -196,6 +198,7 @@ class AnalysisCache {
         return resultData;
       }).catch(err => {
         this.pending.delete(key);
+        this._locks.delete(key);
         throw err;
       });
 
@@ -282,6 +285,12 @@ class AnalysisCache {
       this._cleanupIdleLocks();
     }, intervalMs);
     if (this._sweeper.unref) this._sweeper.unref();
+  }
+
+  _removeFromRepoUrlIndex(key, entry) {
+    if (entry && entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+      this._repoUrlIndex.get(entry.repoUrl).delete(key);
+    }
   }
 
   _cleanupIdleLocks() {
