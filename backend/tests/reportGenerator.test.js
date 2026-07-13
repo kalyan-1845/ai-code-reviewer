@@ -143,3 +143,35 @@ test('reportGenerator: generateHTMLReport handles empty reviewResult with no fin
     if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
   }
 });
+
+test('reportGenerator: supports both rule and rule_id properties in input findings', () => {
+  const outputPathJson = path.join(TMPDIR, `test-rules-json-${Date.now()}.json`);
+  const outputPathHtml = path.join(TMPDIR, `test-rules-html-${Date.now()}.html`);
+  const reviewResult = {
+    fileReviews: {
+      'src/file.js': {
+        bugs: [
+          { line: 5, rule_id: 'my-custom-bug-rule', description: 'Some bug' },
+          { line: 10, rule: 'legacy-bug-rule', message: 'Legacy bug' }
+        ]
+      }
+    }
+  };
+
+  try {
+    const jsonRes = generateJSONReport('repo', ['src/file.js'], reviewResult, outputPathJson);
+    assert.equal(jsonRes.success, true);
+    const data = JSON.parse(fs.readFileSync(outputPathJson, 'utf-8'));
+    assert.equal(data.findings[0].rule_id, 'my-custom-bug-rule');
+    assert.equal(data.findings[1].rule_id, 'legacy-bug-rule');
+
+    const htmlRes = generateHTMLReport('repo', ['src/file.js'], reviewResult, outputPathHtml);
+    assert.equal(htmlRes.success, true);
+    const html = fs.readFileSync(outputPathHtml, 'utf-8');
+    assert.ok(html.includes('my-custom-bug-rule'));
+    assert.ok(html.includes('legacy-bug-rule'));
+  } finally {
+    if (fs.existsSync(outputPathJson)) fs.unlinkSync(outputPathJson);
+    if (fs.existsSync(outputPathHtml)) fs.unlinkSync(outputPathHtml);
+  }
+});

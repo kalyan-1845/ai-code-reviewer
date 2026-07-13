@@ -31,7 +31,7 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
               severity,
               category,
               message: issue.description || issue.message || '',
-              rule_id: issue.rule || 'unknown',
+              rule_id: issue.rule_id || issue.rule || 'unknown',
             };
             allFindings.push(finding);
             severityCount[severity] = (severityCount[severity] || 0) + 1;
@@ -87,7 +87,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
               severity,
               category,
               message: issue.description || issue.message || '',
-              rule_id: issue.rule || 'unknown',
+              rule_id: issue.rule_id || issue.rule || 'unknown',
             });
             severityCount[severity] = (severityCount[severity] || 0) + 1;
           });
