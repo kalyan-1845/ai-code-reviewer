@@ -2224,9 +2224,9 @@ app.post('/api/reports/pdf', requireApiKey, pdfExportLimiter, (req, res) => {
           .text(`${normalizeText(finding.type)} - Line ${normalizeText(finding.line)}`, doc.x, doc.y, { width: 380 });
         doc.moveDown(0.25);
         doc.font('Helvetica').fontSize(9).fillColor('#374151')
-          .text(`Description: ${normalizeText(finding.description)}`, { width: 490 });
+          .text(`Description: ${normalizeText(finding.description)}`, 48, doc.y, { width: 490 });
         doc.font('Helvetica').fontSize(9).fillColor('#4b5563')
-          .text(`Suggestion: ${normalizeText(finding.suggestion)}`, { width: 490 });
+          .text(`Suggestion: ${normalizeText(finding.suggestion)}`, 48, doc.y, { width: 490 });
         doc.moveDown(0.6);
       });
     });
