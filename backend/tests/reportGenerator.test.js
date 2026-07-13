@@ -68,9 +68,15 @@ test('reportGenerator: generateJSONReport writes valid JSON with correct schema'
 });
 
 test('reportGenerator: generateJSONReport returns success:false when write fails', () => {
-  const result = generateJSONReport('repo', [], null, '/nonexistent-dir/fail.json');
-  assert.equal(result.success, false);
-  assert.ok(result.error, 'should include error message');
+  const filePath = path.join(TMPDIR, `test-file-dir-json-${Date.now()}.txt`);
+  fs.writeFileSync(filePath, 'not a directory');
+  try {
+    const result = generateJSONReport('repo', [], null, path.join(filePath, 'fail.json'));
+    assert.equal(result.success, false);
+    assert.ok(result.error, 'should include error message');
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
 });
 
 test('reportGenerator: generateJSONReport handles null reviewResult gracefully', () => {
@@ -127,8 +133,14 @@ test('reportGenerator: generateHTMLReport writes valid HTML with finding rows', 
 });
 
 test('reportGenerator: generateHTMLReport returns success:false when write fails', () => {
-  const result = generateHTMLReport('repo', [], null, '/nonexistent-dir/fail.html');
-  assert.equal(result.success, false);
+  const filePath = path.join(TMPDIR, `test-file-dir-html-${Date.now()}.txt`);
+  fs.writeFileSync(filePath, 'not a directory');
+  try {
+    const result = generateHTMLReport('repo', [], null, path.join(filePath, 'fail.html'));
+    assert.equal(result.success, false);
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
 });
 
 test('reportGenerator: generateHTMLReport handles empty reviewResult with no findings', () => {

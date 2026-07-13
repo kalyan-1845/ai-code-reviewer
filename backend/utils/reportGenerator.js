@@ -59,6 +59,7 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
   };
 
   try {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, JSON.stringify(report, null, 2), 'utf-8');
     return {
       success: true,
@@ -204,6 +205,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
   `;
 
   try {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, html, 'utf-8');
     return {
       success: true,
