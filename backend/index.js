@@ -56,6 +56,7 @@ validateSessionSecret();
 const octokit = new Octokit({ auth: process.env.GITHUB_PAT || undefined });
 
 let serverReady = false;
+const serverStartTime = new Date();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1150,8 +1151,8 @@ if (reviewResult?.fileReviews) {
 });
 
     } catch (err) {
-      console.error(`[${req.requestId}] Analysis failed:`, err.message);
-      if (err.stack) console.error(`[${req.requestId}]`, err.stack);
+      console.error(`[${req.requestId}] [repo=${repoUrl}] Analysis failed:`, err.message);
+      if (err.stack) console.error(`[${req.requestId}] [repo=${repoUrl}]`, err.stack);
       await deleteFolderRecursive(clonePath);
       return res.status(500).json({ error: 'An error occurred during repository analysis.' });
     }
@@ -1437,8 +1438,11 @@ const webhookLimiter = rateLimit({
 // ≡ƒƒó Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', webhookLimiter, async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
+  const payload = req.body;
+  const repoUrl = payload?.repository ? `https://github.com/${payload.repository.owner?.login || '?'}/${payload.repository.name || '?'}` : 'unknown';
+
   if (!webhookSecret) {
-    console.error(`[${req.requestId}] Γ¥î WEBHOOK_SECRET not configured`);
+    console.error(`[${req.requestId}] [repo=${repoUrl}] Γ¥î WEBHOOK_SECRET not configured`);
     return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
   }
 
@@ -1448,12 +1452,11 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
-    console.warn(`[${req.requestId}] Γ¥î Webhook signature verification failed`);
+    console.warn(`[${req.requestId}] [repo=${repoUrl}] Γ¥î Webhook signature verification failed`);
     return res.status(401).json({ error: 'Invalid webhook signature' });
   }
 
   const event = req.headers['x-github-event'];
-  const payload = req.body;
 
   if (!event || typeof event !== 'string') {
     return res.status(400).json({ error: 'Missing x-github-event header.' });
@@ -1463,6 +1466,13 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
   if (event !== 'pull_request' && event !== 'push' && event !== 'ping') {
     return res.status(400).json({ error: `Unsupported webhook event: ${event}` });
+  }
+
+  // Validate webhook payload structure against expected schema
+  const payloadErrors = validateWebhookPayload(event, payload);
+  if (payloadErrors.length > 0) {
+    console.warn(`[${req.requestId}] [repo=${repoUrl}] ⚠️ Webhook payload validation failed for ${event}: ${payloadErrors.join(', ')}`);
+    return res.status(400).json({ error: `Invalid webhook payload: ${payloadErrors.join('; ')}` });
   }
 
   if (event === 'push') {
@@ -1694,6 +1704,28 @@ app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
 });
 
 // Webhook review queueing uses ReviewQueue from reviewQueue.js (per-key mutex)
+
+// Validate webhook payload structure against expected schema per event type
+function validateWebhookPayload(event, payload) {
+  const errors = [];
+  if (!payload || typeof payload !== 'object') {
+    errors.push('payload must be an object');
+    return errors;
+  }
+  if (event === 'push') {
+    if (!payload.repository?.owner?.login) errors.push('missing repository.owner.login');
+    if (!payload.repository?.name) errors.push('missing repository.name');
+    if (!payload.ref) errors.push('missing ref');
+  } else if (event === 'pull_request') {
+    if (!payload.pull_request?.number) errors.push('missing pull_request.number');
+    if (!payload.pull_request?.head?.sha) errors.push('missing pull_request.head.sha');
+    if (!payload.repository?.owner?.login) errors.push('missing repository.owner.login');
+    if (!payload.repository?.name) errors.push('missing repository.name');
+    if (!payload.action) errors.push('missing action');
+  }
+  // ping events require no specific payload fields
+  return errors;
+}
 
 // ≡ƒƒó Helper to execute Webhook PR review logic
 async function runWebhookReview(owner, repo, pullNumber, headSha) {
@@ -2481,6 +2513,7 @@ app.get('/health', (req, res) => {
     return res.status(503).json({
       status: 'starting_up',
       timestamp: new Date().toISOString(),
+      uptime: Math.floor((Date.now() - serverStartTime.getTime()) / 1000),
       database: isDatabaseConnected() ? 'connected' : 'disconnected',
       message: 'Server is still initializing. Please retry shortly.',
     });
@@ -2488,9 +2521,11 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
+    uptime: Math.floor((Date.now() - serverStartTime.getTime()) / 1000),
     database: isDatabaseConnected() ? 'connected' : 'disconnected',
     mode: isDatabaseConnected() ? 'full' : 'degraded',
     circuitBreaker: reviewQueue.getCircuitState(),
+    cacheEntries: analysisCache.getStats().size,
   });
 });
 
@@ -2538,10 +2573,11 @@ function sanitizeErrorMessage(msg) {
 
 const errorHandler = (err, req, res, next) => {
   const requestId = req.requestId || 'unknown';
+  const repoUrl = req.repoUrl || req.body?.repoUrl || 'unknown';
   const safeMessage = sanitizeErrorMessage(err.message);
-  console.error(`[${requestId}] Unhandled error in request:`, safeMessage);
+  console.error(`[${requestId}] [repo=${repoUrl}] Unhandled error in request:`, safeMessage);
   if (err.stack) {
-    console.error(`[${requestId}]`, err.stack);
+    console.error(`[${requestId}] [repo=${repoUrl}]`, err.stack);
   }
   if (res.headersSent) {
     return next(err);
