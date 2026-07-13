@@ -44,6 +44,15 @@ dotenv.config();
 
 validateSessionSecret();
 
+// Fail-fast if WEBHOOK_SECRET is not configured or is too short
+(function validateWebhookSecret() {
+  const secret = process.env.WEBHOOK_SECRET;
+  if (!secret || secret.length < 16) {
+    console.error('FATAL: WEBHOOK_SECRET must be set to at least 16 characters');
+    process.exit(1);
+  }
+})();
+
 const octokit = new Octokit({ auth: process.env.GITHUB_PAT || undefined });
 
 let serverReady = false;
@@ -55,6 +64,9 @@ const app = express();
 const PORT = verifyPort(process.env.PORT || 5000);
 
 const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill-llama-70b", "llama-3.1-8b-instant", "gemma2-9b-it"];
+
+// Configurable timeout for AI engine analysis requests (default: 120s)
+const ANALYSIS_TIMEOUT_MS = parseInt(process.env.ANALYSIS_TIMEOUT_MS || '120000', 10);
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
@@ -69,6 +81,12 @@ const trustProxy = process.env.TRUST_PROXY !== 'false';
 if (trustProxy) {
   app.set('trust proxy', 1);
 }
+
+// Request ID middleware — assigns a unique ID to every request for traceability in logs
+app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
+  next();
+});
 
 // NOTE: No custom keyGenerator is needed. With `trust proxy: 1` set above, Express
 // automatically resolves req.ip to the real client IP by stripping the known proxy
@@ -801,7 +819,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
             body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
-          }, 120000);
+          }, ANALYSIS_TIMEOUT_MS);
 
           if (aiResponse.ok) {
             const resData = await aiResponse.json();
@@ -1132,8 +1150,8 @@ if (reviewResult?.fileReviews) {
 });
 
     } catch (err) {
-      console.error('Analysis failed:', err.message);
-      if (err.stack) console.error(err.stack);
+      console.error(`[${req.requestId}] Analysis failed:`, err.message);
+      if (err.stack) console.error(`[${req.requestId}]`, err.stack);
       await deleteFolderRecursive(clonePath);
       return res.status(500).json({ error: 'An error occurred during repository analysis.' });
     }
@@ -1189,7 +1207,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
         body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
-      }, 120000);
+      }, ANALYSIS_TIMEOUT_MS);
 
       if (aiResponse.ok) {
         const resData = await aiResponse.json();
@@ -1420,7 +1438,7 @@ const webhookLimiter = rateLimit({
 app.post('/api/webhook', webhookLimiter, async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error('Γ¥î WEBHOOK_SECRET not configured');
+    console.error(`[${req.requestId}] Γ¥î WEBHOOK_SECRET not configured`);
     return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
   }
 
@@ -1430,7 +1448,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
-    console.warn('Γ¥î Webhook signature verification failed');
+    console.warn(`[${req.requestId}] Γ¥î Webhook signature verification failed`);
     return res.status(401).json({ error: 'Invalid webhook signature' });
   }
 
@@ -2333,7 +2351,7 @@ app.get("/api/review-history", requireApiKey, async (req, res) => {
     try {
         await ensureConnection();
         const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.per_page) || parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
 
         const [history, total] = await Promise.all([
@@ -2348,7 +2366,7 @@ app.get("/api/review-history", requireApiKey, async (req, res) => {
         res.json({
           success: true,
           history,
-          pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+          pagination: { page, per_page: limit, limit, total, totalPages: Math.ceil(total / limit) }
         });
 
     } catch (err) {
@@ -2371,7 +2389,7 @@ app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
         }
 
         const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.per_page) || parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
 
         const [history, total] = await Promise.all([
@@ -2386,7 +2404,7 @@ app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
         res.json({
           success: true,
           history,
-          pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+          pagination: { page, per_page: limit, limit, total, totalPages: Math.ceil(total / limit) }
         });
 
     } catch (err) {
@@ -2519,10 +2537,11 @@ function sanitizeErrorMessage(msg) {
 }
 
 const errorHandler = (err, req, res, next) => {
+  const requestId = req.requestId || 'unknown';
   const safeMessage = sanitizeErrorMessage(err.message);
-  console.error('Unhandled error in request:', safeMessage);
+  console.error(`[${requestId}] Unhandled error in request:`, safeMessage);
   if (err.stack) {
-    console.error(err.stack);
+    console.error(`[${requestId}]`, err.stack);
   }
   if (res.headersSent) {
     return next(err);
