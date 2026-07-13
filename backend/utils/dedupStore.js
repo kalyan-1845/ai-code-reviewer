@@ -65,6 +65,10 @@ class DedupStore {
     }
     const entry = this.memoryStore.get(key);
     if (!entry) return false;
+    if (Date.now() > entry.expiresAt) {
+      this.memoryStore.delete(key);
+      return false;
+    }
     return entry.value.has(member);
   }
 
