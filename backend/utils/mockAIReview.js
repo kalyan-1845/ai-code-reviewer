@@ -11,7 +11,7 @@ export function mockAIReview(files, model = 'llama-3.3-70b-versatile') {
 
   files.forEach(file => {
     const totalLines = file.content ? file.content.split('\n').length : 50;
-    const getRandomLine = () => null;
+    const getRandomLine = () => Math.floor(Math.random() * totalLines) + 1;
 
     reviews[file.name] = {
       bugs: [

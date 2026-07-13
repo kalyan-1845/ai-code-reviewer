@@ -43,6 +43,7 @@ class DedupStore {
     if (this.redisClient) {
       try {
         await this.redisClient.sadd(key, member);
+        await this.redisClient.pexpire(key, ttlMs);
         return;
       } catch (err) {
         console.warn(`⚠️ Redis sadd failed for ${key}, falling back to memory:`, err.message);

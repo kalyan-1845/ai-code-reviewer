@@ -180,6 +180,7 @@ app.use((req, res, next) => {
       req.rawBody = Buffer.concat(chunks);
       try {
         req.body = JSON.parse(req.rawBody.toString('utf-8'));
+        req._body = true;
       } catch {
         responseAlreadySent = true;
         return res.status(400).json({ error: 'Invalid webhook payload' });
