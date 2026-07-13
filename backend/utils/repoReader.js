@@ -195,8 +195,14 @@ export async function readCodeFilesFromRepo(repoUrl, options = {}) {
   const clonePath = path.join(tempReposDir, `rag_${uniqueId}`);
 
   try {
-    const git = simpleGit({ timeout: { block: cloneTimeoutMs } });
+    const git = simpleGit({
+      timeout: { block: cloneTimeoutMs },
+      unsafe: {
+        allowUnsafeHooksPath: true
+      }
+    });
     await git.clone(repoUrl, clonePath, [
+      '--config', 'core.hooksPath=/dev/null',
       '--depth', '1',
       '--single-branch',
       '--no-checkout'
