@@ -2,6 +2,27 @@ class DedupStore {
   constructor(redisClient) {
     this.redisClient = redisClient;
     this.memoryStore = new Map();
+    this._startSweeper();
+  }
+
+  _startSweeper(intervalMs = 60000) {
+    if (this._sweeper) return;
+    this._sweeper = setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of this.memoryStore) {
+        if (entry.expiresAt && now > entry.expiresAt) {
+          this.memoryStore.delete(key);
+        }
+      }
+    }, intervalMs);
+    if (this._sweeper.unref) this._sweeper.unref();
+  }
+
+  _stopSweeper() {
+    if (this._sweeper) {
+      clearInterval(this._sweeper);
+      this._sweeper = null;
+    }
   }
 
   async set(key, value, ttlMs) {

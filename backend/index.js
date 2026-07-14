@@ -1534,7 +1534,7 @@ repoRequestCountsTimer.unref();
 
 const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   // No keyGenerator: same rationale as analyzeLimiter ΓÇö req.ip resolved
@@ -1729,6 +1729,9 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           }
         }
       });
+      enqueuePromise.catch((err) => {
+        console.error(`Unhandled rejection from review queue enqueue:`, sanitizeErrorMessage(err.message));
+      });
       if (!enqueuePromise) {
         if (redisClient) {
           await redisClient.srem(shaDedupKey, headSha);
@@ -1841,6 +1844,13 @@ app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
 
 // ≡ƒƒó Route: Config update endpoint with input validation
 const ALLOWED_CONFIG_KEYS = ['MAX_SYSTEM_PROMPT_LENGTH', 'ANALYSIS_TIMEOUT_MS', 'ANALYSIS_CACHE_TTL_MINUTES', 'ANALYSIS_CACHE_MOCK_TTL_SECONDS', 'GIT_CLONE_TIMEOUT'];
+const CONFIG_KEY_RANGES = {
+  MAX_SYSTEM_PROMPT_LENGTH: { min: 1, max: 100000 },
+  ANALYSIS_TIMEOUT_MS: { min: 1000, max: 600000 },
+  ANALYSIS_CACHE_TTL_MINUTES: { min: 1, max: 1440 },
+  ANALYSIS_CACHE_MOCK_TTL_SECONDS: { min: 1, max: 3600 },
+  GIT_CLONE_TIMEOUT: { min: 1000, max: 600000 },
+};
 app.put('/api/config', requireApiKey, requireJsonContentType, async (req, res) => {
   const { key, value } = req.body;
 
@@ -1850,12 +1860,20 @@ app.put('/api/config', requireApiKey, requireJsonContentType, async (req, res) =
   if (value === undefined || value === null) {
     return res.status(400).json({ error: 'value is required.' });
   }
+  const valueType = typeof value;
+  if (valueType !== 'string' && valueType !== 'number') {
+    return res.status(400).json({ error: 'value must be a string or number.' });
+  }
   if (!ALLOWED_CONFIG_KEYS.includes(key)) {
     return res.status(400).json({ error: `Unknown config key "${key}". Allowed keys: ${ALLOWED_CONFIG_KEYS.join(', ')}` });
   }
   const numVal = Number(value);
   if (!Number.isFinite(numVal) || numVal < 1) {
     return res.status(400).json({ error: 'value must be a positive number.' });
+  }
+  const range = CONFIG_KEY_RANGES[key];
+  if (range && (numVal < range.min || numVal > range.max)) {
+    return res.status(400).json({ error: `value for "${key}" must be between ${range.min} and ${range.max}.` });
   }
   process.env[key] = String(value);
   console.log(`Config updated: ${key}=${value}`);
