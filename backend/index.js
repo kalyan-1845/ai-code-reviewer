@@ -675,6 +675,7 @@ function cleanupTimers() {
   clearInterval(aiEngineHealthTimer);
   clearInterval(exclusiveLockCleanupTimer);
   clearInterval(shaDedupCleanupTimer);
+  clearInterval(repoRequestCountsTimer);
 }
 
   // Loaded from shared-safety-config.json via dangerousPhrases.js
@@ -1521,14 +1522,15 @@ function recordWebhookDelivery(event, repoUrl, deliveryId, status, durationMs, a
 const repoRequestCounts = new Map();
 const REPO_WINDOW_MS = 60 * 1000;
 const REPO_MAX_REQUESTS = 5;
-setInterval(() => {
+const repoRequestCountsTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, { count, windowStart }] of repoRequestCounts) {
     if (now - windowStart > REPO_WINDOW_MS) {
       repoRequestCounts.delete(key);
     }
   }
-}, 60 * 1000).unref();
+}, 60 * 1000);
+repoRequestCountsTimer.unref();
 
 const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -1835,6 +1837,29 @@ app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
   }
   const removed = analysisCache.invalidateByRepoUrl(repoUrl);
   res.json({ success: true, removed, stats: analysisCache.getStats() });
+});
+
+// ≡ƒƒó Route: Config update endpoint with input validation
+const ALLOWED_CONFIG_KEYS = ['MAX_SYSTEM_PROMPT_LENGTH', 'ANALYSIS_TIMEOUT_MS', 'ANALYSIS_CACHE_TTL_MINUTES', 'ANALYSIS_CACHE_MOCK_TTL_SECONDS', 'GIT_CLONE_TIMEOUT'];
+app.put('/api/config', requireApiKey, requireJsonContentType, async (req, res) => {
+  const { key, value } = req.body;
+
+  if (!key || typeof key !== 'string') {
+    return res.status(400).json({ error: 'key is required and must be a string.' });
+  }
+  if (value === undefined || value === null) {
+    return res.status(400).json({ error: 'value is required.' });
+  }
+  if (!ALLOWED_CONFIG_KEYS.includes(key)) {
+    return res.status(400).json({ error: `Unknown config key "${key}". Allowed keys: ${ALLOWED_CONFIG_KEYS.join(', ')}` });
+  }
+  const numVal = Number(value);
+  if (!Number.isFinite(numVal) || numVal < 1) {
+    return res.status(400).json({ error: 'value must be a positive number.' });
+  }
+  process.env[key] = String(value);
+  console.log(`Config updated: ${key}=${value}`);
+  res.json({ success: true, key, value });
 });
 
 // Webhook review queueing uses ReviewQueue from reviewQueue.js (per-key mutex)
@@ -2535,111 +2560,70 @@ app.get("/api/review-history", requireApiKey, async (req, res) => {
           pagination: { page, per_page: limit, limit, total, totalPages: Math.ceil(total / limit) }
         });
 
-    } catch (err) {
-
-        res.status(500).json({
-            error: "Failed to fetch review history."
-        });
-
-    }
-
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to fetch review history.' });
+  }
 });
 
-app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
-
-    try {
-        await ensureConnection();
-        const repo = req.params.repo;
-        if (typeof repo !== 'string' || repo.length === 0 || !/^[a-zA-Z0-9._-]+$/.test(repo)) {
-          return res.status(400).json({ error: 'Invalid repo parameter.' });
-        }
-
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(req.query.per_page) || parseInt(req.query.limit) || 20));
-        const skip = (page - 1) * limit;
-
-        const [history, total] = await Promise.all([
-          Analytics.find({ repoName: repo })
-            .sort({ analyzedAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean(),
-          Analytics.countDocuments({ repoName: repo })
-        ]);
-
-        res.json({
-          success: true,
-          history,
-          pagination: { page, per_page: limit, limit, total, totalPages: Math.ceil(total / limit) }
-        });
-
-    } catch (err) {
-
-        res.status(500).json({
-            error: "Failed to fetch repository history."
-        });
-
+app.get('/api/review-history/:repo', requireApiKey, async (req, res) => {
+  try {
+    await ensureConnection();
+    const repo = req.params.repo;
+    if (typeof repo !== 'string' || repo.length === 0 || !/^[a-zA-Z0-9._-]+$/.test(repo)) {
+      return res.status(400).json({ error: 'Invalid repo parameter.' });
     }
 
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.per_page) || parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const [history, total] = await Promise.all([
+      Analytics.find({ repoName: repo })
+        .sort({ analyzedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Analytics.countDocuments({ repoName: repo })
+    ]);
+
+    res.json({
+      success: true,
+      history,
+      pagination: { page, per_page: limit, limit, total, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to fetch repository history.' });
+  }
 });
 
-app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res) => {
-
-    try {
-        await ensureConnection();
-        if (!mongoose.Types.ObjectId.isValid(req.params.id1) || !mongoose.Types.ObjectId.isValid(req.params.id2)) {
-          return res.status(400).json({ error: 'Invalid ID format.' });
-        }
-
-        const first = await Analytics.findById(req.params.id1);
-
-        const second = await Analytics.findById(req.params.id2);
-
-        if (!first || !second) {
-
-            return res.status(404).json({
-                error: "Review not found."
-            });
-
-        }
-
-        res.json({
-
-            previous: first,
-
-            current: second,
-
-            difference: {
-
-                healthScore:
-                    second.healthScore - first.healthScore,
-
-                findings:
-                    second.totalFindings - first.totalFindings,
-
-                bugs:
-                    second.totalBugs - first.totalBugs,
-
-                security:
-                    second.totalSecurityIssues -
-                    first.totalSecurityIssues,
-
-                optimization:
-                    second.totalOptimizations -
-                    first.totalOptimizations
-
-            }
-
-        });
-
-    } catch (err) {
-
-        res.status(500).json({
-            error: "Comparison failed."
-        });
-
+app.get('/api/review-history/compare/:id1/:id2', requireApiKey, async (req, res) => {
+  try {
+    await ensureConnection();
+    if (!mongoose.Types.ObjectId.isValid(req.params.id1) || !mongoose.Types.ObjectId.isValid(req.params.id2)) {
+      return res.status(400).json({ error: 'Invalid ID format.' });
     }
 
+    const first = await Analytics.findById(req.params.id1);
+    const second = await Analytics.findById(req.params.id2);
+
+    if (!first || !second) {
+      return res.status(404).json({ error: 'Review not found.' });
+    }
+
+    res.json({
+      previous: first,
+      current: second,
+      difference: {
+        healthScore: second.healthScore - first.healthScore,
+        findings: second.totalFindings - first.totalFindings,
+        bugs: second.totalBugs - first.totalBugs,
+        security: second.totalSecurityIssues - first.totalSecurityIssues,
+        optimization: second.totalOptimizations - first.totalOptimizations,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Comparison failed.' });
+  }
 });
 
 app.get('/health', (req, res) => {
@@ -2666,6 +2650,21 @@ app.get('/health', (req, res) => {
 app.get('/api/health/circuit-breaker', (req, res) => {
   res.json({
     ...reviewQueue.getCircuitState(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ≡ƒƒó Metrics endpoint with auth check
+app.get('/metrics', requireApiKey, (req, res) => {
+  res.json({
+    uptime: Math.floor((Date.now() - serverStartTime.getTime()) / 1000),
+    serverReady,
+    database: isDatabaseConnected() ? 'connected' : 'disconnected',
+    cacheEntries: analysisCache.getStats().size,
+    circuitState: reviewQueue.getCircuitState(),
+    csrfTokenCount: csrfTokenStore.size + csrfGraceTokenStore.size,
+    webhookHistoryCount: webhookHistory.length,
+    repoRequestCountsSize: repoRequestCounts.size,
     timestamp: new Date().toISOString(),
   });
 });
