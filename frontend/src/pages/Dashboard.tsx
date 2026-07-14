@@ -719,7 +719,7 @@ export default function Dashboard() {
         method: "POST",
         body: JSON.stringify({
             message: userMessage,
-            history: chatHistory,
+            history: updatedHistory,
             model: selectedModel,
             temperature: chatAiSettings.temperature ?? 0.4,
             maxTokens: chatAiSettings.maxTokens ?? 2048,
