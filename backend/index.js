@@ -1076,18 +1076,11 @@ if (reviewResult?.fileReviews) {
   });
 }
       
-      // 7. Set CSRF cookie if session was persisted
-      if (sessionPersisted) {
-        res.cookie(CSRF_COOKIE_NAME, csrfToken, {
-          httpOnly: true,
-          sameSite: 'strict',
-          path: '/',
-          secure: process.env.NODE_ENV === 'production',
-        });
-      }
+      // 7. CSRF cookie is already set by the middleware rotation.
+      // Do NOT set a second CSRF cookie here to avoid token mismatch.
 
       // 8. Return result
-      return res.json({ ...(sessionPersisted ? { csrfToken } : {}),
+      return res.json({ ...(sessionPersisted ? { csrfToken: res.locals.rotatedCsrfToken || csrfToken } : {}),
   success: true,
 
   repoName,
