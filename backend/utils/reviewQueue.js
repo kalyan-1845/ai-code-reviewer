@@ -75,7 +75,7 @@ class ReviewQueue {
           this._queueLocks.delete(key);
           return;
         }
-        while (queue.length > 0) {
+        outer: while (queue.length > 0) {
           const item = queue.shift();
           for (let attempt = 0; attempt <= this._maxRetries; attempt++) {
             try {
@@ -83,9 +83,11 @@ class ReviewQueue {
               break;
             } catch (err) {
               if (err.name === 'CircuitBreakerOpenError') {
-                console.error(`ReviewQueue: circuit breaker OPEN for "${key}", requeuing item`);
-                queue.unshift(item);
-                break;
+                console.error(`ReviewQueue: circuit breaker OPEN for "${key}", discarding item`);
+                // Item was already shifted — do NOT requeue to prevent infinite loop.
+                // Break outer while loop: no more items can be processed until the
+                // circuit breaker recovers and a new enqueue triggers _processNext.
+                break outer;
               }
               if (attempt < this._maxRetries) {
                 const delay = Math.pow(2, attempt) * 1000;

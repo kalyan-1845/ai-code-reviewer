@@ -68,6 +68,8 @@ const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill
 
 // Configurable timeout for AI engine analysis requests (default: 120s)
 const ANALYSIS_TIMEOUT_MS = parseInt(process.env.ANALYSIS_TIMEOUT_MS || '120000', 10);
+// Configurable timeout for review-diff endpoint (default: 30s)
+const REVIEW_DIFF_TIMEOUT_MS = parseInt(process.env.REVIEW_DIFF_TIMEOUT_MS || '30000', 10);
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
@@ -1914,7 +1916,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha, requestId) {
       commentsToPost.push({
         path: file.path,
         line: f.line,
-        body: `<!-- RepoSage Review Comment -->\n${f.comment}`
+        body: `<!-- RepoSage Review Comment -->\n${escapeHtml(String(f.comment))}`
       });
     });
     if (scanTruncated) {
@@ -1944,7 +1946,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha, requestId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
         body: JSON.stringify({ files: filesToReview })
-      }, 60000);
+      }, REVIEW_DIFF_TIMEOUT_MS);
 
       if (aiResponse.ok) {
         let result;
@@ -1964,7 +1966,11 @@ async function runWebhookReview(owner, repo, pullNumber, headSha, requestId) {
             // Avoid duplicate comments if secrets scanner already flagged it
             const duplicate = commentsToPost.some(exist => exist.path === c.path && exist.line === c.line);
             if (!duplicate) {
-              commentsToPost.push(c);
+              commentsToPost.push({
+                path: c.path,
+                line: c.line,
+                body: `<!-- RepoSage Review Comment -->\n${escapeHtml(String(c.body || c.comment || ''))}`
+              });
             }
           });
           if (aiCommentsDiscarded > 0) {
@@ -2504,9 +2510,11 @@ app.get("/api/review-history", requireApiKey, async (req, res) => {
         const limit = Math.min(50, Math.max(1, parseInt(req.query.per_page) || parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
 
+        const sortField = req.query.sort === 'repoName' ? 'repoName' : 'analyzedAt';
+        const sortDir = req.query.order === 'asc' ? 1 : -1;
         const [history, total] = await Promise.all([
           Analytics.find()
-            .sort({ analyzedAt: -1 })
+            .sort({ [sortField]: sortDir })
             .skip(skip)
             .limit(limit)
             .lean(),
@@ -2542,9 +2550,11 @@ app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
         const limit = Math.min(50, Math.max(1, parseInt(req.query.per_page) || parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
 
+        const sortField = req.query.sort === 'repoName' ? 'repoName' : 'analyzedAt';
+        const sortDir = req.query.order === 'asc' ? 1 : -1;
         const [history, total] = await Promise.all([
           Analytics.find({ repoName: repo })
-            .sort({ analyzedAt: -1 })
+            .sort({ [sortField]: sortDir })
             .skip(skip)
             .limit(limit)
             .lean(),
