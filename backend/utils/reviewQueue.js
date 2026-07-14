@@ -1,13 +1,14 @@
 import { CircuitBreaker } from './circuitBreaker.js';
 
 class ReviewQueue {
-  constructor(maxQueues = 100, maxItemsPerQueue = 50, exclusiveLockTtlMs = 30 * 60 * 1000, maxRetries = 3) {
+  constructor(maxQueues = 100, maxItemsPerQueue = 50, exclusiveLockTtlMs = 30 * 60 * 1000, maxRetries = 3, maxTotalPending = 100) {
     this._queues = new Map();
     this._queueLocks = new Map();
     this._exclusiveLocks = new Map();
     this._exclusiveLocksTimestamps = new Map();
     this._maxQueues = maxQueues;
     this._maxItemsPerQueue = maxItemsPerQueue;
+    this._maxTotalPending = maxTotalPending;
     this._exclusiveLockTtlMs = exclusiveLockTtlMs;
     this._maxRetries = maxRetries;
     this._circuitBreaker = new CircuitBreaker({
@@ -18,6 +19,14 @@ class ReviewQueue {
     });
   }
 
+  get totalPending() {
+    let count = 0;
+    for (const queue of this._queues.values()) {
+      count += queue.length;
+    }
+    return count;
+  }
+
   getCircuitState() {
     return {
       state: this._circuitBreaker.getState(),
@@ -25,6 +34,7 @@ class ReviewQueue {
   }
 
   async enqueue(key, item, processor) {
+    let accepted = false;
     const prev = this._queueLocks.get(key) || Promise.resolve();
     const next = prev.then(async () => {
       if (!this._queues.has(key)) {
@@ -39,12 +49,20 @@ class ReviewQueue {
         console.warn(`ReviewQueue: dropping item for "${key}" — per-queue limit (${this._maxItemsPerQueue}) reached`);
         return;
       }
+      if (this.totalPending >= this._maxTotalPending) {
+        console.warn(`ReviewQueue: dropping item for "${key}" — total pending limit (${this._maxTotalPending}) reached`);
+        return;
+      }
       queue.push(item);
+      accepted = true;
     });
     this._queueLocks.set(key, next.catch(err => {
       console.error(`ReviewQueue enqueue error for "${key}":`, err);
     }));
-    return next.then(() => this._processNext(key, processor));
+    return next.then(() => {
+      if (!accepted) return false;
+      return this._processNext(key, processor).then(() => true);
+    });
   }
 
   async _processNext(key, processor) {

@@ -187,6 +187,11 @@ app.use(cookieParser());
 // webhook route; all other routes fall through to express.json() below.
 app.use((req, res, next) => {
   if (req.method === 'POST' && req.path === '/api/webhook') {
+    // Validate Content-Type before consuming the body
+    const contentType = req.headers['content-type'];
+    if (!contentType || !contentType.includes('application/json')) {
+      return res.status(415).json({ error: 'Content-Type must be application/json' });
+    }
     const MAX_WEBHOOK_BODY = 5 * 1024 * 1024; // 5 MB
     const chunks = [];
     let totalBytes = 0;
@@ -1642,11 +1647,12 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         return res.status(429).json({ error: 'Too many requests for this repository. Try again later.' });
       }
 
-      const enqueuePromise = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
+      const requestId = req.requestId;
+      const enqueueAccepted = await reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
         try {
-          await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
+          await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha, requestId);
         } catch (error) {
-          console.error(`Γ¥î Webhook review failed for ${headSha}:`, error.message);
+          console.error(`[${requestId}] Γ¥î Webhook review failed for ${headSha}:`, error.message);
           if (redisClient) {
             await redisClient.srem(shaDedupKey, headSha);
           } else {
@@ -1654,8 +1660,8 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           }
         }
       });
-      if (!enqueuePromise) {
-        // Revert dedup if enqueue failed synchronously
+      if (!enqueueAccepted) {
+        // Revert dedup if enqueue was rejected (queue full / limit reached)
         if (redisClient) {
           await redisClient.srem(shaDedupKey, headSha);
         } else {
@@ -1773,15 +1779,15 @@ function validateWebhookPayload(event, payload) {
 }
 
 // ≡ƒƒó Helper to execute Webhook PR review logic
-async function runWebhookReview(owner, repo, pullNumber, headSha) {
+async function runWebhookReview(owner, repo, pullNumber, headSha, requestId) {
   const token = process.env.GITHUB_PAT;
   if (!token) {
-    console.warn("ΓÜá∩╕Å GITHUB_PAT not set in backend/.env. Cannot run webhook PR review.");
+    console.warn(`[${requestId}] ΓÜá∩╕Å GITHUB_PAT not set in backend/.env. Cannot run webhook PR review.`);
     return;
   }
 
   const octokit = new Octokit({ auth: token });
-  console.log(`≡ƒöì Fetching diff for PR #${pullNumber}...`);
+  console.log(`[${requestId}] ≡ƒöì Fetching diff for PR #${pullNumber}...`);
 
   const { data: pullRequest } = await octokit.rest.pulls.get({
     owner,
@@ -1789,7 +1795,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     pull_number: pullNumber
   });
   if (headSha && pullRequest.head.sha !== headSha) {
-    console.log(`ΓÅ¡∩╕Å Skipping stale review ${headSha.substring(0, 7)}; current head is ${pullRequest.head.sha.substring(0, 7)}.`);
+    console.log(`[${requestId}] ΓÅ¡∩╕Å Skipping stale review ${headSha.substring(0, 7)}; current head is ${pullRequest.head.sha.substring(0, 7)}.`);
     return;
   }
 
@@ -1798,7 +1804,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   // new duplicate comment thread on every `synchronize` event.
   const priorReviewIds = redisClient ? await getPriorReviewIds(redisClient, owner, repo, pullNumber) : [];
   if (priorReviewIds.length > 0) {
-    console.log(`ΓÖ╗∩╕Å Superseding ${priorReviewIds.length} review(s) from a previous commit on PR #${pullNumber}...`);
+    console.log(`[${requestId}] ΓÖ╗∩╕Å Superseding ${priorReviewIds.length} review(s) from a previous commit on PR #${pullNumber}...`);
     await supersedePriorReviews(octokit, owner, repo, pullNumber, priorReviewIds);
   }
   const postedReviewIds = [];
@@ -1814,13 +1820,13 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   });
 
   if (!diff) {
-    console.warn("ΓÜá∩╕Å No diff found for this PR.");
+    console.warn(`[${requestId}] ΓÜá∩╕Å No diff found for this PR.`);
     return;
   }
 
   // 2. Parse files and changes
   const { files: parsedFiles, binaryFiles: parsedBinaryFiles } = parseDiff(diff);
-  console.log(`≡ƒôü Found ${parsedFiles.length} files in PR diff.`);
+  console.log(`[${requestId}] ≡ƒôü Found ${parsedFiles.length} files in PR diff.`);
 
   const commentsToPost = [];
   const filesToReview = [];
@@ -1845,7 +1851,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       });
     });
     if (scanTruncated) {
-      console.warn(`ΓÜá∩╕Å Secrets scan truncated for ${file.path}: ${scanReason} (total ${scanTotal} changes)`);
+      console.warn(`[${requestId}] ΓÜá∩╕Å Secrets scan truncated for ${file.path}: ${scanReason} (total ${scanTotal} changes)`);
     }
 
     // Save list to send to FastAPI AI Engine
@@ -1862,7 +1868,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   let reviewDiffTruncated = false;
 
   if (filesToReview.length > 0) {
-    console.log(`≡ƒºá Querying AI engine for ${filesToReview.length} files...`);
+    console.log(`[${requestId}] ≡ƒºá Querying AI engine for ${filesToReview.length} files...`);
     const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
     
     try {
@@ -1878,13 +1884,13 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
         try {
           result = await aiResponse.json();
         } catch (parseErr) {
-          console.warn('ΓÜá∩╕Å AI engine returned HTTP 200 with malformed (non-JSON) body:', parseErr.message);
+          console.warn(`[${requestId}] ΓÜá∩╕Å AI engine returned HTTP 200 with malformed (non-JSON) body:`, parseErr.message);
         }
         if (result && Array.isArray(result.comments)) {
           result.comments.forEach(c => {
             const validLines = validChangedLines.get(c.path);
             if (!validLines || !validLines.has(Number(c.line))) {
-              console.warn(`ΓÜá∩╕Å Skipping invalid inline comment location ${c.path}:${c.line}`);
+              console.warn(`[${requestId}] ΓÜá∩╕Å Skipping invalid inline comment location ${c.path}:${c.line}`);
               aiCommentsDiscarded++;
               return;
             }
@@ -1895,31 +1901,31 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
             }
           });
           if (aiCommentsDiscarded > 0) {
-            console.warn(`ΓÜá∩╕Å ${aiCommentsDiscarded} AI comments could not be posted due to line number mismatches with the diff`);
+            console.warn(`[${requestId}] ΓÜá∩╕Å ${aiCommentsDiscarded} AI comments could not be posted due to line number mismatches with the diff`);
           }
           aiEngineQueried = true;
           if (result && result.truncated) {
             reviewDiffTruncated = true;
-            console.warn(`⚠️ AI engine review-diff was truncated: ${result.warning || (result.files_reviewed + ' of ' + result.files_total + ' files reviewed')}`);
+            console.warn(`[${requestId}] ⚠️ AI engine review-diff was truncated: ${result.warning || (result.files_reviewed + ' of ' + result.files_total + ' files reviewed')}`);
           }
         } else {
-          console.warn('ΓÜá∩╕Å AI engine returned HTTP 200 with empty or malformed response body ΓÇö not treating as a clean analysis');
+          console.warn(`[${requestId}] ΓÜá∩╕Å AI engine returned HTTP 200 with empty or malformed response body ΓÇö not treating as a clean analysis`);
         }
       } else if (aiResponse.status === 401) {
-        console.error('≡ƒÜ¿ AI Engine rejected authentication. Check REPOSAGE_API_KEY in backend/.env');
+        console.error(`[${requestId}] ≡ƒÜ¿ AI Engine rejected authentication. Check REPOSAGE_API_KEY in backend/.env`);
         throw new Error('AI Engine authentication failed');
       }
     } catch (err) {
       if (err.message === 'AI Engine authentication failed') {
         throw err;
       }
-      console.warn("ΓÜá∩╕Å FastAPI AI Engine error, posting local scans only:", err.message);
+      console.warn(`[${requestId}] ΓÜá∩╕Å FastAPI AI Engine error, posting local scans only:`, err.message);
     }
   }
 
   // 3. Post consolidated review comment back to GitHub PR
   if (commentsToPost.length > 0) {
-    console.log(`Γ£ì∩╕Å Posting PR Review with ${commentsToPost.length} inline comments...`);
+    console.log(`[${requestId}] Γ£ì∩╕Å Posting PR Review with ${commentsToPost.length} inline comments...`);
 
     // Batch comments to respect GitHub's limits (50 per review for Checks API alignment)
     const COMMENTS_PER_BATCH = 50;
@@ -1954,7 +1960,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
         });
         postedReviewIds.push(createdReview.id);
       } catch (reviewErr) {
-        console.warn(`⚠️ Batched review creation failed (${reviewErr.message}); retrying comments individually and skipping invalid ones.`);
+        console.warn(`[${requestId}] ⚠️ Batched review creation failed (${reviewErr.message}); retrying comments individually and skipping invalid ones.`);
         for (const comment of batch) {
           try {
             const { data: singleReview } = await octokit.rest.pulls.createReview({
@@ -1968,13 +1974,13 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
             });
             postedReviewIds.push(singleReview.id);
           } catch (commentErr) {
-            console.warn(`⚠️ Skipping invalid inline comment on ${comment.path}:${comment.line} — ${commentErr.message}`);
+            console.warn(`[${requestId}] ⚠️ Skipping invalid inline comment on ${comment.path}:${comment.line} — ${commentErr.message}`);
           }
         }
       }
     }
   } else if (aiCommentsDiscarded > 0) {
-    console.warn(`ΓÜá∩╕Å ${aiCommentsDiscarded} AI comments were discarded due to line number mismatches ΓÇö posting COMMENT review instead of approving.`);
+    console.warn(`[${requestId}] ΓÜá∩╕Å ${aiCommentsDiscarded} AI comments were discarded due to line number mismatches ΓÇö posting COMMENT review instead of approving.`);
     const { data: createdReview } = await octokit.rest.pulls.createReview({
       owner,
       repo,
@@ -1989,7 +1995,7 @@ The AI engine identified **${aiCommentsDiscarded} potential issue(s)** but could
     });
     postedReviewIds.push(createdReview.id);
   } else if (!aiEngineQueried) {
-    console.error('Γ¥î AI Engine was unreachable or returned an empty/malformed response ΓÇö posting COMMENT review instead of auto-approving.');
+    console.error(`[${requestId}] Γ¥î AI Engine was unreachable or returned an empty/malformed response ΓÇö posting COMMENT review instead of auto-approving.`);
     const { data: createdReview } = await octokit.rest.pulls.createReview({
       owner,
       repo,
@@ -2004,7 +2010,7 @@ The AI engine could not be reached or returned an unexpected response during thi
     });
     postedReviewIds.push(createdReview.id);
   } else if (reviewDiffTruncated) {
-    console.warn('⚠️ PR diff was truncated during review — posting COMMENT review instead of approving to avoid a false approval on un-reviewed files.');
+    console.warn(`[${requestId}] ⚠️ PR diff was truncated during review — posting COMMENT review instead of approving to avoid a false approval on un-reviewed files.`);
     const { data: createdReview } = await octokit.rest.pulls.createReview({
       owner,
       repo,
@@ -2019,7 +2025,7 @@ The PR diff was too large to fully review by the AI engine. Some files were **no
     });
     postedReviewIds.push(createdReview.id);
   } else {
-    console.log('≡ƒÄë No code issues or recommendations found. Adding label and posting approval...');
+    console.log(`[${requestId}] ≡ƒÄë No code issues or recommendations found. Adding label and posting approval...`);
 
     try {
       await octokit.rest.issues.addLabels({
@@ -2028,12 +2034,12 @@ The PR diff was too large to fully review by the AI engine. Some files were **no
         issue_number: pullNumber,
         labels: ['gssoc:approved']
       });
-      console.log('Γ£à Added gssoc:approved label to PR');
+      console.log(`[${requestId}] Γ£à Added gssoc:approved label to PR`);
     } catch (err) {
-      console.warn('ΓÜá∩╕Å Could not add gssoc:approved label:', err.message);
+      console.warn(`[${requestId}] ΓÜá∩╕Å Could not add gssoc:approved label:`, err.message);
     }
 
-    console.log('≡ƒÄë No code issues or recommendations found. Posting approval review...');
+    console.log(`[${requestId}] ≡ƒÄë No code issues or recommendations found. Posting approval review...`);
     const { data: createdReview } = await octokit.rest.pulls.createReview({
       owner,
       repo,
@@ -2581,10 +2587,16 @@ app.get('/api/health/circuit-breaker', (req, res) => {
   });
 });
 
-// Sanitize error messages that may contain API keys or sensitive tokens.
+// Sanitize error messages that may contain API keys, sensitive tokens, or internal file paths.
 const SANITIZE_PATTERNS = [
   { pattern: /(?:sk-|gsk_|api[_-]?key|apikey|token|secret|password|auth)[\s=:"']+[^\s"']{8,}/gi, replacement: '***' },
   { pattern: /[A-Za-z0-9_-]{32,}/g, replacement: '***' },
+  { pattern: /\/Users\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.\-\/]+)*/g, replacement: '[internal-path]' },
+  { pattern: /\/home\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.\-\/]+)*/g, replacement: '[internal-path]' },
+  { pattern: /\/var\/[A-Za-z0-9_.\-\/]+/g, replacement: '[internal-path]' },
+  { pattern: /\/tmp\/[A-Za-z0-9_.\-\/]+/g, replacement: '[tmp-path]' },
+  { pattern: /\/private\/var\/[A-Za-z0-9_.\-\/]+/g, replacement: '[internal-path]' },
+  { pattern: /\/root\/[A-Za-z0-9_.\-\/]*/g, replacement: '[internal-path]' },
 ];
 
 function fullyDecode(str) {
