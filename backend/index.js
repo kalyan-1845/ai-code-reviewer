@@ -23,7 +23,7 @@ import escapeHtml from 'lodash.escape';
 import { parseDiff } from './utils/diffParser.js';
 import { analyzeComplexity } from './utils/complexityAnalyzer.js';
 import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
-import { verifyWebhookSignature } from './utils/signatureVerifier.js';
+import { verifyWebhookSignature, verifyWebhookSignatureMulti } from './utils/signatureVerifier.js';
 import ReviewQueue from './utils/reviewQueue.js';
 const reviewQueue = new ReviewQueue();
 import { scanFileContentForWarnings } from './utils/sanitizeFileContent.js';
@@ -44,16 +44,27 @@ dotenv.config();
 
 validateSessionSecret();
 
+// Parse WEBHOOK_SECRET — supports comma-separated values for secret rotation
+function parseWebhookSecrets() {
+  const raw = process.env.WEBHOOK_SECRET;
+  if (!raw) return [];
+  return raw.split(',').map(s => s.trim()).filter(s => s.length >= 16);
+}
+
+let webhookSecrets = parseWebhookSecrets();
+
 // Fail-fast if WEBHOOK_SECRET is not configured or is too short
 (function validateWebhookSecret() {
-  const secret = process.env.WEBHOOK_SECRET;
-  if (!secret || secret.length < 16) {
+  const secrets = parseWebhookSecrets();
+  if (secrets.length === 0) {
     console.error('FATAL: WEBHOOK_SECRET must be set to at least 16 characters');
     process.exit(1);
   }
+  webhookSecrets = secrets;
 })();
 
-const octokit = new Octokit({ auth: process.env.GITHUB_PAT || undefined });
+const GITHUB_API_TIMEOUT = parseInt(process.env.GITHUB_API_TIMEOUT || '15000', 10);
+const octokit = new Octokit({ auth: process.env.GITHUB_PAT || undefined, request: { timeout: GITHUB_API_TIMEOUT } });
 
 let serverReady = false;
 const serverStartTime = new Date();
@@ -632,7 +643,7 @@ const aiEngineHealthTimer = setInterval(async () => {
     const resp = await fetchWithTimeout(`${baseUrl}/health`, {}, 5000);
     if (resp.ok && !aiEngineHealthy) {
       console.log('≡ƒƒó AI Engine recovered ΓÇö clearing mock cache entries');
-      analysisCache.clearMockEntries();
+      await analysisCache.clearMockEntries();
     }
     aiEngineHealthy = resp.ok;
   } catch {
@@ -1546,11 +1557,10 @@ const webhookLimiter = rateLimit({
 
 // ≡ƒƒó Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', webhookLimiter, async (req, res) => {
-  const webhookSecret = process.env.WEBHOOK_SECRET;
   const payload = req.body;
   const repoUrl = payload?.repository ? `https://github.com/${payload.repository.owner?.login || '?'}/${payload.repository.name || '?'}` : 'unknown';
 
-  if (!webhookSecret) {
+  if (!webhookSecrets || webhookSecrets.length === 0) {
     console.error(`[${req.requestId}] [repo=${repoUrl}] Γ¥î WEBHOOK_SECRET not configured`);
     return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
   }
@@ -1560,7 +1570,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
   }
 
-  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
+  if (!verifyWebhookSignatureMulti(req.rawBody, signature, webhookSecrets)) {
     console.warn(`[${req.requestId}] [repo=${repoUrl}] Γ¥î Webhook signature verification failed`);
     return res.status(401).json({ error: 'Invalid webhook signature' });
   }
@@ -1614,7 +1624,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     const repo = payload.repository?.name;
     if (owner && repo) {
       const repoUrl = `https://github.com/${owner}/${repo}`;
-      const removed = analysisCache.invalidateByRepoUrl(repoUrl);
+      const removed = await analysisCache.invalidateByRepoUrl(repoUrl);
       if (removed > 0) {
         console.log(`≡ƒôí Push event invalidated ${removed} cache entries for ${repoUrl}`);
       }
@@ -1740,7 +1750,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           console.error(`[${requestId}] Γ¥î Webhook review failed for ${headSha}:`, error.message);
           // Report the error back to the user via a PR review comment
           try {
-            const errOctokit = new Octokit({ auth: process.env.GITHUB_PAT });
+            const errOctokit = new Octokit({ auth: process.env.GITHUB_PAT, request: { timeout: GITHUB_API_TIMEOUT } });
             await errOctokit.rest.pulls.createReview({
               owner: item.owner,
               repo: item.repo,
@@ -1826,7 +1836,7 @@ app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimit
   const repo = parsed.repo;
 
   try {
-    const octokit = new Octokit({ auth: token });
+    const octokit = new Octokit({ auth: token, request: { timeout: GITHUB_API_TIMEOUT } });
     
     console.log(`≡ƒñû Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
     
@@ -1856,7 +1866,7 @@ app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
   if (!repoUrl) {
     return res.status(400).json({ error: 'repoUrl is required.' });
   }
-  const removed = analysisCache.invalidateByRepoUrl(repoUrl);
+  const removed = await analysisCache.invalidateByRepoUrl(repoUrl);
   res.json({ success: true, removed, stats: analysisCache.getStats() });
 });
 
@@ -1892,7 +1902,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha, requestId) {
     return;
   }
 
-  const octokit = new Octokit({ auth: token });
+  const octokit = new Octokit({ auth: token, request: { timeout: GITHUB_API_TIMEOUT } });
   console.log(`[${requestId}] ≡ƒöì Fetching diff for PR #${pullNumber}...`);
 
   const { data: pullRequest } = await octokit.rest.pulls.get({
@@ -2742,10 +2752,15 @@ function sanitizeErrorMessage(msg) {
   return sanitized;
 }
 
+function extractErrorMessage(err) {
+  const msg = typeof err === 'string' ? err : (err && err.message) || 'Unknown error';
+  return msg.split('\n')[0].trim();
+}
+
 const errorHandler = (err, req, res, next) => {
   const requestId = req.requestId || 'unknown';
   const repoUrl = req.repoUrl || req.body?.repoUrl || 'unknown';
-  const safeMessage = sanitizeErrorMessage(err.message);
+  const safeMessage = sanitizeErrorMessage(extractErrorMessage(err));
   console.error(`[${requestId}] [repo=${repoUrl}] Unhandled error in request:`, safeMessage);
   if (err.stack) {
     console.error(`[${requestId}] [repo=${repoUrl}]`, err.stack);
@@ -2762,7 +2777,7 @@ app.use(errorHandler);
 
 async function startServer() {
   // Restore analysis cache from disk snapshot, then start periodic persistence
-  analysisCache.restoreFromDisk();
+  await analysisCache.restoreFromDisk();
   analysisCache.startPersistTimer(parseInt(process.env.CACHE_PERSIST_INTERVAL_MS || '300000', 10));
 
   // Persist in-memory CSRF token stores on shutdown
@@ -2810,8 +2825,8 @@ async function startServer() {
   }
 
   // Persist in-memory state on shutdown
-  function persistAllState() {
-    analysisCache.persistToDisk();
+  async function persistAllState() {
+    await analysisCache.persistToDisk();
     persistCsrfTokens();
   }
   const originalOnShutdown = onShutdown;

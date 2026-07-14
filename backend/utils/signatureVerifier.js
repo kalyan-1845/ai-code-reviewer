@@ -1,8 +1,7 @@
 import crypto from 'crypto';
 
-export function verifyWebhookSignature(rawBody, signature, secret) {
+function verifyOneSecret(rawBody, signature, secret) {
   if (!signature || !secret) return false;
-  // Ensure rawBody is treated as a string to prevent type errors in hmac.update
   const bodyStr = typeof rawBody === 'string' ? rawBody : Buffer.isBuffer(rawBody) ? rawBody.toString('utf-8') : '';
   const sig = signature.startsWith('sha256=') ? signature : `sha256=${signature}`;
   const hmac = crypto.createHmac('sha256', secret);
@@ -16,4 +15,21 @@ export function verifyWebhookSignature(rawBody, signature, secret) {
     console.error("Webhook signature verification failed:", err);
     return false;
   }
+}
+
+export function verifyWebhookSignature(rawBody, signature, secret) {
+  return verifyOneSecret(rawBody, signature, secret);
+}
+
+export function verifyWebhookSignatureMulti(rawBody, signature, secrets) {
+  if (!secrets || (Array.isArray(secrets) && secrets.length === 0)) return false;
+  if (typeof secrets === 'string') {
+    return verifyOneSecret(rawBody, signature, secrets);
+  }
+  for (const secret of secrets) {
+    if (verifyOneSecret(rawBody, signature, secret)) {
+      return true;
+    }
+  }
+  return false;
 }

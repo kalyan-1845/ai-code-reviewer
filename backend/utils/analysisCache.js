@@ -49,6 +49,7 @@ class AnalysisCache {
     this.pending = new Map();
     this._locks = new Map();
     this._repoUrlIndex = new Map();
+    this._writeLock = new AsyncLock();
     this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0 };
     this._startSweeper();
   }
@@ -130,39 +131,41 @@ class AnalysisCache {
    * Store an analysis result in the cache with expiration time.
    * Options can include { isMock: true } for fallback results.
    */
-  set(key, result, options = {}) {
-    if (this.cache.has(key)) {
-      const entry = this.cache.get(key);
-      this.cache.delete(key);
-      if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-        this._repoUrlIndex.get(entry.repoUrl).delete(key);
-      }
-    } else if (this.cache.size >= this.maxEntries) {
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey !== undefined) {
-        const entry = this.cache.get(oldestKey);
-        this.cache.delete(oldestKey);
-        if (entry && entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-          this._repoUrlIndex.get(entry.repoUrl).delete(oldestKey);
+  async set(key, result, options = {}) {
+    await this._writeLock.acquire(async () => {
+      if (this.cache.has(key)) {
+        const entry = this.cache.get(key);
+        this.cache.delete(key);
+        if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+          this._repoUrlIndex.get(entry.repoUrl).delete(key);
         }
-        this.stats.evictions++;
+      } else if (this.cache.size >= this.maxEntries) {
+        const oldestKey = this.cache.keys().next().value;
+        if (oldestKey !== undefined) {
+          const entry = this.cache.get(oldestKey);
+          this.cache.delete(oldestKey);
+          if (entry && entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+            this._repoUrlIndex.get(entry.repoUrl).delete(oldestKey);
+          }
+          this.stats.evictions++;
+        }
       }
-    }
-    const now = Date.now();
-    const ttl = options.isMock ? this.mockTtlMs : this.ttlMs;
-    const expiresAt = now + ttl;
-    const absoluteExpiresAt = now + (ttl * this.absoluteMaxMultiplier);
-    const repoUrl = options.repoUrl;
-    const normalizedRepoUrl = repoUrl ? repoUrl.replace(/\/+$/, '').toLowerCase() : undefined;
-    this.cache.set(key, { result, expiresAt, absoluteExpiresAt, repoUrl: normalizedRepoUrl, isMock: !!options.isMock });
-    if (normalizedRepoUrl) {
-      if (!this._repoUrlIndex.has(normalizedRepoUrl)) {
-        this._repoUrlIndex.set(normalizedRepoUrl, new Set());
+      const now = Date.now();
+      const ttl = options.isMock ? this.mockTtlMs : this.ttlMs;
+      const expiresAt = now + ttl;
+      const absoluteExpiresAt = now + (ttl * this.absoluteMaxMultiplier);
+      const repoUrl = options.repoUrl;
+      const normalizedRepoUrl = repoUrl ? repoUrl.replace(/\/+$/, '').toLowerCase() : undefined;
+      this.cache.set(key, { result, expiresAt, absoluteExpiresAt, repoUrl: normalizedRepoUrl, isMock: !!options.isMock });
+      if (normalizedRepoUrl) {
+        if (!this._repoUrlIndex.has(normalizedRepoUrl)) {
+          this._repoUrlIndex.set(normalizedRepoUrl, new Set());
+        }
+        this._repoUrlIndex.get(normalizedRepoUrl).add(key);
       }
-      this._repoUrlIndex.get(normalizedRepoUrl).add(key);
-    }
-    const qualityLabel = options.isMock ? '⚠️ MOCK' : '💾';
-    console.log(`${qualityLabel} Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions, ttl=${ttl}ms)`);
+      const qualityLabel = options.isMock ? '⚠️ MOCK' : '💾';
+      console.log(`${qualityLabel} Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions, ttl=${ttl}ms)`);
+    });
   }
 
   /**
@@ -191,11 +194,11 @@ class AnalysisCache {
         return pending;
       }
 
-      const promise = fetcher().then(result => {
+      const promise = fetcher().then(async (result) => {
         const cacheHint = (result && result._cacheHint) || {};
         const resultData = (result && result._data !== undefined) ? result._data : result;
         const isMock = cacheHint.isMock === true || result._mock === true;
-        this.set(key, resultData, { repoUrl, isMock });
+        await this.set(key, resultData, { repoUrl, isMock });
         this.pending.delete(key);
         return resultData;
       }).catch(err => {
@@ -212,31 +215,35 @@ class AnalysisCache {
   /**
    * Clear all mock entries from the cache (used when AI engine recovers).
    */
-  clearMockEntries() {
-    let cleared = 0;
-    for (const [key, entry] of this.cache) {
-      if (entry.isMock) {
-        this.cache.delete(key);
-        this._removeFromRepoUrlIndex(key, entry);
-        cleared++;
+  async clearMockEntries() {
+    return this._writeLock.acquire(async () => {
+      let cleared = 0;
+      for (const [key, entry] of this.cache) {
+        if (entry.isMock) {
+          this.cache.delete(key);
+          this._removeFromRepoUrlIndex(key, entry);
+          cleared++;
+        }
       }
-    }
-    if (cleared > 0) {
-      console.log(`🧹 Cleared ${cleared} mock cache entries after AI Engine recovery`);
-    }
-    return cleared;
+      if (cleared > 0) {
+        console.log(`🧹 Cleared ${cleared} mock cache entries after AI Engine recovery`);
+      }
+      return cleared;
+    });
   }
 
   /**
    * Clear all entries from the cache.
    */
-  clear() {
-    this._stopSweeper();
-    const size = this.cache.size;
-    this.cache.clear();
-    this._repoUrlIndex.clear();
-    this._startSweeper();
-    console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
+  async clear() {
+    await this._writeLock.acquire(async () => {
+      this._stopSweeper();
+      const size = this.cache.size;
+      this.cache.clear();
+      this._repoUrlIndex.clear();
+      this._startSweeper();
+      console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
+    });
   }
 
   /**
@@ -245,27 +252,29 @@ class AnalysisCache {
   _startSweeper(intervalMs = 60000) {
     if (this._sweeper) return;
     this._sweeper = setInterval(() => {
-      const now = Date.now();
-      for (const [key, entry] of this.cache) {
-        // Check absolute max TTL first — entries that have lived too long
-        // are evicted regardless of access pattern
-        if (now > entry.absoluteExpiresAt) {
-          this.cache.delete(key);
-          this.stats.absoluteExpiries++;
-          if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+      this._writeLock.acquire(() => {
+        const now = Date.now();
+        for (const [key, entry] of this.cache) {
+          // Check absolute max TTL first — entries that have lived too long
+          // are evicted regardless of access pattern
+          if (now > entry.absoluteExpiresAt) {
+            this.cache.delete(key);
+            this.stats.absoluteExpiries++;
+            if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+              this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            }
+            continue;
           }
-          continue;
-        }
-        if (now > entry.expiresAt) {
-          this.cache.delete(key);
-          this.stats.slidingExpiries++;
-          if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+          if (now > entry.expiresAt) {
+            this.cache.delete(key);
+            this.stats.slidingExpiries++;
+            if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+              this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            }
           }
         }
-      }
-      this._cleanupIdleLocks();
+        this._cleanupIdleLocks();
+      }).catch(() => {});
     }, intervalMs);
     if (this._sweeper.unref) this._sweeper.unref();
   }
@@ -326,119 +335,131 @@ class AnalysisCache {
   /**
    * Manually expire an entry (useful for testing or cache invalidation).
    */
-  invalidate(key) {
-    if (this.cache.has(key)) {
-      const entry = this.cache.get(key);
-      this.cache.delete(key);
-      if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-        this._repoUrlIndex.get(entry.repoUrl).delete(key);
+  async invalidate(key) {
+    return this._writeLock.acquire(() => {
+      if (this.cache.has(key)) {
+        const entry = this.cache.get(key);
+        this.cache.delete(key);
+        if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+          this._repoUrlIndex.get(entry.repoUrl).delete(key);
+        }
+        console.log(`❌ Invalidated cache entry for key ${key.slice(0, 8)}...`);
+        return true;
       }
-      console.log(`❌ Invalidated cache entry for key ${key.slice(0, 8)}...`);
-      return true;
-    }
-    return false;
+      return false;
+    });
   }
 
   /**
    * Invalidate all cache entries by repo URL.
    * Iterates the cache and removes entries whose key matches the given repo URL.
    */
-  invalidateByRepoUrl(repoUrl) {
-    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
-    const keys = this._repoUrlIndex.get(normalized);
-    if (!keys || keys.size === 0) {
-      return 0;
-    }
-    let removed = 0;
+  async invalidateByRepoUrl(repoUrl) {
+    return this._writeLock.acquire(() => {
+      const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+      const keys = this._repoUrlIndex.get(normalized);
+      if (!keys || keys.size === 0) {
+        return 0;
+      }
+      let removed = 0;
       for (const key of keys) {
         if (this.cache.delete(key)) {
-        removed++;
+          removed++;
+        }
       }
-    }
-    this._repoUrlIndex.delete(normalized);
-    if (removed > 0) {
-      this.stats.evictions += removed;
-      console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
-    }
-    return removed;
+      this._repoUrlIndex.delete(normalized);
+      if (removed > 0) {
+        this.stats.evictions += removed;
+        console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
+      }
+      return removed;
+    });
   }
 
   /**
    * Set custom TTL (in milliseconds).
    */
-  setTtl(ttlMs) {
-    this.ttlMs = ttlMs;
+  async setTtl(ttlMs) {
+    await this._writeLock.acquire(() => {
+      this.ttlMs = ttlMs;
+    });
   }
 
-  setMaxEntries(max) {
-    this.maxEntries = max;
-    while (this.cache.size > this.maxEntries) {
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey !== undefined) {
-        const entry = this.cache.get(oldestKey);
-        this.cache.delete(oldestKey);
-        if (entry && entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-          this._repoUrlIndex.get(entry.repoUrl).delete(oldestKey);
-        }
-        this.stats.evictions++;
-      }
-    }
-  }
-
-  persistToDisk(filePath = PERSIST_PATH) {
-    try {
-      const snapshot = [];
-      for (const [key, entry] of this.cache) {
-        snapshot.push({
-          key,
-          result: entry.result,
-          expiresAt: entry.expiresAt,
-          absoluteExpiresAt: entry.absoluteExpiresAt,
-          repoUrl: entry.repoUrl,
-          isMock: entry.isMock,
-        });
-      }
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath + '.tmp', JSON.stringify(snapshot));
-      fs.renameSync(filePath + '.tmp', filePath);
-      console.log(`💾 Persisted ${snapshot.length} cache entries to ${filePath}`);
-    } catch (err) {
-      console.warn(`⚠️ Cache persist failed: ${err.message}`);
-    }
-  }
-
-  restoreFromDisk(filePath = PERSIST_PATH) {
-    try {
-      if (!fs.existsSync(filePath)) return 0;
-      const raw = fs.readFileSync(filePath, 'utf-8');
-      const snapshot = JSON.parse(raw);
-      let restored = 0;
-      const now = Date.now();
-      for (const entry of snapshot) {
-        if (now > entry.absoluteExpiresAt) continue;
-        if (now > entry.expiresAt) continue;
-        this.cache.set(entry.key, {
-          result: entry.result,
-          expiresAt: entry.expiresAt,
-          absoluteExpiresAt: entry.absoluteExpiresAt,
-          repoUrl: entry.repoUrl,
-          isMock: entry.isMock,
-        });
-        if (entry.repoUrl) {
-          if (!this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.set(entry.repoUrl, new Set());
+  async setMaxEntries(max) {
+    await this._writeLock.acquire(() => {
+      this.maxEntries = max;
+      while (this.cache.size > this.maxEntries) {
+        const oldestKey = this.cache.keys().next().value;
+        if (oldestKey !== undefined) {
+          const entry = this.cache.get(oldestKey);
+          this.cache.delete(oldestKey);
+          if (entry && entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+            this._repoUrlIndex.get(entry.repoUrl).delete(oldestKey);
           }
-          this._repoUrlIndex.get(entry.repoUrl).add(entry.key);
+          this.stats.evictions++;
         }
-        restored++;
       }
-      console.log(`📂 Restored ${restored} cache entries from ${filePath}`);
-      return restored;
-    } catch (err) {
-      console.warn(`⚠️ Cache restore failed: ${err.message}`);
-      return 0;
-    }
+    });
+  }
+
+  async persistToDisk(filePath = PERSIST_PATH) {
+    await this._writeLock.acquire(async () => {
+      try {
+        const snapshot = [];
+        for (const [key, entry] of this.cache) {
+          snapshot.push({
+            key,
+            result: entry.result,
+            expiresAt: entry.expiresAt,
+            absoluteExpiresAt: entry.absoluteExpiresAt,
+            repoUrl: entry.repoUrl,
+            isMock: entry.isMock,
+          });
+        }
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(filePath + '.tmp', JSON.stringify(snapshot));
+        fs.renameSync(filePath + '.tmp', filePath);
+        console.log(`💾 Persisted ${snapshot.length} cache entries to ${filePath}`);
+      } catch (err) {
+        console.warn(`⚠️ Cache persist failed: ${err.message}`);
+      }
+    });
+  }
+
+  async restoreFromDisk(filePath = PERSIST_PATH) {
+    return this._writeLock.acquire(() => {
+      try {
+        if (!fs.existsSync(filePath)) return 0;
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const snapshot = JSON.parse(raw);
+        let restored = 0;
+        const now = Date.now();
+        for (const entry of snapshot) {
+          if (now > entry.absoluteExpiresAt) continue;
+          if (now > entry.expiresAt) continue;
+          this.cache.set(entry.key, {
+            result: entry.result,
+            expiresAt: entry.expiresAt,
+            absoluteExpiresAt: entry.absoluteExpiresAt,
+            repoUrl: entry.repoUrl,
+            isMock: entry.isMock,
+          });
+          if (entry.repoUrl) {
+            if (!this._repoUrlIndex.has(entry.repoUrl)) {
+              this._repoUrlIndex.set(entry.repoUrl, new Set());
+            }
+            this._repoUrlIndex.get(entry.repoUrl).add(entry.key);
+          }
+          restored++;
+        }
+        console.log(`📂 Restored ${restored} cache entries from ${filePath}`);
+        return restored;
+      } catch (err) {
+        console.warn(`⚠️ Cache restore failed: ${err.message}`);
+        return 0;
+      }
+    });
   }
 
   startPersistTimer(intervalMs = 300000) {

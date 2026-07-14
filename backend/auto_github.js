@@ -51,7 +51,8 @@ if (!repo) {
 
 console.log(`🔧 Target repository: ${owner}/${repo}`);
 
-const octokit = new Octokit({ auth: token });
+const GITHUB_API_TIMEOUT = parseInt(process.env.GITHUB_API_TIMEOUT || '15000', 10);
+const octokit = new Octokit({ auth: token, request: { timeout: GITHUB_API_TIMEOUT } });
 
 async function autoAssignAndMerge() {
   console.log(`🤖 Starting GitHub Automator for ${owner}/${repo}...`);
