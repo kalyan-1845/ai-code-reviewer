@@ -96,6 +96,32 @@ export function isValidRepoUrl(url) {
   return true;
 }
 
+export function isValidPrUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  if (/[\s\x00-\x1f]/.test(url)) return false;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:') return false;
+  if (parsed.hostname !== 'github.com') return false;
+  if (parsed.username || parsed.password) return false;
+  if (parsed.search || parsed.hash) return false;
+  const path = parsed.pathname.replace(/\/+$/, '').replace(/\.git$/, '');
+  const segments = path.split('/').filter(Boolean);
+  if (segments.length !== 4) return false;
+  if (segments[2] !== 'pull') return false;
+  const OWNER_RE = /^[a-zA-Z0-9._-]+$/;
+  const PR_NUM_RE = /^\d+$/;
+  if (!OWNER_RE.test(segments[0]) || !OWNER_RE.test(segments[1])) return false;
+  if (!PR_NUM_RE.test(segments[3])) return false;
+  if (segments[0].startsWith('-') || segments[1].startsWith('-')) return false;
+  if (segments[0].includes('--') || segments[1].includes('--')) return false;
+  return true;
+}
+
 export function parseRepoUrl(url) {
   if (!isValidRepoUrl(url)) return null;
   const cleanUrl = url.replace(/\/+$/, '').replace(/\.git$/, '');

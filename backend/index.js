@@ -17,7 +17,7 @@ import Redis from 'ioredis';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
 import { recordAnalysis as recordFileAnalytics } from './utils/analyticsStore.js';
 import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
-import { isValidRepoUrl, parseRepoUrl, isSafeUrl } from './utils/urlValidator.js';
+import { isValidRepoUrl, isValidPrUrl, parseRepoUrl, isSafeUrl } from './utils/urlValidator.js';
 import { isValidGithubToken } from './utils/tokenValidator.js';
 import simpleGit from 'simple-git';
 import escapeHtml from 'lodash.escape';
@@ -728,6 +728,11 @@ function requireJsonContentType(req, res, next) {
 
 // ≡ƒƒó Route: GitHub Import & AI Review
 app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, async (req, res) => {
+  const analyzeStartTime = Date.now();
+  console.log(`[${req.requestId}] → ${req.method} ${req.path}`);
+  res.on('finish', () => {
+    console.log(`[${req.requestId}] ← ${req.method} ${req.path} ${res.statusCode} ${Date.now() - analyzeStartTime}ms`);
+  });
   let { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
      maxTokens = 2048, systemPrompt = '', batchSize = 5, githubToken,
      limit, offset
@@ -758,6 +763,9 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
 
   // Validate repo URL format before any other processing
   if (!isValidRepoUrl(repoUrl)) {
+    if (isValidPrUrl(repoUrl)) {
+      return res.status(400).json({ error: 'Invalid GitHub repository URL. Use the repository URL (e.g., https://github.com/owner/repo) instead of a PR URL.' });
+    }
     return res.status(400).json({ error: 'Invalid GitHub repository URL. Only https://github.com/owner/repo URLs are allowed.' });
   }
 
@@ -1716,16 +1724,26 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       }
 
       const enqueuePromise = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
-        try {
-          await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
-          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'completed', Date.now() - webhookStartTime, action);
-        } catch (error) {
-          console.error(`Webhook review failed:`, sanitizeErrorMessage(error.message));
-          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'failed', Date.now() - webhookStartTime, action);
-          if (redisClient) {
-            await redisClient.srem(shaDedupKey, headSha);
-          } else {
-            shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+        const maxRetries = 2;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
+            recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'completed', Date.now() - webhookStartTime, action);
+            return;
+          } catch (error) {
+            if (attempt < maxRetries) {
+              const delay = Math.pow(2, attempt) * 1000;
+              console.warn(`[${req.requestId}] Webhook review attempt ${attempt + 1}/${maxRetries + 1} failed for PR #${pullNumber}, retrying in ${delay}ms:`, sanitizeErrorMessage(error.message));
+              await new Promise(r => setTimeout(r, delay));
+            } else {
+              console.error(`[${req.requestId}] Webhook review failed after ${maxRetries + 1} attempts for PR #${pullNumber}:`, sanitizeErrorMessage(error.message));
+              recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'failed', Date.now() - webhookStartTime, action);
+              if (redisClient) {
+                await redisClient.srem(shaDedupKey, headSha);
+              } else {
+                shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+              }
+            }
           }
         }
       });
