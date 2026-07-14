@@ -19,6 +19,15 @@ class ReviewQueue {
     });
   }
 
+  hasPending(key) {
+    const queue = this._queues.get(key);
+    return queue !== undefined && queue.length > 0;
+  }
+
+  isActive(key) {
+    return this._queues.has(key) || this._queueLocks.has(key);
+  }
+
   get totalPending() {
     let count = 0;
     for (const queue of this._queues.values()) {

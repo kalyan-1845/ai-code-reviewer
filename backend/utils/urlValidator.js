@@ -72,8 +72,11 @@ export async function isSafeUrl(url) {
   return { valid: true };
 }
 
+const MAX_REPO_URL_LENGTH = 2048;
+
 export function isValidRepoUrl(url) {
   if (!url || typeof url !== 'string') return false;
+  if (url.length > MAX_REPO_URL_LENGTH) return false;
   if (/[\s\x00-\x1f]/.test(url)) return false;
   let parsed;
   try {

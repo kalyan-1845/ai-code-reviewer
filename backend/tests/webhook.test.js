@@ -39,6 +39,7 @@ function buildWebhookApp() {
   };
 
   // Returns an Express-like middleware that handles a POST /api/webhook request.
+  // Uses fire-and-forget enqueue to match production behavior (index.js does not await enqueue).
   async function webhookHandler(req) {
     const webhookSecret = process.env.WEBHOOK_SECRET;
     if (!webhookSecret) {
@@ -83,7 +84,13 @@ function buildWebhookApp() {
         }
         reviewedShas.get(shaKey).add(headSha);
 
-        await reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async () => {});
+        // Dedup: skip if same PR already has an active analysis (#2455)
+        if (reviewQueue.isActive(reviewKey)) {
+          return { status: 200, body: { success: true, message: 'Webhook received (PR already being analyzed).' } };
+        }
+
+        // Fire-and-forget to match production behavior
+        reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async () => {});
       }
     }
 
@@ -330,4 +337,60 @@ test('non-pull_request event (push) returns success without queuing', async () =
   assert.equal(result.status, 200);
   assert.equal(result.body.success, true);
   assert.equal(enqueueCalls.length, 0, 'push event should not enqueue');
+});
+
+test('duplicate PR analysis skipped when already active (isActive dedup #2455)', async () => {
+  process.env.WEBHOOK_SECRET = 'test_secret';
+  const { webhookHandler, enqueueCalls, reviewQueue } = buildWebhookApp();
+
+  const payload1 = {
+    action: 'opened',
+    pull_request: { number: 15, head: { sha: 'sha111' } },
+    repository: { owner: { login: 'org' }, name: 'repo' },
+  };
+  const rawBody1 = JSON.stringify(payload1);
+  const signature1 = makeSignature(rawBody1, 'test_secret');
+
+  // Manually set the queue lock to simulate an active analysis
+  reviewQueue._queueLocks.set('org/repo/#15', Promise.resolve());
+
+  // Second request with same PR but different SHA — should be deduped by isActive
+  const payload2 = {
+    action: 'opened',
+    pull_request: { number: 15, head: { sha: 'sha222' } },
+    repository: { owner: { login: 'org' }, name: 'repo' },
+  };
+  const rawBody2 = JSON.stringify(payload2);
+  const signature2 = makeSignature(rawBody2, 'test_secret');
+
+  const result2 = await webhookHandler({
+    headers: {
+      'x-github-event': 'pull_request',
+      'x-hub-signature-256': signature2,
+    },
+    body: payload2,
+    rawBody: rawBody2,
+  });
+
+  assert.equal(result2.status, 200);
+  assert.equal(result2.body.message, 'Webhook received (PR already being analyzed).');
+  assert.equal(enqueueCalls.length, 0, 'duplicate PR should not enqueue');
+});
+
+test('ReviewQueue.isActive returns true when queue or lock exists', async () => {
+  const q = new ReviewQueue();
+  const key = 'test/key';
+  assert.equal(q.isActive(key), false, 'fresh key should not be active');
+
+  // Lock exists = active
+  q._queueLocks.set(key, Promise.resolve());
+  assert.equal(q.isActive(key), true, 'key with lock should be active');
+  q._queueLocks.delete(key);
+  assert.equal(q.isActive(key), false, 'key without lock or queue should not be active');
+
+  // Queue has items = active
+  q._queues.set(key, [1, 2, 3]);
+  assert.equal(q.isActive(key), true, 'key with queued items should be active');
+  q._queues.delete(key);
+  assert.equal(q.isActive(key), false, 'key after cleanup should not be active');
 });

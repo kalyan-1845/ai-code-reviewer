@@ -81,6 +81,8 @@ const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill
 const ANALYSIS_TIMEOUT_MS = parseInt(process.env.ANALYSIS_TIMEOUT_MS || '120000', 10);
 // Configurable timeout for review-diff endpoint (default: 30s)
 const REVIEW_DIFF_TIMEOUT_MS = parseInt(process.env.REVIEW_DIFF_TIMEOUT_MS || '30000', 10);
+// Configurable timeout for webhook processing (default: 60s)
+const WEBHOOK_PROCESSING_TIMEOUT_MS = parseInt(process.env.WEBHOOK_PROCESSING_TIMEOUT_MS || '60000', 10);
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
@@ -689,11 +691,54 @@ const shaDedupCleanupTimer = setInterval(() => {
 }, SHA_DEDUP_CLEANUP_INTERVAL);
 shaDedupCleanupTimer.unref();
 
+// Webhook delivery stats tracking (#2457)
+const webhookStats = {
+  totalDeliveries: 0,
+  successfulDeliveries: 0,
+  failedDeliveries: 0,
+  totalDurationMs: 0,
+  minDurationMs: Infinity,
+  maxDurationMs: 0,
+  deliveriesByEvent: {},
+  startedAt: Date.now(),
+};
+
+function recordWebhookStats(event, success, durationMs) {
+  webhookStats.totalDeliveries++;
+  if (success) {
+    webhookStats.successfulDeliveries++;
+  } else {
+    webhookStats.failedDeliveries++;
+  }
+  webhookStats.totalDurationMs += durationMs;
+  if (durationMs < webhookStats.minDurationMs) webhookStats.minDurationMs = durationMs;
+  if (durationMs > webhookStats.maxDurationMs) webhookStats.maxDurationMs = durationMs;
+  if (!webhookStats.deliveriesByEvent[event]) {
+    webhookStats.deliveriesByEvent[event] = { total: 0, success: 0, fail: 0 };
+  }
+  webhookStats.deliveriesByEvent[event].total++;
+  if (success) {
+    webhookStats.deliveriesByEvent[event].success++;
+  } else {
+    webhookStats.deliveriesByEvent[event].fail++;
+  }
+}
+
+// Periodic webhook stats logger
+const webhookStatsTimer = setInterval(() => {
+  const avgDuration = webhookStats.totalDeliveries > 0
+    ? Math.round(webhookStats.totalDurationMs / webhookStats.totalDeliveries)
+    : 0;
+  console.log(`[webhook-stats] total=${webhookStats.totalDeliveries} success=${webhookStats.successfulDeliveries} fail=${webhookStats.failedDeliveries} avg=${avgDuration}ms min=${webhookStats.minDurationMs === Infinity ? 0 : webhookStats.minDurationMs}ms max=${webhookStats.maxDurationMs}ms events=${Object.keys(webhookStats.deliveriesByEvent).length}`);
+}, 5 * 60 * 1000);
+webhookStatsTimer.unref();
+
 function cleanupTimers() {
   clearInterval(cacheMetricsTimer);
   clearInterval(aiEngineHealthTimer);
   clearInterval(exclusiveLockCleanupTimer);
   clearInterval(shaDedupCleanupTimer);
+  clearInterval(webhookStatsTimer);
 }
 
   // Loaded from shared-safety-config.json via dangerousPhrases.js
@@ -1679,7 +1724,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       const repoUrl = `https://github.com/${owner}/${repo}`;
       const removed = await analysisCache.invalidateByRepoUrl(repoUrl);
       if (removed > 0) {
-        console.log(`≡ƒôí Push event invalidated ${removed} cache entries for ${repoUrl}`);
+        console.log(`[${req.requestId}] [repo=${repoUrl}] Push event invalidated ${removed} cache entries`);
       }
     }
   }
@@ -1795,11 +1840,35 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       }
 
       const requestId = req.requestId;
+
+      // Dedup: skip if same PR is already queued or in-flight (#2455)
+      if (reviewQueue.isActive(reviewKey)) {
+        console.log(`[${requestId}] PR #${pullNumber} already has an active analysis in ${owner}/${repo} — skipping duplicate`);
+        if (redisClient) {
+          await redisClient.srem(shaDedupKey, headSha);
+        } else {
+          shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+        }
+        return res.status(200).json({ success: true, message: 'Webhook received (PR already being analyzed).' });
+      }
+
       // Fire-and-forget: process review asynchronously, return 202 immediately
+      // with configurable timeout and stats tracking
       reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
+        const webhookStartTime = Date.now();
         try {
-          await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha, requestId);
+          // Wrap with configurable timeout (#2454)
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Webhook processing timed out')), WEBHOOK_PROCESSING_TIMEOUT_MS)
+          );
+          await Promise.race([
+            runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha, requestId),
+            timeoutPromise
+          ]);
+          recordWebhookStats(event, true, Date.now() - webhookStartTime);
         } catch (error) {
+          const duration = Date.now() - webhookStartTime;
+          recordWebhookStats(event, false, duration);
           console.error(`[${requestId}] Γ¥î Webhook review failed for ${headSha}:`, error.message);
           // Report the error back to the user via a PR review comment
           try {
@@ -2775,6 +2844,20 @@ app.get('/api/health/circuit-breaker', (req, res) => {
   res.json({
     ...reviewQueue.getCircuitState(),
     timestamp: new Date().toISOString(),
+  });
+});
+
+// Webhook delivery stats endpoint (#2457)
+app.get('/api/webhook/stats', (req, res) => {
+  const avgDuration = webhookStats.totalDeliveries > 0
+    ? Math.round(webhookStats.totalDurationMs / webhookStats.totalDeliveries)
+    : 0;
+  const uptimeMs = Date.now() - webhookStats.startedAt;
+  res.json({
+    ...webhookStats,
+    avgDurationMs: avgDuration,
+    uptimeMs,
+    minDurationMs: webhookStats.minDurationMs === Infinity ? 0 : webhookStats.minDurationMs,
   });
 });
 

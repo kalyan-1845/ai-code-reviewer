@@ -27,6 +27,14 @@ test('isValidRepoUrl should reject invalid URLs', () => {
   assert.equal(isValidRepoUrl('https://github.com/owner/repo && whoami'), false);
 });
 
+test('isValidRepoUrl should reject URLs exceeding max length (#2456)', () => {
+  const baseUrl = 'https://github.com/owner/repo';
+  const longPath = 'a'.repeat(3000);
+  const longUrl = baseUrl + '/' + longPath;
+  assert.equal(longUrl.length > 2048, true, 'test URL must exceed the 2048 char limit');
+  assert.equal(isValidRepoUrl(longUrl), false, 'URL exceeding max length should be rejected');
+});
+
 test('parseRepoUrl should extract owner and repo', () => {
   const result = parseRepoUrl('https://github.com/owner/repo');
   assert.notEqual(result, null);
