@@ -229,7 +229,7 @@ app.use(cookieParser());
 // webhook route; all other routes fall through to express.json() below.
 app.use((req, res, next) => {
   if (req.method === 'POST' && req.path === '/api/webhook') {
-    const MAX_WEBHOOK_BODY = 5 * 1024 * 1024; // 5 MB
+    const MAX_WEBHOOK_BODY = 1 * 1024 * 1024; // 1 MB
     const chunks = [];
     let totalBytes = 0;
     let responseAlreadySent = false;
@@ -2663,6 +2663,7 @@ app.get('/api/review-history/compare/:id1/:id2', requireApiKey, async (req, res)
 });
 
 app.get('/health', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   if (!serverReady) {
     return res.status(503).json({
       status: 'starting_up',
@@ -2684,6 +2685,7 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/health/circuit-breaker', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   res.json({
     ...reviewQueue.getCircuitState(),
     timestamp: new Date().toISOString(),
@@ -2692,6 +2694,7 @@ app.get('/api/health/circuit-breaker', (req, res) => {
 
 // ≡ƒƒó Metrics endpoint with auth check
 app.get('/metrics', requireApiKey, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   res.json({
     uptime: Math.floor((Date.now() - serverStartTime.getTime()) / 1000),
     serverReady,
@@ -2756,7 +2759,7 @@ const errorHandler = (err, req, res, next) => {
   }
   const statusCode = err.statusCode || err.status || 500;
   res.status(statusCode).json({
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : safeMessage,
+    error: safeMessage,
   });
 };
 app.use(errorHandler);

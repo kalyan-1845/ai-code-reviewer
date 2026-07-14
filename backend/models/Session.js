@@ -103,5 +103,6 @@ function validateSessionIdFilter(next) {
 // absoluteExpiry is reached. The sliding 24h window is handled by
 // application code ($max on each chat interaction).
 sessionSchema.index({ absoluteExpiry: 1 }, { expireAfterSeconds: 0 });
+sessionSchema.index({ repoUrl: 1 });
 
 export default mongoose.model('Session', sessionSchema);

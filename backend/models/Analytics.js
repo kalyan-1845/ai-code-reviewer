@@ -115,5 +115,6 @@ commitHash: {
 
 analyticsSchema.index({ analyzedAt: -1 });
 analyticsSchema.index({ repoName: 1, analyzedAt: -1 });
+analyticsSchema.index({ repoUrl: 1 });
 
 export default mongoose.model('Analytics', analyticsSchema);
