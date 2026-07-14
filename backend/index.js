@@ -458,7 +458,20 @@ function cleanupTempRepos() {
     console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
   }
 }
-async function onShutdown() {
+
+let httpServer = null;
+
+async function onShutdown(signal = 'SIGTERM') {
+  console.log(`≡ƒæï Received ${signal} — initiating graceful shutdown...`);
+
+  // Stop accepting new connections
+  if (httpServer) {
+    await new Promise((resolve) => {
+      httpServer.close(resolve);
+    });
+    console.log('≡ƒæï HTTP server closed — no longer accepting new connections');
+  }
+
   cleanupTempRepos();
   cleanupTimers();
   if (redisClient) redisClient.quit();
@@ -1535,6 +1548,7 @@ app.post('/api/rag/query', requireApiKey, async (req, res) => {
 const repoRequestCounts = new Map();
 const REPO_WINDOW_MS = 60 * 1000;
 const REPO_MAX_REQUESTS = 5;
+const RATE_LIMITER_STATE_PATH = path.join(__dirname, 'data', 'rate_limiter_state.json');
 setInterval(() => {
   const now = Date.now();
   for (const [key, { count, windowStart }] of repoRequestCounts) {
@@ -1543,6 +1557,45 @@ setInterval(() => {
     }
   }
 }, 60 * 1000).unref();
+
+function persistRateLimiterState() {
+  try {
+    const dir = path.dirname(RATE_LIMITER_STATE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const now = Date.now();
+    const valid = [];
+    for (const [key, { count, windowStart }] of repoRequestCounts) {
+      if (now - windowStart <= REPO_WINDOW_MS) {
+        valid.push({ key, count, windowStart, windowEnd: windowStart + REPO_WINDOW_MS });
+      }
+    }
+    fs.writeFileSync(RATE_LIMITER_STATE_PATH, JSON.stringify(valid));
+  } catch (err) {
+    console.warn('ΓÜá∩╕Å Rate limiter state persist failed:', err.message);
+  }
+}
+
+function restoreRateLimiterState() {
+  try {
+    if (!fs.existsSync(RATE_LIMITER_STATE_PATH)) return 0;
+    const raw = fs.readFileSync(RATE_LIMITER_STATE_PATH, 'utf-8');
+    const entries = JSON.parse(raw);
+    const now = Date.now();
+    let restored = 0;
+    for (const entry of entries) {
+      if (now - entry.windowStart > REPO_WINDOW_MS) continue;
+      repoRequestCounts.set(entry.key, { count: entry.count, windowStart: entry.windowStart });
+      restored++;
+    }
+    if (restored > 0) {
+      console.log(`Γô½∩╕Å Restored ${restored} rate limiter state entries from disk`);
+    }
+    return restored;
+  } catch (err) {
+    console.warn('ΓÜá∩╕Å Rate limiter state restore failed:', err.message);
+    return 0;
+  }
+}
 
 const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -1866,6 +1919,9 @@ app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
   if (!repoUrl) {
     return res.status(400).json({ error: 'repoUrl is required.' });
   }
+  if (!isValidRepoUrl(repoUrl)) {
+    return res.status(400).json({ error: 'Invalid GitHub repository URL. Only https://github.com/owner/repo URLs are allowed.' });
+  }
   const removed = await analysisCache.invalidateByRepoUrl(repoUrl);
   res.json({ success: true, removed, stats: analysisCache.getStats() });
 });
@@ -1913,6 +1969,17 @@ async function runWebhookReview(owner, repo, pullNumber, headSha, requestId) {
   if (headSha && pullRequest.head.sha !== headSha) {
     console.log(`[${requestId}] ΓÅ¡∩╕Å Skipping stale review ${headSha.substring(0, 7)}; current head is ${pullRequest.head.sha.substring(0, 7)}.`);
     return;
+  }
+
+  // Skip notification if the PR author is the reviewer bot itself
+  try {
+    const { data: botUser } = await octokit.rest.users.getAuthenticated();
+    if (botUser && botUser.login && pullRequest.user && pullRequest.user.login === botUser.login) {
+      console.log(`[${requestId}] ΓÅ¡∩╕Å PR #${pullNumber} authored by bot user (${botUser.login}) — skipping review notification`);
+      return;
+    }
+  } catch (err) {
+    console.warn(`[${requestId}] ΓÜá∩╕Å Could not fetch authenticated user for bot self-check: ${err.message}`);
   }
 
   // Supersede whatever review was posted for a prior commit on this PR, so
@@ -2780,6 +2847,9 @@ async function startServer() {
   await analysisCache.restoreFromDisk();
   analysisCache.startPersistTimer(parseInt(process.env.CACHE_PERSIST_INTERVAL_MS || '300000', 10));
 
+  // Restore rate limiter state from disk
+  restoreRateLimiterState();
+
   // Persist in-memory CSRF token stores on shutdown
   function persistCsrfTokens() {
     try {
@@ -2802,6 +2872,10 @@ async function startServer() {
   // Periodic CSRF token persistence (every 2 minutes)
   const csrfPersistTimer = setInterval(persistCsrfTokens, 120000);
   csrfPersistTimer.unref();
+
+  // Periodic rate limiter state persistence (every 2 minutes)
+  const rateLimiterPersistTimer = setInterval(persistRateLimiterState, 120000);
+  rateLimiterPersistTimer.unref();
 
   // Restore CSRF tokens from disk
   try {
@@ -2828,25 +2902,26 @@ async function startServer() {
   async function persistAllState() {
     await analysisCache.persistToDisk();
     persistCsrfTokens();
+    persistRateLimiterState();
   }
-  const originalOnShutdown = onShutdown;
   const origCleanupTimers = cleanupTimers;
   cleanupTimers = function() {
     persistAllState();
     if (origCleanupTimers) origCleanupTimers();
     clearInterval(csrfPersistTimer);
+    clearInterval(rateLimiterPersistTimer);
   };
   process.removeListener('SIGINT', onShutdown);
   process.removeListener('SIGTERM', onShutdown);
-  process.on('SIGINT', () => { persistAllState(); onShutdown(); });
-  process.on('SIGTERM', () => { persistAllState(); onShutdown(); });
+  process.on('SIGINT', () => { persistAllState(); onShutdown('SIGINT'); });
+  process.on('SIGTERM', () => { persistAllState(); onShutdown('SIGTERM'); });
 
   await connectDatabase();
   if (!isDatabaseConnected()) {
     console.log('Server started in degraded mode (no database). Analytics will use file-based storage.');
   }
   serverReady = true;
-  app.listen(PORT, () => {
+  httpServer = app.listen(PORT, () => {
     console.log(`≡ƒƒó RepoSage Backend running on http://localhost:${PORT}`);
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
