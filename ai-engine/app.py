@@ -1,6 +1,7 @@
 import sys
 import os
 import html
+import hmac
 import json
 import re
 import time
@@ -349,7 +350,7 @@ async def global_exception_handler(request, exc):
 
 def verify_api_key(x_api_key: str = Header(None)):
     expected_key = os.getenv("API_KEY")
-    if expected_key and x_api_key != expected_key:
+    if expected_key and not hmac.compare_digest(x_api_key or "", expected_key):
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
 def verify_rag_ingest_key(x_rag_ingest_key: str = Header(None)):
@@ -471,7 +472,7 @@ async def require_api_key(request: Request, call_next):
         print("🚨 SEVERE: REPOSAGE_API_KEY is not set! Rejecting all requests.")
         return JSONResponse(status_code=401, content={"error": "Server misconfiguration: REPOSAGE_API_KEY not set."})
     provided = request.headers.get("x-api-key", "")
-    if not provided or provided != API_KEY:
+    if not provided or not hmac.compare_digest(provided, API_KEY):
         return JSONResponse(status_code=401, content={"error": "Unauthorized: Invalid or missing API Key."})
     response = await call_next(request)
     return response
