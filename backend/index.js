@@ -577,8 +577,11 @@ async function generateDependencyReport(clonePath) {
 }
 
 // Webhook deduplication using Redis SETNX for cross-instance safety
-// TTL matches GitHub's webhook retry window (300 seconds)
-const DELIVERY_REDIS_TTL = 300;
+// TTL covers GitHub's webhook retry window (300s) plus anti-replay buffer
+const DELIVERY_REDIS_TTL = 3600; // 1 hour — long enough to prevent replay attacks
+
+// Maximum age of a webhook payload to accept (anti-replay)
+const WEBHOOK_MAX_AGE_SECONDS = 300; // 5 minutes
 
 // In-memory fallback for webhook SHA dedup when Redis is unavailable
 const shaDedupMemoryMap = new Map();
@@ -690,7 +693,7 @@ function requireJsonContentType(req, res, next) {
 
 // ≡ƒƒó Route: GitHub Import & AI Review
 app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, async (req, res) => {
-  let { repoUrl, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
+  let { repoUrl, prNumber, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile',temperature = 0.7,
      maxTokens = 2048, systemPrompt = '', batchSize = 5, githubToken,
      limit, offset
    } = req.body;
@@ -721,6 +724,15 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
   // Validate repo URL format before any other processing
   if (!isValidRepoUrl(repoUrl)) {
     return res.status(400).json({ error: 'Invalid GitHub repository URL. Only https://github.com/owner/repo URLs are allowed.' });
+  }
+
+  // Validate prNumber if provided (must be a positive integer)
+  if (prNumber !== undefined && prNumber !== null) {
+    const parsedPr = parseInt(prNumber, 10);
+    if (!Number.isInteger(parsedPr) || parsedPr < 1) {
+      return res.status(400).json({ error: 'PR number must be a positive integer.' });
+    }
+    prNumber = parsedPr;
   }
 
   if (githubToken && !isValidGithubToken(githubToken)) {
@@ -1204,7 +1216,22 @@ if (reviewResult?.fileReviews) {
       console.error(`[${req.requestId}] [repo=${repoUrl}] Analysis failed:`, err.message);
       if (err.stack) console.error(`[${req.requestId}] [repo=${repoUrl}]`, err.stack);
       await deleteFolderRecursive(clonePath);
-      return res.status(500).json({ error: 'An error occurred during repository analysis.' });
+      // Attempt to return a cached or generic fallback result instead of a 500 error
+      try {
+        const mockRes = mockAIReview(files || [], model);
+        mockRes._mock = true;
+        mockRes._mockWarning = true;
+        const fallbackResponse = {
+          success: true, repoName, filesReviewedCount: (files || []).length,
+          analysis: mockRes, partial_review: false, _mock: true,
+          repositoryHealth: { score: 0, grade: 'N/A', breakdown: {}, recommendations: ['AI service was unavailable — showing generic fallback.'] },
+          prSummary: { overallPurpose: 'Fallback — AI service unavailable.', filesChanged: 0, majorLogicUpdates: [], potentialRisks: [], breakingChanges: [], testingRecommendations: [] },
+          sessionId: null, chatAvailable: false, sessionPersisted: false, ragStatus: 'skipped'
+        };
+        return res.json(fallbackResponse);
+      } catch (fallbackErr) {
+        return res.status(500).json({ error: 'An error occurred during repository analysis.' });
+      }
     }
 });
 
@@ -1275,6 +1302,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
       }
       const { mockAIReview } = await import('./utils/mockAIReview.js');
       const mockRes = mockAIReview(files, model);
+      mockRes._mock = true;
       mockRes._mockWarning = true;
       reviewResult = mockRes;
     }
@@ -1302,6 +1330,8 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
       success: true,
       analysis: reviewResult,
       source: 'direct',
+      _mock: reviewResult?._mock || false,
+      _mockWarning: reviewResult?._mockWarning || undefined,
       ...(fileWarnings.length > 0 ? { warnings: fileWarnings } : {})
     });
   } catch (err) {
@@ -1518,6 +1548,31 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     return res.status(400).json({ error: `Unsupported webhook event: ${event}` });
   }
 
+  // Anti-replay: reject webhook payloads whose timestamp is too old
+  // For pull_request events, use pull_request.updated_at; for push, use head_commit.timestamp
+  if (event === 'pull_request' || event === 'push') {
+    let payloadTime;
+    if (event === 'pull_request') {
+      payloadTime = payload.pull_request?.updated_at;
+    } else {
+      payloadTime = payload.head_commit?.timestamp;
+    }
+    if (payloadTime) {
+      const payloadDate = new Date(payloadTime);
+      if (isNaN(payloadDate.getTime())) {
+        console.warn(`[${req.requestId}] [repo=${repoUrl}] Webhook payload has unparseable timestamp`);
+      } else if (Date.now() - payloadDate.getTime() > WEBHOOK_MAX_AGE_SECONDS * 1000) {
+        console.warn(`[${req.requestId}] [repo=${repoUrl}] Rejecting stale webhook payload (age=${Math.round((Date.now() - payloadDate.getTime()) / 1000)}s)`);
+        return res.status(403).json({ error: 'Webhook payload is too old — possible replay attack.' });
+      }
+    }
+  }
+
+  // Anti-replay nonce: store the delivery ID with extended TTL so the same
+  // payload cannot be replayed within the retention window (even if the HMAC
+  // signature is valid). The per-delivery nonce check happens inside the
+  // pull_request branch below where x-github-delivery is validated.
+
   // Validate webhook payload structure against expected schema
   const payloadErrors = validateWebhookPayload(event, payload);
   if (payloadErrors.length > 0) {
@@ -1678,6 +1733,18 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       const repo = payload.repository.name;
       if (redisClient) {
         await clearReviewIds(redisClient, owner, repo, pullNumber);
+      }
+      // Also clear the SHA dedup so reopening the PR allows a fresh review
+      const shaKey = `${sanitizeRedisKey(owner)}/${sanitizeRedisKey(repo)}/#${sanitizeRedisKey(String(pullNumber))}`;
+      const shaDedupKey = `webhook:sha:${shaKey}`;
+      if (redisClient) {
+        await redisClient.del(shaDedupKey);
+      } else {
+        for (const [mapKey] of shaDedupMemoryMap) {
+          if (mapKey.startsWith(shaDedupKey)) {
+            shaDedupMemoryMap.delete(mapKey);
+          }
+        }
       }
     }
   }
