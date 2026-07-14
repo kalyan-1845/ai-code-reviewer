@@ -88,6 +88,17 @@ if (trustProxy) {
 // Request ID middleware — assigns a unique ID to every request for traceability in logs
 app.use((req, res, next) => {
   req.requestId = crypto.randomUUID();
+  req._startAt = Date.now();
+  next();
+});
+
+// Response time tracking — logs duration of every request
+app.use((req, res, next) => {
+  const { requestId } = req;
+  res.on('finish', () => {
+    const durationMs = Date.now() - (req._startAt || Date.now());
+    console.log(`[perf] [${requestId}] ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms`);
+  });
   next();
 });
 
@@ -470,6 +481,22 @@ process.on('unhandledRejection', (reason, promise) => {
 // Repository contexts for chat are now persisted in MongoDB via the Session model.
 // The Session collection uses a TTL index on absoluteExpiry (expireAfterSeconds: 0)
 // so MongoDB handles expiry automatically ΓÇö no in-process Map or setInterval needed.
+
+// Utility: retry an async operation on failure (1 retry for transient failures)
+async function withRetry(fn, retries = 1) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) {
+        console.warn(`Retry attempt ${attempt + 1}/${retries} failed: ${err.message}. Retrying...`);
+      }
+    }
+  }
+  throw lastError;
+}
 
 // Utility: fetch with configurable timeout using AbortController and optional SSRF check
 async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
@@ -871,11 +898,11 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
         const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         try {
-          const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+          const aiResponse = await withRetry(() => fetchWithTimeout(`${baseUrl}/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
             body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
-          }, ANALYSIS_TIMEOUT_MS);
+          }, ANALYSIS_TIMEOUT_MS), 1);
 
           if (aiResponse.ok) {
             const resData = await aiResponse.json();
@@ -1283,11 +1310,11 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
 
     let reviewResult;
     try {
-      const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+      const aiResponse = await withRetry(() => fetchWithTimeout(`${baseUrl}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
         body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
-      }, ANALYSIS_TIMEOUT_MS);
+      }, ANALYSIS_TIMEOUT_MS), 1);
 
       if (aiResponse.ok) {
         const resData = await aiResponse.json();
@@ -1423,7 +1450,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
 
       try {
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
-        const aiResponse = await fetchWithTimeout(`${baseUrl}/chat`, {
+        const aiResponse = await withRetry(() => fetchWithTimeout(`${baseUrl}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
           body: JSON.stringify({
@@ -1438,7 +1465,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
             repo_url: context.repoUrl,
             rag_sources: ragSources
           })
-        }, 30000);
+        }, 30000), 1);
 
         if (aiResponse.ok) {
           const data = await aiResponse.json();
@@ -1705,27 +1732,37 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       }
 
       const requestId = req.requestId;
-      const enqueueAccepted = await reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
+      // Fire-and-forget: process review asynchronously, return 202 immediately
+      reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
         try {
           await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha, requestId);
         } catch (error) {
           console.error(`[${requestId}] Γ¥î Webhook review failed for ${headSha}:`, error.message);
+          // Report the error back to the user via a PR review comment
+          try {
+            const errOctokit = new Octokit({ auth: process.env.GITHUB_PAT });
+            await errOctokit.rest.pulls.createReview({
+              owner: item.owner,
+              repo: item.repo,
+              pull_number: item.pullNumber,
+              commit_id: item.headSha,
+              event: 'COMMENT',
+              body: `## ΓÜá∩╕Å RepoSage AI Code Review — Error\n\nThe automated code review encountered an error and could not complete:\n\n**Error:** ${sanitizeErrorMessage(error.message)}\n\nPlease ensure the AI Engine service is running correctly and re-trigger the review.`
+            });
+          } catch (postErr) {
+            console.error(`[${requestId}] Γ¥î Failed to post error comment on PR #${item.pullNumber}:`, postErr.message);
+          }
           if (redisClient) {
             await redisClient.srem(shaDedupKey, headSha);
           } else {
             shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
           }
         }
+      }).catch(err => {
+        console.error(`[${requestId}] Γ¥î Enqueue failed for PR #${pullNumber}:`, err.message);
       });
-      if (!enqueueAccepted) {
-        // Revert dedup if enqueue was rejected (queue full / limit reached)
-        if (redisClient) {
-          await redisClient.srem(shaDedupKey, headSha);
-        } else {
-          shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
-        }
-        return res.status(429).json({ error: 'Review queue full. Try again later.' });
-      }
+      // Return 202 Accepted — processing continues asynchronously
+      return res.status(202).json({ success: true, message: 'Webhook accepted, processing review asynchronously.' });
     } else if (action === 'closed') {
       // Covers both merged and closed-without-merging PRs. Clear the tracked
       // review so a later reopen of this same PR number doesn't try to
@@ -1942,11 +1979,11 @@ async function runWebhookReview(owner, repo, pullNumber, headSha, requestId) {
     
     try {
       const baseUrl = aiEngineUrl.replace(/\/+$/, '');
-      const aiResponse = await fetchWithTimeout(`${baseUrl}/review-diff`, {
+      const aiResponse = await withRetry(() => fetchWithTimeout(`${baseUrl}/review-diff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
         body: JSON.stringify({ files: filesToReview })
-      }, REVIEW_DIFF_TIMEOUT_MS);
+      }, REVIEW_DIFF_TIMEOUT_MS), 1);
 
       if (aiResponse.ok) {
         let result;
