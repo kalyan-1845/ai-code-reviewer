@@ -1854,6 +1854,17 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       console.warn(`⚠️ Secrets scan truncated for ${file.path}: ${scanReason} (total ${scanTotal} changes)`);
     }
 
+    // Run prompt injection scanner
+    const fileContent = file.changes.map(c => c.content).join('\n');
+    const injectionWarnings = scanFileContentForWarnings(fileContent);
+    injectionWarnings.forEach(warning => {
+      commentsToPost.push({
+        path: file.path,
+        line: file.changes[0]?.line || 1,
+        body: `<!-- RepoSage Review Comment -->\n⚠️ **Prompt Injection Warning:** ${warning}`
+      });
+    });
+
     if (matchIgnore(file.path, allExcludePatterns)) {
       console.log(`⏭️ Skipping excluded file: ${file.path}`);
       continue;
