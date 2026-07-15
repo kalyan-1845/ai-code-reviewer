@@ -948,7 +948,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
             try {
               const ingestResp = await fetchWithTimeout(`${baseUrl}/api/rag/ingest`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+                headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '', 'x-rag-ingest-key': process.env.RAG_INGEST_KEY || '' },
                 body: JSON.stringify({ repo_url: repoUrl, chunks })
               }, 60000);
               if (ingestResp.ok) {
@@ -986,6 +986,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
               } else {
                 console.error(`Γ¥î RAG ingest failed after 3 attempts:`, ingestErr.message);
                 ragStatus = 'failed';
+                fileWarnings.push({ file: '(global)', warning: 'RAG code context ingestion failed after 3 attempts ΓÇö review may have limited accuracy' });
               }
             }
           }
