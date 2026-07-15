@@ -23,23 +23,15 @@ const loadChatHistory = (): ChatMessage[] => {
   return [];
 };
 
-let chatHistoryLoaded = false;
-let chatHistoryCache: ChatMessage[] = [];
-
 export const useStore = create<GlobalState>((set) => ({
   analysisResult: null,
   setAnalysisResult: (result) => set({ analysisResult: result }),
   selectedFile: null,
   setSelectedFile: (file) => set({ selectedFile: file }),
-  chatHistory: [],
+  chatHistory: loadChatHistory(),
   setChatHistory: (updater) => set((state) => {
-    if (!chatHistoryLoaded) {
-      chatHistoryCache = loadChatHistory();
-      chatHistoryLoaded = true;
-    }
-    const current = chatHistoryLoaded ? chatHistoryCache : state.chatHistory;
+    const current = state.chatHistory;
     const updated = typeof updater === 'function' ? updater(current) : updater;
-    chatHistoryCache = updated;
     try { localStorage.setItem("reposage_chat_history", JSON.stringify(updated)); } catch {}
     return { chatHistory: updated };
   }),
