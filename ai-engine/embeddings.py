@@ -151,13 +151,15 @@ def get_or_compute_embedding(file_path: str, content: str) -> list[float]:
             _embedding_cache[file_path] = {"content_hash": content_hash, "embedding": embedding}
             _embedding_cache.move_to_end(file_path)
             if len(_embedding_cache) > _MAX_CACHE_SIZE:
-                _embedding_cache.popitem(last=False)
+                evicted_path, _ = _embedding_cache.popitem(last=False)
+                _cleanup_per_key_lock(evicted_path)
     return embedding
 
 
 def invalidate_cache_for_file(file_path: str) -> None:
     with _cache_lock:
         _embedding_cache.pop(file_path, None)
+    _cleanup_per_key_lock(file_path)
 
 
 def clear_embedding_cache() -> None:
