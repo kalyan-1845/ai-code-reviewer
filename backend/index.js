@@ -1553,29 +1553,30 @@ const webhookLimiter = rateLimit({
 
 // ≡ƒƒó Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', webhookLimiter, async (req, res) => {
-  const webhookSecret = process.env.WEBHOOK_SECRET;
-  const payload = req.body;
-  const repoUrl = payload?.repository ? `https://github.com/${payload.repository.owner?.login || '?'}/${payload.repository.name || '?'}` : 'unknown';
+  try {
+    const webhookSecret = process.env.WEBHOOK_SECRET;
+    const payload = req.body;
+    const repoUrl = payload?.repository ? `https://github.com/${payload.repository.owner?.login || '?'}/${payload.repository.name || '?'}` : 'unknown';
 
-  const deliveryId = req.headers['x-github-delivery'];
-  const webhookStartTime = Date.now();
+    const deliveryId = req.headers['x-github-delivery'];
+    const webhookStartTime = Date.now();
 
-  if (!webhookSecret) {
-    console.error(`[${req.requestId}] [repo=${sanitizeErrorMessage(repoUrl)}] WEBHOOK_SECRET not configured`);
-    return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
-  }
+    if (!webhookSecret) {
+      console.error(`[${req.requestId}] [repo=${sanitizeErrorMessage(repoUrl)}] WEBHOOK_SECRET not configured`);
+      return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
+    }
 
-  const signature = req.headers['x-hub-signature-256'];
-  if (!signature) {
-    return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
-  }
+    const signature = req.headers['x-hub-signature-256'];
+    if (!signature) {
+      return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
+    }
 
-  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
-    console.warn(`[${req.requestId}] [repo=${sanitizeErrorMessage(repoUrl)}] Webhook signature verification failed`);
-    return res.status(401).json({ error: 'Invalid webhook signature' });
-  }
+    if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
+      console.warn(`[${req.requestId}] [repo=${sanitizeErrorMessage(repoUrl)}] Webhook signature verification failed`);
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
 
-  const event = req.headers['x-github-event'];
+    const event = req.headers['x-github-event'];
 
   if (!event || typeof event !== 'string') {
     return res.status(400).json({ error: 'Missing x-github-event header.' });
@@ -1647,7 +1648,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       const headSha = payload.pull_request.head.sha;
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
-      const reviewKey = `${owner}/${repo}/#${pullNumber}`;
+      const reviewKey = `${owner}/${repo}`;
 
       const shaKey = `${sanitizeRedisKey(owner)}/${sanitizeRedisKey(repo)}/#${sanitizeRedisKey(String(pullNumber))}`;
       const shaDedupKey = `webhook:sha:${shaKey}`;
@@ -1776,6 +1777,13 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   return res.json({ success: true, message: 'Webhook received.' });
+  } catch (err) {
+    console.error(`[${req.requestId}] Unhandled error in webhook handler:`, sanitizeErrorMessage(err.message));
+    if (err.stack) console.error(`[${req.requestId}]`, err.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error processing webhook.' });
+    }
+  }
 });
 
 // Webhook delivery history endpoint with pagination (limit/offset)
@@ -1850,11 +1858,14 @@ app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimit
   }
 });
 
-// ≡ƒƒó Route: Invalidate analysis cache by repo URL
+// ≡ƒƒó Route: Invalidate analysis cache by repo URL (auth required)
 app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
   const { repoUrl } = req.body;
   if (!repoUrl) {
     return res.status(400).json({ error: 'repoUrl is required.' });
+  }
+  if (typeof repoUrl !== 'string' || !isValidRepoUrl(repoUrl)) {
+    return res.status(400).json({ error: 'Invalid repoUrl format.' });
   }
   const removed = analysisCache.invalidateByRepoUrl(repoUrl);
   res.json({ success: true, removed, stats: analysisCache.getStats() });
@@ -1893,9 +1904,10 @@ app.put('/api/config', requireApiKey, requireJsonContentType, async (req, res) =
   if (range && (numVal < range.min || numVal > range.max)) {
     return res.status(400).json({ error: `value for "${key}" must be between ${range.min} and ${range.max}.` });
   }
+  const oldValue = process.env[key];
   process.env[key] = String(value);
-  console.log(`Config updated: ${key}=${value}`);
-  res.json({ success: true, key, value });
+  console.log(`[AUDIT] [${req.requestId}] Config updated: ${key} changed from "${oldValue || '(not set)'}" to "${String(value)}" at ${new Date().toISOString()}`);
+  res.json({ success: true, key, value, oldValue: oldValue || null });
 });
 
 // Webhook review queueing uses ReviewQueue from reviewQueue.js (per-key mutex)
@@ -2695,11 +2707,25 @@ app.get('/api/health/circuit-breaker', (req, res) => {
 // ≡ƒƒó Metrics endpoint with auth check
 app.get('/metrics', requireApiKey, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
+  const cacheStats = analysisCache.getStats();
   res.json({
     uptime: Math.floor((Date.now() - serverStartTime.getTime()) / 1000),
     serverReady,
     database: isDatabaseConnected() ? 'connected' : 'disconnected',
-    cacheEntries: analysisCache.getStats().size,
+    cache: {
+      entries: cacheStats.size,
+      maxEntries: cacheStats.maxEntries,
+      hits: cacheStats.hits,
+      misses: cacheStats.misses,
+      dedupSaves: cacheStats.dedupSaves,
+      hitRate: cacheStats.hitRate,
+      evictions: cacheStats.evictions,
+      mockCount: cacheStats.mockCount,
+      avgAgeMs: cacheStats.avgAgeMs,
+      absoluteExpiries: cacheStats.absoluteExpiries,
+      slidingExpiries: cacheStats.slidingExpiries,
+      ttlMinutes: cacheStats.ttlMinutes,
+    },
     circuitState: reviewQueue.getCircuitState(),
     csrfTokenCount: csrfTokenStore.size + csrfGraceTokenStore.size,
     webhookHistoryCount: webhookHistory.length,
@@ -2708,13 +2734,16 @@ app.get('/metrics', requireApiKey, (req, res) => {
   });
 });
 
-// Sanitize error messages that may contain API keys or sensitive tokens.
+// Sanitize error messages that may contain API keys, sensitive tokens, or internal IPs.
 const SANITIZE_PATTERNS = [
   { pattern: /(?:ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[A-Za-z0-9_]{36,}/g, replacement: '***' },
   { pattern: /(?:sk-|gsk_|api[_-]?key|apikey|token|secret|password|auth)[\s=:"']+[^\s"']{8,}/gi, replacement: '***' },
   { pattern: /[A-Za-z0-9_-]{32,}/g, replacement: '***' },
   { pattern: /x-hub-signature-256[:\s]+[0-9a-f]{64}/gi, replacement: 'x-hub-signature-256: ***' },
   { pattern: /x-github-delivery[:\s]+[0-9a-f-]{36}/gi, replacement: 'x-github-delivery: ***' },
+  { pattern: /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|0\.\d{1,3}\.\d{1,3}\.\d{1,3}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}|198\.1[89]\.\d{1,3}\.\d{1,3})\b/g, replacement: '[REDACTED_INTERNAL_IP]' },
+  { pattern: /\b(?:fd[0-9a-f]{2}:|fe80:)[0-9a-f:]+/gi, replacement: '[REDACTED_INTERNAL_IP]' },
+  { pattern: /\b::1\b/g, replacement: '[REDACTED_INTERNAL_IP]' },
 ];
 
 function fullyDecode(str) {
@@ -2841,9 +2870,11 @@ async function startServer() {
     console.log('Server started in degraded mode (no database). Analytics will use file-based storage.');
   }
   serverReady = true;
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`≡ƒƒó RepoSage Backend running on http://localhost:${PORT}`);
-  }).on('error', (err) => {
+  });
+  server.keepAliveTimeout = 120000;
+  server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`Γ¥î Port ${PORT} is already in use. Please free the port or set PORT env variable.`);
       process.exit(1);

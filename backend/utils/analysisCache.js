@@ -49,6 +49,7 @@ class AnalysisCache {
     this.pending = new Map();
     this._locks = new Map();
     this._repoUrlIndex = new Map();
+    this._lastIndexRebuild = 0;
     this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0, evictions: 0 };
     this._startSweeper();
   }
@@ -242,10 +243,24 @@ class AnalysisCache {
   /**
    * Get cache statistics for monitoring and debugging.
    */
+  _rebuildRepoUrlIndex() {
+    this._repoUrlIndex.clear();
+    for (const [key, entry] of this.cache) {
+      if (entry.repoUrl) {
+        const normalized = entry.repoUrl.replace(/\/+$/, '').toLowerCase();
+        if (!this._repoUrlIndex.has(normalized)) {
+          this._repoUrlIndex.set(normalized, new Set());
+        }
+        this._repoUrlIndex.get(normalized).add(key);
+      }
+    }
+  }
+
   _startSweeper(intervalMs = 60000) {
     if (this._sweeper) return;
     this._sweeper = setInterval(() => {
       const now = Date.now();
+      let indexStale = false;
       for (const [key, entry] of this.cache) {
         // Check absolute max TTL first — entries that have lived too long
         // are evicted regardless of access pattern
@@ -264,6 +279,12 @@ class AnalysisCache {
             this._repoUrlIndex.get(entry.repoUrl).delete(key);
           }
         }
+      }
+      // Rebuild repoUrl index periodically to maintain consistency with cache entries
+      const consistencyCheckInterval = Math.max(intervalMs, 60000) * 10;
+      if (!this._lastIndexRebuild || Date.now() - this._lastIndexRebuild > consistencyCheckInterval) {
+        this._rebuildRepoUrlIndex();
+        this._lastIndexRebuild = Date.now();
       }
       this._cleanupIdleLocks();
     }, intervalMs);
@@ -310,6 +331,7 @@ class AnalysisCache {
       maxEntries: this.maxEntries,
       hits: this.stats.hits,
       misses: this.stats.misses,
+      dedupSaves: this.stats.dedupSaves,
       mockCount,
       avgAgeMs: this.cache.size > 0 ? Math.round(totalAge / this.cache.size) : 0,
       evictions: this.stats.evictions,

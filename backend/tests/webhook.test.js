@@ -72,7 +72,7 @@ function buildWebhookApp() {
         const headSha = payload.pull_request.head.sha;
         const owner = payload.repository.owner.login;
         const repo = payload.repository.name;
-        const reviewKey = `${owner}/${repo}/#${pullNumber}`;
+        const reviewKey = `${owner}/${repo}`;
 
         const shaKey = `${owner}/${repo}/#${pullNumber}`;
         if (!reviewedShas.has(shaKey)) {
@@ -193,7 +193,7 @@ test('pull_request opened action queues review via reviewQueue.enqueue', async (
   assert.equal(result.status, 200);
   assert.equal(result.body.success, true);
   assert.equal(enqueueCalls.length, 1);
-  assert.equal(enqueueCalls[0].key, 'myorg/myrepo/#42');
+  assert.equal(enqueueCalls[0].key, 'myorg/myrepo');
   assert.deepEqual(enqueueCalls[0].item, {
     owner: 'myorg',
     repo: 'myrepo',
