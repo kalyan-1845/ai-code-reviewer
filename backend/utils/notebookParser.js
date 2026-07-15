@@ -3,18 +3,18 @@
 
 import fs from 'fs';
 
-const MAGIC_COMMAND_REGEX = /^(%|!).*$/gm;
+const MAGIC_COMMAND_REGEX = /^[ \t]*(%[a-zA-Z_][a-zA-Z0-9_]+|!).*$/gm;
 const IPYTHON_MAGIC_PATTERNS = [
-  /^%matplotlib.*$/gm,
-  /^%pylab.*$/gm,
-  /^%config.*$/gm,
-  /^%%time$/gm,
-  /^%%timeit$/gm,
-  /^%%capture.*$/gm,
-  /^%%writefile.*$/gm,
-  /^%%sh$/gm,
-  /^%%bash$/gm,
-  /^!.*$/gm,
+  /^[ \t]*%matplotlib.*$/gm,
+  /^[ \t]*%pylab.*$/gm,
+  /^[ \t]*%config.*$/gm,
+  /^[ \t]*%%time$/gm,
+  /^[ \t]*%%timeit$/gm,
+  /^[ \t]*%%capture.*$/gm,
+  /^[ \t]*%%writefile.*$/gm,
+  /^[ \t]*%%sh$/gm,
+  /^[ \t]*%%bash$/gm,
+  /^[ \t]*!.*$/gm,
 ];
 
 function stripMagicCommands(code) {
