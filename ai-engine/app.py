@@ -25,6 +25,14 @@ from embeddings import is_fallback_active
 from config_loader import load_config_from_files, ConfigValidationError, CONFIG_FILENAME
 from diff_helper import get_changed_files_from_git, filter_files_by_changes, format_diff_header
 
+try:
+    import redis
+    _redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", ""), decode_responses=True) if os.getenv("REDIS_URL") else None
+    if _redis_client:
+        _redis_client.ping()
+except Exception:
+    _redis_client = None
+
 _EXTENSION_TO_LANGUAGE = {
     "go": "go",
     "py": "python",
@@ -412,26 +420,40 @@ async def rate_limit_middleware(request: Request, call_next):
     client_ip = _resolve_client_ip(request)
     now = time.time()
 
-    async with _rate_limit_lock:
-        if client_ip in _rate_limit_store:
-            _rate_limit_store.move_to_end(client_ip)
-            window = _rate_limit_store[client_ip]
-        else:
-            if len(_rate_limit_store) >= MAX_RATE_LIMIT_ENTRIES:
-                # Bulk-evict oldest entries in batches of 1000
-                evict_count = min(len(_rate_limit_store), BULK_EVICT_BATCH_SIZE)
-                for _ in range(evict_count):
-                    try:
-                        _rate_limit_store.popitem(last=False)
-                    except KeyError:
-                        break
-            window = []
-            _rate_limit_store[client_ip] = window
+    if _redis_client:
+        try:
+            key = f"ratelimit:{client_ip}"
+            pipe = _redis_client.pipeline()
+            pipe.zremrangebyscore(key, 0, now - RATE_LIMIT_WINDOW_SECONDS)
+            pipe.zadd(key, {str(now): now})
+            pipe.zcard(key)
+            pipe.expire(key, RATE_LIMIT_WINDOW_SECONDS)
+            results = pipe.execute()
+            request_count = results[2]
+            if request_count >= RATE_LIMIT_MAX_REQUESTS:
+                return JSONResponse(status_code=429, content={"error": "Rate limit exceeded. Try again later."})
+        except Exception:
+            pass
+    else:
+        async with _rate_limit_lock:
+            if client_ip in _rate_limit_store:
+                _rate_limit_store.move_to_end(client_ip)
+                window = _rate_limit_store[client_ip]
+            else:
+                if len(_rate_limit_store) >= MAX_RATE_LIMIT_ENTRIES:
+                    evict_count = min(len(_rate_limit_store), BULK_EVICT_BATCH_SIZE)
+                    for _ in range(evict_count):
+                        try:
+                            _rate_limit_store.popitem(last=False)
+                        except KeyError:
+                            break
+                window = []
+                _rate_limit_store[client_ip] = window
 
-        window[:] = [t for t in window if now - t < RATE_LIMIT_WINDOW_SECONDS]
-        if len(window) >= RATE_LIMIT_MAX_REQUESTS:
-            return JSONResponse(status_code=429, content={"error": "Rate limit exceeded. Try again later."})
-        window.append(now)
+            window[:] = [t for t in window if now - t < RATE_LIMIT_WINDOW_SECONDS]
+            if len(window) >= RATE_LIMIT_MAX_REQUESTS:
+                return JSONResponse(status_code=429, content={"error": "Rate limit exceeded. Try again later."})
+            window.append(now)
 
     response = await call_next(request)
     return response
