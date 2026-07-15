@@ -642,7 +642,7 @@ export default function Dashboard() {
         const history = await response.json();
 
         if (history && !controller.signal.aborted) {
-          setAuditHistory(history);
+          setAuditHistory(history.history || []);
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
