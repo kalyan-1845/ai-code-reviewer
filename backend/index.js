@@ -47,11 +47,27 @@ dotenv.config();
 
 validateSessionSecret();
 
-// Fail-fast if WEBHOOK_SECRET is not configured or is too short
+// Fail-fast if WEBHOOK_SECRET is not configured or does not meet minimum format requirements
 (function validateWebhookSecret() {
   const secret = process.env.WEBHOOK_SECRET;
-  if (!secret || secret.length < 16) {
-    console.error('FATAL: WEBHOOK_SECRET must be set to at least 16 characters');
+  if (!secret) {
+    console.error('FATAL: WEBHOOK_SECRET is not set');
+    process.exit(1);
+  }
+  if (secret.length < 32) {
+    console.error('FATAL: WEBHOOK_SECRET must be at least 32 characters long (current: ' + secret.length + ')');
+    process.exit(1);
+  }
+  if (!/[A-Z]/.test(secret)) {
+    console.error('FATAL: WEBHOOK_SECRET must contain at least one uppercase letter');
+    process.exit(1);
+  }
+  if (!/[a-z]/.test(secret)) {
+    console.error('FATAL: WEBHOOK_SECRET must contain at least one lowercase letter');
+    process.exit(1);
+  }
+  if (!/[0-9]/.test(secret)) {
+    console.error('FATAL: WEBHOOK_SECRET must contain at least one digit');
     process.exit(1);
   }
 })();
@@ -97,6 +113,18 @@ app.use((req, res, next) => {
 // hop from X-Forwarded-For. express-rate-limit defaults to req.ip, which is already
 // correct. A custom function that reads X-Forwarded-For directly would trust the
 // leftmost (client-controlled) value, allowing IP spoofing to bypass rate limits.
+
+// Response timeout middleware — return 504 instead of hanging indefinitely
+const RESPONSE_TIMEOUT_MS = parseInt(process.env.RESPONSE_TIMEOUT_MS || '300000', 10);
+app.use((req, res, next) => {
+  res.setTimeout(RESPONSE_TIMEOUT_MS, () => {
+    if (!res.headersSent) {
+      console.warn(`[${req.requestId}] Response timeout after ${RESPONSE_TIMEOUT_MS}ms for ${req.method} ${req.path}`);
+      res.status(504).json({ error: 'Gateway timeout: the request took too long to process.' });
+    }
+  });
+  next();
+});
 
 // Enable CORS with explicit origin and exposed headers
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173').split(',').map(s => s.trim());
@@ -468,17 +496,20 @@ const FS_TIMEOUT_TEMP = parseInt(process.env.FS_TIMEOUT_TEMP_MS || '30000', 10);
 })();
 
 // Clean up temp_repos on process exit to avoid leftover clones
-function cleanupTempRepos() {
+async function cleanupTempRepos() {
   try {
-    if (fs.existsSync(tempReposDir)) {
-      fs.rmSync(tempReposDir, { recursive: true, force: true });
+    try {
+      await fsWithTimeout.access(tempReposDir, fs.constants.F_OK, FS_TIMEOUT_TEMP);
+    } catch {
+      return;
     }
+    await fsWithTimeout.rm(tempReposDir, { recursive: true, force: true }, FS_TIMEOUT_TEMP);
   } catch (error) {
     console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
   }
 }
 async function onShutdown() {
-  cleanupTempRepos();
+  await cleanupTempRepos();
   cleanupTimers();
   if (redisClient) redisClient.quit();
   await closeDatabase();
@@ -486,15 +517,23 @@ async function onShutdown() {
 }
 process.on('SIGINT', onShutdown);
 process.on('SIGTERM', onShutdown);
-process.on('exit', cleanupTempRepos);
+process.on('exit', () => {
+  try {
+    if (fs.existsSync(tempReposDir)) {
+      fs.rmSync(tempReposDir, { recursive: true, force: true });
+    }
+  } catch (error) {
+    console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
+  }
+});
 
 // Clean up temp_repos and timers on uncaught exceptions to prevent orphan temp folders
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', async (err) => {
   console.error('Uncaught exception:', err);
   if (err.stack) {
     console.error(err.stack);
   }
-  cleanupTempRepos();
+  await cleanupTempRepos();
   cleanupTimers();
   if (redisClient) redisClient.quit();
   closeDatabase();
@@ -529,6 +568,14 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
   try {
     const response = await fetch(url, { ...fetchOptions, signal: controller.signal });
     return response;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const timeoutErr = new Error(`Request timed out after ${timeoutMs}ms: ${url}`);
+      timeoutErr.name = 'TimeoutError';
+      timeoutErr.code = 'ETIMEDOUT';
+      throw timeoutErr;
+    }
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -886,7 +933,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
     try {
       // 1. Load ignore patterns and read files
       const ignorePatterns = await loadIgnorePatterns(clonePath);
-      const severityConfig = loadConfigFile(clonePath);
+      const severityConfig = await loadConfigFile(clonePath);
       let files = await readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
       
       let partial_review = false;
@@ -2936,9 +2983,20 @@ function sanitizeErrorMessage(msg) {
   return sanitized;
 }
 
+function isTimeoutError(err) {
+  return err.name === 'AbortError' || err.name === 'TimeoutError' || err.code === 'ETIMEDOUT' ||
+    err.message === 'The user aborted a request.' || (err.message && err.message.includes('timed out')) ||
+    (err.message && err.message.includes('timeout')) || (err.message && err.message.includes('abort'));
+}
+
 const errorHandler = (err, req, res, next) => {
   const requestId = req.requestId || 'unknown';
   const repoUrl = req.repoUrl || req.body?.repoUrl || 'unknown';
+  if (isTimeoutError(err)) {
+    console.warn(`[${requestId}] [repo=${repoUrl}] Request timed out: ${sanitizeErrorMessage(err.message)}`);
+    if (res.headersSent) return next(err);
+    return res.status(504).json({ error: 'Gateway timeout: the upstream service or filesystem operation timed out.' });
+  }
   const safeMessage = sanitizeErrorMessage(err.message);
   console.error(`[${requestId}] [repo=${repoUrl}] Unhandled error in request:`, safeMessage);
   if (err.stack) {

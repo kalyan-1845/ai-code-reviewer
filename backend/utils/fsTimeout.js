@@ -44,4 +44,13 @@ export const fsWithTimeout = {
 
   access: (path, mode, timeout = DEFAULT_FS_TIMEOUT) =>
     withTimeout(fs.promises.access(path, mode), timeout, `access(${path})`),
+
+  copyFile: (src, dest, flags, timeout = DEFAULT_FS_TIMEOUT) =>
+    withTimeout(fs.promises.copyFile(src, dest, flags), timeout, `copyFile(${src})`),
+
+  appendFile: (path, data, options, timeout = DEFAULT_FS_TIMEOUT) =>
+    withTimeout(fs.promises.appendFile(path, data, options), timeout, `appendFile(${path})`),
+
+  chmod: (path, mode, timeout = DEFAULT_FS_TIMEOUT) =>
+    withTimeout(fs.promises.chmod(path, mode), timeout, `chmod(${path})`),
 };

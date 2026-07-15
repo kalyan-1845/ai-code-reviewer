@@ -60,12 +60,12 @@ test('AnalysisCache: generates different cache keys for different models', () =>
   assert.notEqual(key1, key2, 'Keys should differ for different models');
 });
 
-test('AnalysisCache: stores and retrieves cached results', () => {
+test('AnalysisCache: stores and retrieves cached results', async () => {
   const cache = new AnalysisCache();
   const key = 'test-key';
   const result = { fileReviews: { 'file.js': { bugs: [], security: [] } } };
 
-  cache.set(key, result);
+  await cache.set(key, result);
   const retrieved = cache.get(key);
 
   assert.deepEqual(retrieved, result, 'Retrieved result should match stored result');
@@ -78,7 +78,7 @@ test('AnalysisCache: returns null for missing entries', () => {
   assert.equal(result, null, 'Should return null for missing keys');
 });
 
-test('AnalysisCache: tracks cache hits and misses', () => {
+test('AnalysisCache: tracks cache hits and misses', async () => {
   const cache = new AnalysisCache();
   const key = 'test-key';
   const result = { fileReviews: {} };
@@ -89,7 +89,7 @@ test('AnalysisCache: tracks cache hits and misses', () => {
   assert.equal(cache.stats.hits, 0);
 
   // Store the result
-  cache.set(key, result);
+  await cache.set(key, result);
 
   // Second access should be a hit
   cache.get(key);
@@ -103,7 +103,7 @@ test('AnalysisCache: expires entries after TTL', async () => {
   const key = 'test-key';
   const result = { fileReviews: {} };
 
-  cache.set(key, result);
+  await cache.set(key, result);
   const retrieved1 = cache.get(key);
   assert.equal(retrieved1, result, 'Should retrieve result immediately after storage');
 
@@ -114,26 +114,26 @@ test('AnalysisCache: expires entries after TTL', async () => {
   assert.equal(retrieved2, null, 'Should return null for expired entries');
 });
 
-test('AnalysisCache: clear() removes all entries', () => {
+test('AnalysisCache: clear() removes all entries', async () => {
   const cache = new AnalysisCache();
 
-  cache.set('key1', { data: 1 });
-  cache.set('key2', { data: 2 });
-  cache.set('key3', { data: 3 });
+  await cache.set('key1', { data: 1 });
+  await cache.set('key2', { data: 2 });
+  await cache.set('key3', { data: 3 });
 
   assert.equal(cache.cache.size, 3, 'Should have 3 entries before clear');
 
-  cache.clear();
+  await cache.clear();
 
   assert.equal(cache.cache.size, 0, 'Should have 0 entries after clear');
 });
 
-test('AnalysisCache: getStats() returns cache metrics', () => {
+test('AnalysisCache: getStats() returns cache metrics', async () => {
   const cache = new AnalysisCache(1800000); // 30 minutes
   const key = 'test-key';
   const result = { fileReviews: {} };
 
-  cache.set(key, result);
+  await cache.set(key, result);
   cache.get(key);  // Hit
   cache.get(key);  // Hit
   cache.get('other-key');  // Miss
@@ -147,26 +147,26 @@ test('AnalysisCache: getStats() returns cache metrics', () => {
   assert.equal(stats.ttlMinutes, 30, 'Should report TTL in minutes');
 });
 
-test('AnalysisCache: invalidate() removes specific entries', () => {
+test('AnalysisCache: invalidate() removes specific entries', async () => {
   const cache = new AnalysisCache();
   const key1 = 'key1';
   const key2 = 'key2';
 
-  cache.set(key1, { data: 1 });
-  cache.set(key2, { data: 2 });
+  await cache.set(key1, { data: 1 });
+  await cache.set(key2, { data: 2 });
 
   assert.equal(cache.cache.size, 2);
 
-  const removed = cache.invalidate(key1);
+  const removed = await cache.invalidate(key1);
 
   assert.equal(removed, true, 'Should return true for existing key');
   assert.equal(cache.cache.size, 1, 'Should have 1 entry after invalidation');
   assert.deepEqual(cache.get(key2), { data: 2 }, 'Other entries should remain');
 });
 
-test('AnalysisCache: invalidate() returns false for non-existent entries', () => {
+test('AnalysisCache: invalidate() returns false for non-existent entries', async () => {
   const cache = new AnalysisCache();
-  const removed = cache.invalidate('non-existent-key');
+  const removed = await cache.invalidate('non-existent-key');
 
   assert.equal(removed, false, 'Should return false for non-existent key');
 });
@@ -179,7 +179,7 @@ test('AnalysisCache: setTtl() updates cache TTL', () => {
   assert.equal(cache.ttlMs, 1800000, 'TTL should be updated');
 });
 
-test('AnalysisCache: realistic workflow - cache prevents redundant LLM calls', () => {
+test('AnalysisCache: realistic workflow - cache prevents redundant LLM calls', async () => {
   const cache = new AnalysisCache();
   const repoUrl = 'https://github.com/example/project';
   const files = [
@@ -201,7 +201,7 @@ test('AnalysisCache: realistic workflow - cache prevents redundant LLM calls', (
         'server.js': { security: ['no HTTPS'] }
       }
     };
-    cache.set(cacheKey, result);
+    await cache.set(cacheKey, result);
   }
   assert.equal(llmCallCount, 1, 'Should call LLM once for first analysis');
 
@@ -210,7 +210,7 @@ test('AnalysisCache: realistic workflow - cache prevents redundant LLM calls', (
   if (!result) {
     llmCallCount++;
     result = { /* would be LLM result */ };
-    cache.set(cacheKey, result);
+    await cache.set(cacheKey, result);
   }
   assert.equal(llmCallCount, 1, 'Should not call LLM for cached analysis');
 
@@ -219,19 +219,19 @@ test('AnalysisCache: realistic workflow - cache prevents redundant LLM calls', (
   assert.ok(result.fileReviews['server.js'].security.includes('no HTTPS'));
 });
 
-test('AnalysisCache: invalidateByRepoUrl removes all entries for that repo', () => {
+test('AnalysisCache: invalidateByRepoUrl removes all entries for that repo', async () => {
   const cache = new AnalysisCache();
   const repo = 'https://github.com/owner/repo';
 
   // Store two different entries for the same repo
   const key1 = cache.generateKey(repo, [{ name: 'a.js', content: 'a' }]);
   const key2 = cache.generateKey(repo, [{ name: 'b.js', content: 'b' }]);
-  cache.set(key1, { data: 1 }, { repoUrl: repo });
-  cache.set(key2, { data: 2 }, { repoUrl: repo });
+  await cache.set(key1, { data: 1 }, { repoUrl: repo });
+  await cache.set(key2, { data: 2 }, { repoUrl: repo });
 
   assert.equal(cache.cache.size, 2);
 
-  const removed = cache.invalidateByRepoUrl(repo);
+  const removed = await cache.invalidateByRepoUrl(repo);
 
   assert.equal(removed, 2, 'Should return count of removed entries');
   assert.equal(cache.cache.size, 0, 'Cache should be empty after invalidation');
@@ -239,26 +239,26 @@ test('AnalysisCache: invalidateByRepoUrl removes all entries for that repo', () 
   assert.equal(cache.get(key2), null, 'key2 should be gone');
 });
 
-test('AnalysisCache: invalidateByRepoUrl returns 0 for non-existent repo', () => {
+test('AnalysisCache: invalidateByRepoUrl returns 0 for non-existent repo', async () => {
   const cache = new AnalysisCache();
   const repo = 'https://github.com/nonexistent/project';
   const key = cache.generateKey(repo, [{ name: 'x.js', content: 'x' }]);
-  cache.set(key, { data: 1 }, { repoUrl: repo });
+  await cache.set(key, { data: 1 }, { repoUrl: repo });
 
-  const removed = cache.invalidateByRepoUrl('https://github.com/other/repo');
+  const removed = await cache.invalidateByRepoUrl('https://github.com/other/repo');
 
   assert.equal(removed, 0, 'Should return 0 for non-matching repo');
   assert.equal(cache.cache.size, 1, 'Original entry should remain');
 });
 
-test('AnalysisCache: invalidateByRepoUrl normalizes trailing slashes and case', () => {
+test('AnalysisCache: invalidateByRepoUrl normalizes trailing slashes and case', async () => {
   const cache = new AnalysisCache();
   const repo1 = 'https://github.com/owner/repo';
   const repo2 = 'https://github.com/owner/repo///';
   const key1 = cache.generateKey(repo1, [{ name: 'f.js', content: 'f' }]);
-  cache.set(key1, { data: 1 }, { repoUrl: repo1 });
+  await cache.set(key1, { data: 1 }, { repoUrl: repo1 });
 
-  const removed = cache.invalidateByRepoUrl(repo2);
+  const removed = await cache.invalidateByRepoUrl(repo2);
 
   assert.equal(removed, 1, 'Should match repo with trailing slashes');
   assert.equal(cache.cache.size, 0);
@@ -273,14 +273,14 @@ test('AnalysisCache: setMaxEntries updates the property', () => {
   assert.equal(cache.maxEntries, 500, 'maxEntries should be updated');
 });
 
-test('AnalysisCache: setMaxEntries evicts oldest entries when limit is reduced', () => {
+test('AnalysisCache: setMaxEntries evicts oldest entries when limit is reduced', async () => {
   const cache = new AnalysisCache();
   const repo = 'https://github.com/owner/repo';
 
   // Store 5 entries
   for (let i = 0; i < 5; i++) {
     const key = cache.generateKey(repo, [{ name: `f${i}.js`, content: `${i}` }]);
-    cache.set(key, { data: i }, repo);
+    await cache.set(key, { data: i }, { repoUrl: repo });
   }
   assert.equal(cache.cache.size, 5);
 
@@ -291,11 +291,11 @@ test('AnalysisCache: setMaxEntries evicts oldest entries when limit is reduced',
   assert.equal(cache.cache.size, 3, 'Should evict to maxEntries');
 });
 
-test('AnalysisCache: setMaxEntries does nothing if cache is already below new limit', () => {
+test('AnalysisCache: setMaxEntries does nothing if cache is already below new limit', async () => {
   const cache = new AnalysisCache();
   const repo = 'https://github.com/owner/repo';
   const key = cache.generateKey(repo, [{ name: 'f.js', content: 'f' }]);
-  cache.set(key, { data: 1 }, repo);
+  await cache.set(key, { data: 1 }, { repoUrl: repo });
 
   cache.setMaxEntries(100);
 

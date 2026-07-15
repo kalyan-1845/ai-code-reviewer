@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { load as yamlLoad } from 'js-yaml';
+import { fsWithTimeout } from './fsTimeout.js';
 
 const DEFAULT_CONFIG = {
   severity: {
@@ -11,15 +12,20 @@ const DEFAULT_CONFIG = {
   suppress: [],
 };
 
-function loadConfigFile(repoPath) {
+const FS_TIMEOUT_CONFIG = parseInt(process.env.FS_TIMEOUT_CONFIG_MS || '10000', 10);
+
+async function loadConfigFile(repoPath) {
   const configPath = path.join(repoPath, '.codereview.yml');
 
   try {
-    if (fs.existsSync(configPath)) {
-      const fileContent = fs.readFileSync(configPath, 'utf-8');
-      const config = yamlLoad(fileContent) || {};
-      return mergeWithDefaults(config);
+    try {
+      await fsWithTimeout.access(configPath, fs.constants.F_OK, FS_TIMEOUT_CONFIG);
+    } catch {
+      return DEFAULT_CONFIG;
     }
+    const fileContent = await fsWithTimeout.readFile(configPath, 'utf-8', FS_TIMEOUT_CONFIG);
+    const config = yamlLoad(fileContent) || {};
+    return mergeWithDefaults(config);
   } catch (err) {
     console.warn(`Failed to load .codereview.yml: ${err.message}`);
   }

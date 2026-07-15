@@ -51,6 +51,7 @@ class AnalysisCache {
     this._locks = new Map();
     this._repoUrlIndex = new Map();
     this._lastIndexRebuild = 0;
+    this._writeLock = new AsyncLock();
     this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0, evictions: 0 };
     this._startSweeper();
   }
@@ -132,7 +133,11 @@ class AnalysisCache {
    * Store an analysis result in the cache with expiration time.
    * Options can include { isMock: true } for fallback results.
    */
-  set(key, result, options = {}) {
+  async set(key, result, options = {}) {
+    return this._writeLock.acquire(() => this._lockedSet(key, result, options));
+  }
+
+  _lockedSet(key, result, options = {}) {
     if (this.cache.has(key)) {
       const entry = this.cache.get(key);
       this.cache.delete(key);
@@ -197,7 +202,7 @@ class AnalysisCache {
         const cacheHint = (result && result._cacheHint) || {};
         const resultData = (result && result._data !== undefined) ? result._data : result;
         const isMock = cacheHint.isMock === true || result._mock === true;
-        this.set(key, resultData, { repoUrl, isMock });
+        this._lockedSet(key, resultData, { repoUrl, isMock });
         this.pending.delete(key);
         return resultData;
       }).catch(err => {
@@ -214,31 +219,35 @@ class AnalysisCache {
   /**
    * Clear all mock entries from the cache (used when AI engine recovers).
    */
-  clearMockEntries() {
-    let cleared = 0;
-    for (const [key, entry] of this.cache) {
-      if (entry.isMock) {
-        this.cache.delete(key);
-        this._removeFromRepoUrlIndex(key, entry);
-        cleared++;
+  async clearMockEntries() {
+    return this._writeLock.acquire(() => {
+      let cleared = 0;
+      for (const [key, entry] of this.cache) {
+        if (entry.isMock) {
+          this.cache.delete(key);
+          this._removeFromRepoUrlIndex(key, entry);
+          cleared++;
+        }
       }
-    }
-    if (cleared > 0) {
-      console.log(`🧹 Cleared ${cleared} mock cache entries after AI Engine recovery`);
-    }
-    return cleared;
+      if (cleared > 0) {
+        console.log(`🧹 Cleared ${cleared} mock cache entries after AI Engine recovery`);
+      }
+      return cleared;
+    });
   }
 
   /**
    * Clear all entries from the cache.
    */
-  clear() {
-    this._stopSweeper();
-    const size = this.cache.size;
-    this.cache.clear();
-    this._repoUrlIndex.clear();
-    this._startSweeper();
-    console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
+  async clear() {
+    return this._writeLock.acquire(() => {
+      this._stopSweeper();
+      const size = this.cache.size;
+      this.cache.clear();
+      this._repoUrlIndex.clear();
+      this._startSweeper();
+      console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
+    });
   }
 
   /**
@@ -260,34 +269,36 @@ class AnalysisCache {
   _startSweeper(intervalMs = 60000) {
     if (this._sweeper) return;
     this._sweeper = setInterval(() => {
-      const now = Date.now();
-      let indexStale = false;
-      for (const [key, entry] of this.cache) {
-        // Check absolute max TTL first — entries that have lived too long
-        // are evicted regardless of access pattern
-        if (now > entry.absoluteExpiresAt) {
-          this.cache.delete(key);
-          this.stats.absoluteExpiries++;
-          if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+      this._writeLock.acquire(() => {
+        const now = Date.now();
+        let indexStale = false;
+        for (const [key, entry] of this.cache) {
+          // Check absolute max TTL first — entries that have lived too long
+          // are evicted regardless of access pattern
+          if (now > entry.absoluteExpiresAt) {
+            this.cache.delete(key);
+            this.stats.absoluteExpiries++;
+            if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+              this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            }
+            continue;
           }
-          continue;
-        }
-        if (now > entry.expiresAt) {
-          this.cache.delete(key);
-          this.stats.slidingExpiries++;
-          if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+          if (now > entry.expiresAt) {
+            this.cache.delete(key);
+            this.stats.slidingExpiries++;
+            if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+              this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            }
           }
         }
-      }
-      // Rebuild repoUrl index periodically to maintain consistency with cache entries
-      const consistencyCheckInterval = Math.max(intervalMs, 60000) * 10;
-      if (!this._lastIndexRebuild || Date.now() - this._lastIndexRebuild > consistencyCheckInterval) {
-        this._rebuildRepoUrlIndex();
-        this._lastIndexRebuild = Date.now();
-      }
-      this._cleanupIdleLocks();
+        // Rebuild repoUrl index periodically to maintain consistency with cache entries
+        const consistencyCheckInterval = Math.max(intervalMs, 60000) * 10;
+        if (!this._lastIndexRebuild || Date.now() - this._lastIndexRebuild > consistencyCheckInterval) {
+          this._rebuildRepoUrlIndex();
+          this._lastIndexRebuild = Date.now();
+        }
+        this._cleanupIdleLocks();
+      }).catch(() => {});
     }, intervalMs);
     if (this._sweeper.unref) this._sweeper.unref();
   }
@@ -349,41 +360,45 @@ class AnalysisCache {
   /**
    * Manually expire an entry (useful for testing or cache invalidation).
    */
-  invalidate(key) {
-    if (this.cache.has(key)) {
-      const entry = this.cache.get(key);
-      this.cache.delete(key);
-      if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-        this._repoUrlIndex.get(entry.repoUrl).delete(key);
+  async invalidate(key) {
+    return this._writeLock.acquire(() => {
+      if (this.cache.has(key)) {
+        const entry = this.cache.get(key);
+        this.cache.delete(key);
+        if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
+          this._repoUrlIndex.get(entry.repoUrl).delete(key);
+        }
+        console.log(`❌ Invalidated cache entry for key ${key.slice(0, 8)}...`);
+        return true;
       }
-      console.log(`❌ Invalidated cache entry for key ${key.slice(0, 8)}...`);
-      return true;
-    }
-    return false;
+      return false;
+    });
   }
 
   /**
    * Invalidate all cache entries by repo URL.
    * Iterates the cache and removes entries whose key matches the given repo URL.
    */
-  invalidateByRepoUrl(repoUrl) {
-    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
-    const keys = this._repoUrlIndex.get(normalized);
-    if (!keys || keys.size === 0) {
-      return 0;
-    }
-    let removed = 0;
-      for (const key of keys) {
-        if (this.cache.delete(key)) {
-        removed++;
+  async invalidateByRepoUrl(repoUrl) {
+    return this._writeLock.acquire(() => {
+      const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+      const keys = this._repoUrlIndex.get(normalized);
+      if (!keys || keys.size === 0) {
+        return 0;
       }
-    }
-    this._repoUrlIndex.delete(normalized);
-    if (removed > 0) {
-      this.stats.evictions += removed;
-      console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
-    }
-    return removed;
+      let removed = 0;
+        for (const key of keys) {
+          if (this.cache.delete(key)) {
+          removed++;
+        }
+      }
+      this._repoUrlIndex.delete(normalized);
+      if (removed > 0) {
+        this.stats.evictions += removed;
+        console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);
+      }
+      return removed;
+    });
   }
 
   /**
@@ -409,69 +424,73 @@ class AnalysisCache {
   }
 
   async persistToDisk(filePath = PERSIST_PATH) {
-    const FS_TIMEOUT_CACHE = parseInt(process.env.FS_TIMEOUT_CACHE_MS || '15000', 10);
-    try {
-      const snapshot = [];
-      for (const [key, entry] of this.cache) {
-        snapshot.push({
-          key,
-          result: entry.result,
-          expiresAt: entry.expiresAt,
-          absoluteExpiresAt: entry.absoluteExpiresAt,
-          repoUrl: entry.repoUrl,
-          isMock: entry.isMock,
-        });
-      }
-      const dir = path.dirname(filePath);
+    return this._writeLock.acquire(async () => {
+      const FS_TIMEOUT_CACHE = parseInt(process.env.FS_TIMEOUT_CACHE_MS || '15000', 10);
       try {
-        await fsWithTimeout.access(dir, fs.constants.F_OK, FS_TIMEOUT_CACHE);
-      } catch {
-        await fsWithTimeout.mkdir(dir, { recursive: true }, FS_TIMEOUT_CACHE);
+        const snapshot = [];
+        for (const [key, entry] of this.cache) {
+          snapshot.push({
+            key,
+            result: entry.result,
+            expiresAt: entry.expiresAt,
+            absoluteExpiresAt: entry.absoluteExpiresAt,
+            repoUrl: entry.repoUrl,
+            isMock: entry.isMock,
+          });
+        }
+        const dir = path.dirname(filePath);
+        try {
+          await fsWithTimeout.access(dir, fs.constants.F_OK, FS_TIMEOUT_CACHE);
+        } catch {
+          await fsWithTimeout.mkdir(dir, { recursive: true }, FS_TIMEOUT_CACHE);
+        }
+        await fsWithTimeout.writeFile(filePath + '.tmp', JSON.stringify(snapshot), FS_TIMEOUT_CACHE);
+        await fsWithTimeout.rename(filePath + '.tmp', filePath, FS_TIMEOUT_CACHE);
+        console.log(`💾 Persisted ${snapshot.length} cache entries to ${filePath}`);
+      } catch (err) {
+        console.warn(`⚠️ Cache persist failed: ${err.message}`);
       }
-      await fsWithTimeout.writeFile(filePath + '.tmp', JSON.stringify(snapshot), FS_TIMEOUT_CACHE);
-      await fsWithTimeout.rename(filePath + '.tmp', filePath, FS_TIMEOUT_CACHE);
-      console.log(`💾 Persisted ${snapshot.length} cache entries to ${filePath}`);
-    } catch (err) {
-      console.warn(`⚠️ Cache persist failed: ${err.message}`);
-    }
+    });
   }
 
   async restoreFromDisk(filePath = PERSIST_PATH) {
-    const FS_TIMEOUT_CACHE = parseInt(process.env.FS_TIMEOUT_CACHE_MS || '15000', 10);
-    try {
+    return this._writeLock.acquire(async () => {
+      const FS_TIMEOUT_CACHE = parseInt(process.env.FS_TIMEOUT_CACHE_MS || '15000', 10);
       try {
-        await fsWithTimeout.access(filePath, fs.constants.F_OK, FS_TIMEOUT_CACHE);
-      } catch {
+        try {
+          await fsWithTimeout.access(filePath, fs.constants.F_OK, FS_TIMEOUT_CACHE);
+        } catch {
+          return 0;
+        }
+        const raw = await fsWithTimeout.readFile(filePath, 'utf-8', FS_TIMEOUT_CACHE);
+        const snapshot = JSON.parse(raw);
+        let restored = 0;
+        const now = Date.now();
+        for (const entry of snapshot) {
+          if (now > entry.absoluteExpiresAt) continue;
+          if (now > entry.expiresAt) continue;
+          this.cache.set(entry.key, {
+            result: entry.result,
+            expiresAt: entry.expiresAt,
+            absoluteExpiresAt: entry.absoluteExpiresAt,
+            repoUrl: entry.repoUrl,
+            isMock: entry.isMock,
+          });
+          if (entry.repoUrl) {
+            if (!this._repoUrlIndex.has(entry.repoUrl)) {
+              this._repoUrlIndex.set(entry.repoUrl, new Set());
+            }
+            this._repoUrlIndex.get(entry.repoUrl).add(entry.key);
+          }
+          restored++;
+        }
+        console.log(`📂 Restored ${restored} cache entries from ${filePath}`);
+        return restored;
+      } catch (err) {
+        console.warn(`⚠️ Cache restore failed: ${err.message}`);
         return 0;
       }
-      const raw = await fsWithTimeout.readFile(filePath, 'utf-8', FS_TIMEOUT_CACHE);
-      const snapshot = JSON.parse(raw);
-      let restored = 0;
-      const now = Date.now();
-      for (const entry of snapshot) {
-        if (now > entry.absoluteExpiresAt) continue;
-        if (now > entry.expiresAt) continue;
-        this.cache.set(entry.key, {
-          result: entry.result,
-          expiresAt: entry.expiresAt,
-          absoluteExpiresAt: entry.absoluteExpiresAt,
-          repoUrl: entry.repoUrl,
-          isMock: entry.isMock,
-        });
-        if (entry.repoUrl) {
-          if (!this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.set(entry.repoUrl, new Set());
-          }
-          this._repoUrlIndex.get(entry.repoUrl).add(entry.key);
-        }
-        restored++;
-      }
-      console.log(`📂 Restored ${restored} cache entries from ${filePath}`);
-      return restored;
-    } catch (err) {
-      console.warn(`⚠️ Cache restore failed: ${err.message}`);
-      return 0;
-    }
+    });
   }
 
   async startPersistTimer(intervalMs = 300000) {
