@@ -2502,12 +2502,12 @@ app.get("/api/review-history", requireApiKey, async (req, res) => {
         const skip = (page - 1) * limit;
 
         const [history, total] = await Promise.all([
-          Analytics.find()
+          Analytics.find({ clientId: req.clientId })
             .sort({ analyzedAt: -1 })
             .skip(skip)
             .limit(limit)
             .lean(),
-          Analytics.countDocuments({})
+          Analytics.countDocuments({ clientId: req.clientId })
         ]);
 
         res.json({
@@ -2540,12 +2540,12 @@ app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
         const skip = (page - 1) * limit;
 
         const [history, total] = await Promise.all([
-          Analytics.find({ repoName: repo })
+          Analytics.find({ repoName: repo, clientId: req.clientId })
             .sort({ analyzedAt: -1 })
             .skip(skip)
             .limit(limit)
             .lean(),
-          Analytics.countDocuments({ repoName: repo })
+          Analytics.countDocuments({ repoName: repo, clientId: req.clientId })
         ]);
 
         res.json({
