@@ -119,7 +119,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
       <td><span style="background-color: ${severityColors[f.severity]}; color: white; padding: 4px 8px; border-radius: 3px; font-weight: bold;">${escapeHtml(f.severity)}</span></td>
       <td>${escapeHtml(f.category)}</td>
       <td>${escapeHtml(f.rule_id)}</td>
-      <td>${escapeHtml(f.message)}</td>
+      <td><div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(f.message)}</div></td>
     </tr>
   `).join('');
 
