@@ -267,7 +267,11 @@ class AnalysisCache {
           this.cache.delete(key);
           this.stats.absoluteExpiries++;
           if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            const set = this._repoUrlIndex.get(entry.repoUrl);
+            set.delete(key);
+            if (set.size === 0) {
+              this._repoUrlIndex.delete(entry.repoUrl);
+            }
           }
           continue;
         }
@@ -275,7 +279,11 @@ class AnalysisCache {
           this.cache.delete(key);
           this.stats.slidingExpiries++;
           if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            const set = this._repoUrlIndex.get(entry.repoUrl);
+            set.delete(key);
+            if (set.size === 0) {
+              this._repoUrlIndex.delete(entry.repoUrl);
+            }
           }
         }
       }
