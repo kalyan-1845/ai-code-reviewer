@@ -710,6 +710,7 @@ function cleanupTimers() {
   clearInterval(deliveryReplayCleanupTimer);
   clearInterval(endpointErrorResetTimer);
   clearInterval(repoRequestCountsTimer);
+  clearInterval(webhookQueueCleanupTimer);
 }
 
   // Loaded from shared-safety-config.json via dangerousPhrases.js
@@ -1293,13 +1294,39 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
   try {
     let { files, company = 'General', language = 'English', model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = '', batchSize = 5 } = req.body;
 
-    if (!files || !Array.isArray(files) || files.length === 0) {
+    const MAX_FILES_PER_BATCH = 100;
+    const MAX_FILE_CONTENT_LENGTH = 1024 * 1024;
+    const MAX_FILE_NAME_LENGTH = 1024;
+
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: 'files must be an array.' });
+    }
+    if (files.length === 0) {
       return res.status(400).json({ error: 'At least one file is required.' });
     }
+    if (files.length > MAX_FILES_PER_BATCH) {
+      return res.status(400).json({ error: `Maximum of ${MAX_FILES_PER_BATCH} files allowed per request.` });
+    }
 
-    for (const file of files) {
-      if (!file.name || !file.content) {
-        return res.status(400).json({ error: 'Each file must have a name and content.' });
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file || typeof file !== 'object' || Array.isArray(file)) {
+        return res.status(400).json({ error: `File at index ${i} must be a non-null object.` });
+      }
+      if (typeof file.name !== 'string' || file.name.trim().length === 0) {
+        return res.status(400).json({ error: `File at index ${i} must have a non-empty string name.` });
+      }
+      if (file.name.length > MAX_FILE_NAME_LENGTH) {
+        return res.status(400).json({ error: `File at index ${i} name exceeds maximum length of ${MAX_FILE_NAME_LENGTH}.` });
+      }
+      if (file.name.includes('\0') || file.name.includes('..') || file.name.startsWith('/')) {
+        return res.status(400).json({ error: `File at index ${i} has an invalid name (path traversal detected).` });
+      }
+      if (typeof file.content !== 'string') {
+        return res.status(400).json({ error: `File at index ${i} content must be a string.` });
+      }
+      if (file.content.length > MAX_FILE_CONTENT_LENGTH) {
+        return res.status(400).json({ error: `File at index ${i} content exceeds maximum length of ${MAX_FILE_CONTENT_LENGTH} bytes.` });
       }
     }
 
@@ -1594,6 +1621,31 @@ const repoRequestCountsTimer = setInterval(() => {
 }, 60 * 1000);
 repoRequestCountsTimer.unref();
 
+// Per-repo FIFO queue for webhook processing to guarantee delivery order
+// (issue #2527). Events for the same repository are processed sequentially
+// in the order they arrive.
+const webhookRepoQueues = new Map();
+const WEBHOOK_QUEUE_CLEANUP_INTERVAL = 10 * 60 * 1000;
+async function runWebhookEventSerialized(repoKey, fn) {
+  const prev = webhookRepoQueues.get(repoKey) || Promise.resolve();
+  const next = prev.then(fn, fn).finally(() => {
+    const current = webhookRepoQueues.get(repoKey);
+    if (current === tail) {
+      webhookRepoQueues.delete(repoKey);
+    }
+  });
+  const tail = next.catch(() => {});
+  webhookRepoQueues.set(repoKey, tail);
+  return next;
+}
+const webhookQueueCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, promise] of webhookRepoQueues) {
+    if (promise === undefined) webhookRepoQueues.delete(key);
+  }
+}, WEBHOOK_QUEUE_CLEANUP_INTERVAL);
+webhookQueueCleanupTimer.unref();
+
 const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
@@ -1675,195 +1727,209 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), sanitizeErrorMessage(deliveryId), 'invalid_format', Date.now() - webhookStartTime);
       return res.status(400).json({ error: 'Invalid delivery ID format.' });
     }
-    const safeDeliveryId = sanitizeRedisKey(deliveryId);
-    const deliveryDedupKey = `webhook:delivery:${safeDeliveryId}`;
 
-    // Replay prevention: check if this delivery ID was seen before (long-term store).
-    // This catches replays that arrive after the short delivery dedup TTL expires.
-    const replayKey = `webhook:replay:${safeDeliveryId}`;
-    if (redisClient) {
-      const replaySeen = await redisClient.get(replayKey);
-      if (replaySeen) {
-        console.warn(`Replay attack detected: delivery ID ${safeDeliveryId} was already processed`);
-        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'replay_rejected', Date.now() - webhookStartTime);
-        return res.status(403).json({ error: 'This webhook delivery has already been processed.' });
-      }
-    } else {
-      const replayTimestamp = deliveryReplayMap.get(deliveryId);
-      if (replayTimestamp !== undefined) {
-        console.warn(`Replay attack detected: delivery ID ${safeDeliveryId} was already processed`);
-        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'replay_rejected', Date.now() - webhookStartTime);
-        return res.status(403).json({ error: 'This webhook delivery has already been processed.' });
-      }
-    }
-
-    let isDuplicate;
-    if (redisClient) {
-      isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
-    } else {
-      const existing = await dedupStore.get(deliveryDedupKey);
-      isDuplicate = existing ? 0 : 1;
-      if (isDuplicate) {
-        await dedupStore.set(deliveryDedupKey, Date.now().toString(), DELIVERY_REDIS_TTL * 1000);
-      }
-    }
-    if (isDuplicate === 0) {
-      console.log(`Skipping duplicate webhook delivery`);
-      recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'duplicate', Date.now() - webhookStartTime);
-      return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
-    }
-    if (redisClient) {
-      await redisClient.expire(deliveryDedupKey, DELIVERY_REDIS_TTL);
-    }
-
-    // Mark delivery ID as seen for long-term replay prevention
-    if (redisClient) {
-      await redisClient.setex(replayKey, DELIVERY_REPLAY_TTL, Date.now().toString());
-    } else {
-      if (deliveryReplayMap.size >= DELIVERY_REPLAY_MAX_SIZE) {
-        const oldestKey = deliveryReplayMap.keys().next().value;
-        if (oldestKey !== undefined) deliveryReplayMap.delete(oldestKey);
-      }
-      deliveryReplayMap.set(deliveryId, Date.now());
-    }
-
+    const owner = payload.repository?.owner?.login;
+    const repo = payload.repository?.name;
+    const repoKey = owner && repo ? `${owner}/${repo}` : 'unknown';
     const action = payload.action;
-    if (action === 'opened' || action === 'synchronize') {
-      const pullNumber = payload.pull_request.number;
-      const headSha = payload.pull_request.head.sha;
-      const owner = payload.repository.owner.login;
-      const repo = payload.repository.name;
-      const reviewKey = `${owner}/${repo}`;
 
-      const shaKey = `${sanitizeRedisKey(owner)}/${sanitizeRedisKey(repo)}/#${sanitizeRedisKey(String(pullNumber))}`;
-      const shaDedupKey = `webhook:sha:${shaKey}`;
-      let shaAlreadyReviewed;
+    // Process events for the same repo in FIFO order to guarantee delivery ordering
+    // (issue #2527). The entire dedup/replay/rate-limit/enqueue logic runs inside
+    // a per-repo serial queue so events don't race on shared state.
+    await runWebhookEventSerialized(repoKey, async () => {
+      const safeDeliveryId = sanitizeRedisKey(deliveryId);
+      const deliveryDedupKey = `webhook:delivery:${safeDeliveryId}`;
+
+      const replayKey = `webhook:replay:${safeDeliveryId}`;
       if (redisClient) {
-        const added = await redisClient.sadd(shaDedupKey, headSha);
-        if (!added) {
-          shaAlreadyReviewed = 1;
-        } else {
-          shaAlreadyReviewed = 0;
-          await redisClient.expire(shaDedupKey, DELIVERY_REDIS_TTL);
+        const replaySeen = await redisClient.get(replayKey);
+        if (replaySeen) {
+          console.warn(`Replay attack detected: delivery ID ${safeDeliveryId} was already processed`);
+          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'replay_rejected', Date.now() - webhookStartTime);
+          return res.status(403).json({ error: 'This webhook delivery has already been processed.' });
         }
       } else {
-        const mapKey = `${shaDedupKey}:${headSha}`;
-        shaAlreadyReviewed = shaDedupMemoryMap.has(mapKey) ? 1 : 0;
-        if (!shaAlreadyReviewed) {
-          if (shaDedupMemoryMap.size >= SHA_DEDUP_MAX_SIZE) {
-            const oldestKey = shaDedupMemoryMap.keys().next().value;
-            if (oldestKey !== undefined) {
-              shaDedupMemoryMap.delete(oldestKey);
-            }
+        const replayTimestamp = deliveryReplayMap.get(deliveryId);
+        if (replayTimestamp !== undefined) {
+          console.warn(`Replay attack detected: delivery ID ${safeDeliveryId} was already processed`);
+          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'replay_rejected', Date.now() - webhookStartTime);
+          return res.status(403).json({ error: 'This webhook delivery has already been processed.' });
+        }
+      }
+
+      let isDuplicate;
+      if (redisClient) {
+        isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
+      } else {
+        const existing = await dedupStore.get(deliveryDedupKey);
+        isDuplicate = existing ? 0 : 1;
+        if (isDuplicate) {
+          await dedupStore.set(deliveryDedupKey, Date.now().toString(), DELIVERY_REDIS_TTL * 1000);
+        }
+      }
+      if (isDuplicate === 0) {
+        console.log(`Skipping duplicate webhook delivery`);
+        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'duplicate', Date.now() - webhookStartTime);
+        return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
+      }
+      if (redisClient) {
+        await redisClient.expire(deliveryDedupKey, DELIVERY_REDIS_TTL);
+      }
+
+      if (redisClient) {
+        await redisClient.setex(replayKey, DELIVERY_REPLAY_TTL, Date.now().toString());
+      } else {
+        if (deliveryReplayMap.size >= DELIVERY_REPLAY_MAX_SIZE) {
+          const oldestKey = deliveryReplayMap.keys().next().value;
+          if (oldestKey !== undefined) deliveryReplayMap.delete(oldestKey);
+        }
+        deliveryReplayMap.set(deliveryId, Date.now());
+      }
+
+      if (action === 'opened' || action === 'synchronize') {
+        const pullNumber = payload.pull_request.number;
+        const headSha = payload.pull_request.head.sha;
+        const reviewKey = repoKey;
+
+        const shaKey = `${sanitizeRedisKey(owner)}/${sanitizeRedisKey(repo)}/#${sanitizeRedisKey(String(pullNumber))}`;
+        const shaDedupKey = `webhook:sha:${shaKey}`;
+        let shaAlreadyReviewed;
+        if (redisClient) {
+          const added = await redisClient.sadd(shaDedupKey, headSha);
+          if (!added) {
+            shaAlreadyReviewed = 1;
+          } else {
+            shaAlreadyReviewed = 0;
+            await redisClient.expire(shaDedupKey, DELIVERY_REDIS_TTL);
           }
-          shaDedupMemoryMap.set(mapKey, Date.now());
-        }
-      }
-      if (shaAlreadyReviewed) {
-        console.log(`Already reviewed commit for PR #${pullNumber}`);
-        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'sha_already_reviewed', Date.now() - webhookStartTime, action);
-        return res.json({ success: true, message: 'Webhook received (duplicate SHA skipped).' });
-      }
-      
-      console.log(`GitHub Webhook received: PR #${pullNumber} ${sanitizeErrorMessage(action)} in ${sanitizeErrorMessage(owner)}/${sanitizeErrorMessage(repo)}`);
-
-      // Check if this PR already has a pending analysis in the queue to avoid
-      // enqueuing a duplicate when multiple webhook events arrive for the same PR
-      // before the review completes (e.g. rapid synchronize events).
-      if (reviewQueue.hasPendingItem(reviewKey)) {
-        console.log(`PR #${pullNumber} already has a pending review in queue; skipping`);
-        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'pr_already_pending', Date.now() - webhookStartTime, action);
-        return res.json({ success: true, message: 'Webhook received (already pending).' });
-      }
-
-      if (reviewQueue._queues.size >= reviewQueue._maxQueues) {
-        if (redisClient) {
-          await redisClient.srem(shaDedupKey, headSha);
         } else {
-          shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+          const mapKey = `${shaDedupKey}:${headSha}`;
+          shaAlreadyReviewed = shaDedupMemoryMap.has(mapKey) ? 1 : 0;
+          if (!shaAlreadyReviewed) {
+            if (shaDedupMemoryMap.size >= SHA_DEDUP_MAX_SIZE) {
+              const oldestKey = shaDedupMemoryMap.keys().next().value;
+              if (oldestKey !== undefined) {
+                shaDedupMemoryMap.delete(oldestKey);
+              }
+            }
+            shaDedupMemoryMap.set(mapKey, Date.now());
+          }
         }
-        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'queue_full', Date.now() - webhookStartTime, action);
-        return res.status(429).json({ error: 'Too many pending reviews. Try again later.' });
-      }
+        if (shaAlreadyReviewed) {
+          console.log(`Already reviewed commit for PR #${pullNumber}`);
+          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'sha_already_reviewed', Date.now() - webhookStartTime, action);
+          return res.json({ success: true, message: 'Webhook received (duplicate SHA skipped).' });
+        }
 
-      // Per-repository rate limiting
-      const repoKey = `${owner}/${repo}`;
-      let currentCount;
-      if (redisClient) {
-        const redisKey = `ratelimit:repo:${repoKey}`;
-        currentCount = await redisClient.incr(redisKey);
-        if (currentCount === 1) {
-          await redisClient.expire(redisKey, Math.ceil(REPO_WINDOW_MS / 1000));
-        }
-      } else {
-        const now = Date.now();
-        const repoEntry = repoRequestCounts.get(repoKey) || { count: 0, windowStart: now };
-        if (now - repoEntry.windowStart > REPO_WINDOW_MS) {
-          repoEntry.count = 0;
-          repoEntry.windowStart = now;
-        }
-        repoEntry.count++;
-        repoRequestCounts.set(repoKey, repoEntry);
-        currentCount = repoEntry.count;
-      }
+        console.log(`GitHub Webhook received: PR #${pullNumber} ${sanitizeErrorMessage(action)} in ${sanitizeErrorMessage(owner)}/${sanitizeErrorMessage(repo)}`);
 
-      if (currentCount > REPO_MAX_REQUESTS) {
-        console.warn(`Rate limit exceeded for repository ${sanitizeErrorMessage(repoKey)}`);
+        if (reviewQueue.hasPendingItem(reviewKey)) {
+          console.log(`PR #${pullNumber} already has a pending review in queue; skipping`);
+          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'pr_already_pending', Date.now() - webhookStartTime, action);
+          return res.json({ success: true, message: 'Webhook received (already pending).' });
+        }
+
+        if (reviewQueue._queues.size >= reviewQueue._maxQueues) {
+          if (redisClient) {
+            await redisClient.srem(shaDedupKey, headSha);
+          } else {
+            shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+          }
+          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'queue_full', Date.now() - webhookStartTime, action);
+          return res.status(429).json({ error: 'Too many pending reviews. Try again later.' });
+        }
+
+        let currentCount;
         if (redisClient) {
-          await redisClient.srem(shaDedupKey, headSha);
+          const redisKey = `ratelimit:repo:${repoKey}`;
+          currentCount = await redisClient.incr(redisKey);
+          if (currentCount === 1) {
+            await redisClient.expire(redisKey, Math.ceil(REPO_WINDOW_MS / 1000));
+          }
         } else {
-          shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+          const now = Date.now();
+          const repoEntry = repoRequestCounts.get(repoKey) || { count: 0, windowStart: now };
+          if (now - repoEntry.windowStart > REPO_WINDOW_MS) {
+            repoEntry.count = 0;
+            repoEntry.windowStart = now;
+          }
+          repoEntry.count++;
+          repoRequestCounts.set(repoKey, repoEntry);
+          currentCount = repoEntry.count;
         }
-        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'rate_limited', Date.now() - webhookStartTime, action);
-        return res.status(429).json({ error: 'Too many requests for this repository. Try again later.' });
-      }
 
-      const enqueuePromise = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
-        const maxRetries = 2;
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          try {
-            await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
-            recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'completed', Date.now() - webhookStartTime, action);
-            return;
-          } catch (error) {
-            if (attempt < maxRetries) {
-              const delay = Math.pow(2, attempt) * 1000;
-              console.warn(`[${req.requestId}] Webhook review attempt ${attempt + 1}/${maxRetries + 1} failed for PR #${pullNumber}, retrying in ${delay}ms:`, sanitizeErrorMessage(error.message));
-              await new Promise(r => setTimeout(r, delay));
-            } else {
-              console.error(`[${req.requestId}] Webhook review failed after ${maxRetries + 1} attempts for PR #${pullNumber}:`, sanitizeErrorMessage(error.message));
-              recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'failed', Date.now() - webhookStartTime, action);
-              if (redisClient) {
-                await redisClient.srem(shaDedupKey, headSha);
+        if (currentCount > REPO_MAX_REQUESTS) {
+          console.warn(`Rate limit exceeded for repository ${sanitizeErrorMessage(repoKey)}`);
+          if (redisClient) {
+            await redisClient.srem(shaDedupKey, headSha);
+          } else {
+            shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+          }
+          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'rate_limited', Date.now() - webhookStartTime, action);
+          return res.status(429).json({ error: 'Too many requests for this repository. Try again later.' });
+        }
+
+        const enqueuePromise = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
+          const maxRetries = 2;
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+              await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
+              recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'completed', Date.now() - webhookStartTime, action);
+              return;
+            } catch (error) {
+              if (attempt < maxRetries) {
+                const delay = Math.pow(2, attempt) * 1000;
+                console.warn(`[${req.requestId}] Webhook review attempt ${attempt + 1}/${maxRetries + 1} failed for PR #${pullNumber}, retrying in ${delay}ms:`, sanitizeErrorMessage(error.message));
+                await new Promise(r => setTimeout(r, delay));
               } else {
-                shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+                console.error(`[${req.requestId}] Webhook review failed after ${maxRetries + 1} attempts for PR #${pullNumber}:`, sanitizeErrorMessage(error.message));
+                recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'failed', Date.now() - webhookStartTime, action);
+                if (redisClient) {
+                  await redisClient.srem(shaDedupKey, headSha);
+                } else {
+                  shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+                }
               }
             }
           }
+        });
+        enqueuePromise.catch((err) => {
+          console.error(`Unhandled rejection from review queue enqueue:`, sanitizeErrorMessage(err.message));
+        });
+        if (!enqueuePromise) {
+          if (redisClient) {
+            await redisClient.srem(shaDedupKey, headSha);
+          } else {
+            shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+          }
+          recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'enqueue_failed', Date.now() - webhookStartTime, action);
+          return res.status(429).json({ error: 'Review queue full. Try again later.' });
         }
-      });
-      enqueuePromise.catch((err) => {
-        console.error(`Unhandled rejection from review queue enqueue:`, sanitizeErrorMessage(err.message));
-      });
-      if (!enqueuePromise) {
-        if (redisClient) {
-          await redisClient.srem(shaDedupKey, headSha);
-        } else {
-          shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
-        }
-        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'enqueue_failed', Date.now() - webhookStartTime, action);
-        return res.status(429).json({ error: 'Review queue full. Try again later.' });
-      }
-      recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'queued', Date.now() - webhookStartTime, action);
-    } else if (action === 'closed') {
+        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'queued', Date.now() - webhookStartTime, action);
+      } else if (action === 'closed') {
       const pullNumber = payload.pull_request.number;
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
+      const repoUrlForCleanup = `https://github.com/${owner}/${repo}`;
       if (redisClient) {
         await clearReviewIds(redisClient, owner, repo, pullNumber);
       }
+      const removed = analysisCache.invalidateByRepoUrl(repoUrlForCleanup);
+      if (removed > 0) {
+        console.log(`PR closed — invalidated ${removed} cache entries for ${sanitizeErrorMessage(repoUrlForCleanup)}`);
+      }
+      try {
+        const cleanupResult = await Session.deleteMany({ repoUrl: repoUrlForCleanup });
+        if (cleanupResult.deletedCount > 0) {
+          console.log(`PR closed — cleaned up ${cleanupResult.deletedCount} session(s) for ${sanitizeErrorMessage(repoUrlForCleanup)}`);
+        }
+      } catch (sessionErr) {
+        console.warn(`PR closed — session cleanup failed: ${sanitizeErrorMessage(sessionErr.message)}`);
+      }
       recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'pr_closed', Date.now() - webhookStartTime, action);
     }
+    });
+    if (res.headersSent) return;
   }
 
   if (event === 'ping') {

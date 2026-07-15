@@ -8,6 +8,23 @@ let connectionPromise = null;
 const RECONNECT_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 1 : 5000;
 const MAX_RECONNECT_ATTEMPTS = process.env.NODE_ENV === 'test' ? 1 : 5;
 
+const DB_QUERY_TIMEOUT_MS = parseInt(process.env.DB_QUERY_TIMEOUT_MS || '30000', 10);
+
+mongoose.plugin(function mongooseTimeoutPlugin(schema) {
+  const queryHooks = [/^find/, 'countDocuments', 'updateOne', 'deleteOne', 'updateMany', 'deleteMany', 'distinct'];
+  queryHooks.forEach((hook) => {
+    schema.pre(hook, function (next) {
+      this.maxTimeMS(DB_QUERY_TIMEOUT_MS);
+      next();
+    });
+  });
+  schema.pre('aggregate', function (next) {
+    this.option({ maxTimeMS: DB_QUERY_TIMEOUT_MS });
+    this.maxTimeMS(DB_QUERY_TIMEOUT_MS);
+    next();
+  });
+});
+
 export async function connectDatabase() {
   if (isConnected) return;
   if (connectionPromise) return connectionPromise;
