@@ -1,16 +1,30 @@
 import * as vscode from "vscode";
 import { BackendResponse, ReviewItem } from "./api";
-import { clampLine, formatDiagnosticMessage } from "./utils";
+import { clampLine, formatDiagnosticMessage, debounce } from "./utils";
 
 export class RepoSageDiagnostics {
   private _collection: vscode.DiagnosticCollection;
+  private _flushUpdate: (response: BackendResponse, targetFile: string) => void;
 
-  constructor() {
+  constructor(debounceMs: number = 300) {
     this._collection =
       vscode.languages.createDiagnosticCollection("reposage");
+    this._flushUpdate = debounce(
+      (response: BackendResponse, targetFile: string) => {
+        this._commitUpdate(response, targetFile);
+      },
+      debounceMs
+    );
   }
 
   public updateFromResponse(
+    response: BackendResponse,
+    targetFile: string
+  ): void {
+    this._flushUpdate(response, targetFile);
+  }
+
+  private _commitUpdate(
     response: BackendResponse,
     targetFile: string
   ): void {

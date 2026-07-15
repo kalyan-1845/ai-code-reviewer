@@ -1,3 +1,5 @@
+import { CircuitBreaker } from './circuitBreaker.js';
+
 class ReviewQueue {
   constructor(maxQueues = 100, maxItemsPerQueue = 50, exclusiveLockTtlMs = 30 * 60 * 1000, maxRetries = 3) {
     this._queues = new Map();
@@ -8,6 +10,18 @@ class ReviewQueue {
     this._maxItemsPerQueue = maxItemsPerQueue;
     this._exclusiveLockTtlMs = exclusiveLockTtlMs;
     this._maxRetries = maxRetries;
+    this._circuitBreaker = new CircuitBreaker({
+      failureThreshold: 5,
+      cooldownMs: 30000,
+      halfOpenMaxRequests: 3,
+      timeoutMs: 10000,
+    });
+  }
+
+  getCircuitState() {
+    return {
+      state: this._circuitBreaker.getState(),
+    };
   }
 
   async enqueue(key, item, processor) {
@@ -47,15 +61,22 @@ class ReviewQueue {
           const item = queue.shift();
           for (let attempt = 0; attempt <= this._maxRetries; attempt++) {
             try {
-              await processor(item);
+              await this._circuitBreaker.call(() => processor(item));
               break;
             } catch (err) {
+              if (err.name === 'CircuitBreakerOpenError') {
+                console.error(`ReviewQueue: circuit breaker OPEN for "${key}", scheduling retry after cooldown`);
+                await new Promise(r => setTimeout(r, Math.min(this._circuitBreaker._cooldownMs || 30000, 5000)));
+                queue.unshift(item);
+                break;
+              }
               if (attempt < this._maxRetries) {
                 const delay = Math.pow(2, attempt) * 1000;
                 console.warn(`ReviewQueue: retry ${attempt + 1}/${this._maxRetries} for "${key}" in ${delay}ms:`, err.message);
                 await new Promise(r => setTimeout(r, delay));
               } else {
                 console.error(`ReviewQueue: item permanently failed for "${key}" after ${this._maxRetries + 1} attempts:`, err);
+                this._circuitBreaker.onFailure();
               }
             }
           }

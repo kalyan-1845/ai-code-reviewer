@@ -2,19 +2,8 @@ class DedupStore {
   constructor(redisClient) {
     this.redisClient = redisClient;
     this.memoryStore = new Map();
-    this._startCleanupSweeper();
-  }
-
-  _startCleanupSweeper() {
-    this._cleanupTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [key, entry] of this.memoryStore) {
-        if (now > entry.expiresAt) {
-          this.memoryStore.delete(key);
-        }
-      }
-    }, 60 * 1000);
-    this._cleanupTimer.unref();
+    this._sweeper = null;
+    this._startSweeper();
   }
 
   get size() {
@@ -60,6 +49,7 @@ class DedupStore {
     if (this.redisClient) {
       try {
         await this.redisClient.sadd(key, member);
+        await this.redisClient.pexpire(key, ttlMs);
         return;
       } catch (err) {
         console.warn(`⚠️ Redis sadd failed for ${key}, falling back to memory:`, err.message);
@@ -67,6 +57,9 @@ class DedupStore {
     }
     if (!this.memoryStore.has(key)) {
       this.memoryStore.set(key, { value: new Set(), expiresAt: Date.now() + ttlMs });
+    } else {
+      const entry = this.memoryStore.get(key);
+      entry.expiresAt = Date.now() + ttlMs;
     }
     const entry = this.memoryStore.get(key);
     if (Date.now() > entry.expiresAt) {
@@ -137,6 +130,25 @@ class DedupStore {
       }
     }
     this.memoryStore.delete(key);
+  }
+
+  _startSweeper(intervalMs = 60000) {
+    if (this._sweeper) return;
+    this._sweeper = setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of this.memoryStore) {
+        if (now > entry.expiresAt) {
+          this.memoryStore.delete(key);
+        }
+      }
+    }, intervalMs);
+  }
+
+  stopSweeper() {
+    if (this._sweeper) {
+      clearInterval(this._sweeper);
+      this._sweeper = null;
+    }
   }
 }
 

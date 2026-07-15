@@ -59,6 +59,20 @@ export function clampLine(line: number): number {
   return Math.max(0, line - 1);
 }
 
+export function debounce<Args extends unknown[]>(
+  fn: (...args: Args) => void,
+  delayMs: number
+): (...args: Args) => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return (...args: Args) => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = undefined;
+      fn(...args);
+    }, delayMs);
+  };
+}
+
 export function formatDiagnosticMessage(category: string, description: string, suggestion?: string): string {
   let msg = `[${category}] ${description}`;
   if (suggestion) {

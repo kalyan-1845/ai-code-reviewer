@@ -7,13 +7,21 @@ import KeyboardShortcutsHelp from "../components/KeyboardShortcutsHelp";
 import { VulnerabilitiesBarChart } from '../components/VulnerabilitiesBarChart';
 import MarkdownErrorBoundary from '../components/MarkdownErrorBoundary';
 import CopyToClipboardButton from "../components/CopyToClipboardButton";
-import HealthScoreGauge from "../components/HealthScoreGauge";
+import SectionErrorBoundary from "../components/SectionErrorBoundary";
+import AnalysisForm from "../components/AnalysisForm";
+import AuditHistoryPanel from "../components/AuditHistoryPanel";
+import MentorshipPortal from "../components/MentorshipPortal";
+import HealthScoreSection from "../components/HealthScoreSection";
+import ChatPanel from "../components/ChatPanel";
+import MermaidDiagramViewer from "../components/MermaidDiagramViewer";
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   Terminal,
   ShieldAlert,
   Zap,
   Sparkles,
-  FolderGit,
   FileCode,
   CheckCircle,
   AlertOctagon,
@@ -23,9 +31,6 @@ import {
   Layers,
   Code2,
   MessageSquare,
-  Send,
-  Clock,
-  Trash2,
   Search,
   X,
   ChevronsUpDown,
@@ -37,7 +42,7 @@ import {
   FileText,
 } from "lucide-react";
 import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../utils/exportUtils";
-import { sanitizeMermaidOutput, sanitizeAuditEntry, sanitizeForStorage } from "../utils/sanitize";
+import { sanitizeAuditEntry } from "../utils/sanitize";
 // Path resolves correctly: pages/ -> ../utils/api -> frontend/src/utils/api
 import { apiFetch } from "../utils/api";
 
@@ -118,7 +123,7 @@ export interface BackendResponse {
 
 
 
-interface AuditHistoryEntry {
+export interface AuditHistoryEntry {
   id: string;
   repoUrl: string;
   repoName: string;
@@ -127,199 +132,6 @@ interface AuditHistoryEntry {
   overallGrade: string;
   response: BackendResponse;
 }
-
-interface MermaidViewerProps {
-  chart: string;
-  repoName: string;
-}
-
-function MermaidViewer({ chart, repoName }: MermaidViewerProps) {
-  const [svg, setSvg] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!chart) return;
-    setError(null);
-    const uniqueId = `mermaid-${Math.floor(Math.random() * 100000)}`;
-    const renderChart = async () => {
-      try {
-        setSvg("");
-        let cleanChart = sanitizeForStorage(chart)
-          .replace(/```mermaid/g, "")
-          .replace(/```/g, "")
-          .trim();
-        const MERMAID_TYPES = [
-          "graph", "flowchart", "sequenceDiagram", "classDiagram",
-          "stateDiagram", "stateDiagram-v2", "erDiagram", "gantt",
-          "pie", "journey", "gitgraph", "mindmap", "timeline",
-          "zenuml", "sankey", "xychart", "block", "quadrantChart",
-          "requirementDiagram", "c4Context", "c4Container", "c4Component",
-          "c4Dynamic", "c4Deployment", "info",
-        ];
-        const firstWord = cleanChart.split(/\s+/)[0];
-        if (!MERMAID_TYPES.includes(firstWord)) {
-          cleanChart = `graph TD\n${cleanChart}`;
-        }
-
-        const mermaidModule = await import("mermaid");
-        const mermaid = mermaidModule.default;
-
-        try {
-          mermaid.initialize({
-            startOnLoad: false,
-            theme: document.documentElement.getAttribute("data-theme") === "light" ? "base" : "dark",
-            securityLevel: "strict",
-            themeVariables: {
-              background: "#0f172a",
-              primaryColor: "#3b82f6",
-              primaryTextColor: "#e5e7eb",
-              lineColor: "#c084fc",
-              nodeBorder: "#3b82f6",
-              mainBkg: "#1e293b",
-            },
-          });
-        } catch (e) {
-          console.error("Failed to initialize Mermaid:", e);
-        }
-
-        const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
-        if (cancelled) return;
-        const sanitized = sanitizeMermaidOutput(renderedSvg);
-        setSvg(sanitized);
-      } catch (err: unknown) {
-        if (cancelled) return;
-        console.error("Mermaid Render Error:", err);
-        setError(
-          "Could not render architecture diagram. The AI-generated flowchart has syntax errors.",
-        );
-      }
-    };
-
-    renderChart();
-    return () => { cancelled = true; };
-  }, [chart]);
-
-  if (!chart) return null;
-
-  const svgDataUrl = svg
-    ? `data:image/svg+xml;charset=utf-8,${encodeURI(svg)}`
-    : null;
-
-  const downloadSVG = () => {
-    if (!svg) return;
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${repoName}_architecture.svg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  if (error) {
-    return (
-      <div
-        style={{
-          padding: "20px",
-          color: "#ef4444",
-          background: "rgba(239, 68, 68, 0.1)",
-          border: "1px solid rgba(239, 68, 68, 0.2)",
-          borderRadius: "8px",
-          fontSize: "12px",
-          width: "100%",
-          boxSizing: "border-box",
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: "6px" }}>
-          ⚠️ Mermaid Rendering Failed
-        </div>
-        <p style={{ margin: "0 0 10px 0", fontSize: "11px", color: "#fca5a5" }}>
-          {error}
-        </p>
-        <pre
-          style={{
-            background: "rgba(0,0,0,0.3)",
-            padding: "10px",
-            borderRadius: "6px",
-            fontSize: "10px",
-            color: "#9ca3af",
-            overflowX: "auto",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {chart}
-        </pre>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "14px",
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          onClick={downloadSVG}
-          disabled={!svg}
-          style={{
-            background: "rgba(59, 130, 246, 0.1)",
-            border: "1px solid rgba(59, 130, 246, 0.3)",
-            color: "#60a5fa",
-            borderRadius: "6px",
-            padding: "6px 12px",
-            fontSize: "11px",
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            transition: "all 0.15s ease",
-          }}
-          className="hover:bg-blue-500/20"
-        >
-          <Download size={14} /> Download SVG Diagram
-        </button>
-      </div>
-      <div
-        ref={containerRef}
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          background: "rgba(15,23,42,0.4)",
-          padding: "24px",
-          borderRadius: "8px",
-          overflowX: "auto",
-          border: "1px solid rgba(255,255,255,0.05)",
-          boxSizing: "border-box",
-          width: "100%",
-        }}
-      >
-        {svgDataUrl ? (
-          <img
-            src={svgDataUrl}
-            alt={`Architecture diagram for ${repoName}`}
-            style={{ maxWidth: "100%", height: "auto" }}
-          />
-        ) : (
-          <span style={{ color: "#9ca3af", fontSize: "12px" }}>
-            Generating visual flowchart...
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 
 export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
@@ -559,126 +371,94 @@ export default function Dashboard() {
 
   // Simple markdown compiler for premium preview rendering
   const renderMarkdown = (md: string) => {
-    const lines = md.split("\n");
-    let inCodeBlock = false;
-    let codeBlockLines: string[] = [];
+    return (
+      <ReactMarkdown
+        components={{
+          code(props: any) {
+            const { children, className, node, ...rest } = props;
+            const match = /language-(\w+)/.exec(className || '');
+            const codeString = String(children).replace(/\n$/, '');
+            const isBlock = match || String(children).includes('\n');
 
-    return lines.map((line, idx) => {
-      // Handle multi-line code blocks
-      if (line.trim().startsWith("```")) {
-        if (inCodeBlock) {
-          inCodeBlock = false;
-          const codeContent = codeBlockLines.join("\n");
-          codeBlockLines = [];
-          return (
-            <div key={idx} style={{ position: "relative", margin: "8px 0" }}>
-              <pre
-                style={{
-                  background: "rgba(0,0,0,0.3)",
-                  border: "1px solid rgba(255,255,255,0.05)",
-                  borderRadius: "6px",
-                  padding: "10px",
-                  paddingRight: "40px",
-                  overflowX: "auto",
-                  margin: 0,
-                }}
-              >
-                <code
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "11px",
-                    color: "#c084fc",
-                  }}
-                >
-                  {codeContent}
-                </code>
-              </pre>
-              <CopyToClipboardButton
-                textToCopy={codeContent}
-                style={{
-                  position: "absolute",
-                  top: "8px",
-                  right: "8px",
-                  background: "rgba(15, 23, 42, 0.6)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  padding: "4px",
-                }}
-              />
-            </div>
-          );
-        } else {
-          inCodeBlock = true;
-          return null;
-        }
-      }
+            if (match) {
+              return (
+                <div style={{ position: "relative", margin: "8px 0" }}>
+                  <SyntaxHighlighter
+                    {...rest}
+                    style={vscDarkPlus as any}
+                    language={match[1]}
+                    PreTag="div"
+                    customStyle={{
+                      background: "rgba(0,0,0,0.3)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      paddingRight: "40px",
+                      overflowX: "auto",
+                      margin: 0,
+                      fontFamily: "monospace",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {codeString}
+                  </SyntaxHighlighter>
+                  <CopyToClipboardButton
+                    textToCopy={codeString}
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      background: "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      padding: "4px",
+                    }}
+                  />
+                </div>
+              );
+            }
 
-      if (inCodeBlock) {
-        codeBlockLines.push(line);
-        return null;
-      }
+            if (isBlock) {
+              return (
+                <div style={{ position: "relative", margin: "8px 0" }}>
+                  <pre
+                    style={{
+                      background: "rgba(0,0,0,0.3)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      paddingRight: "40px",
+                      overflowX: "auto",
+                      margin: 0,
+                    }}
+                  >
+                    <code
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: "11px",
+                        color: "#c084fc",
+                      }}
+                      {...rest}
+                    >
+                      {children}
+                    </code>
+                  </pre>
+                  <CopyToClipboardButton
+                    textToCopy={codeString}
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      background: "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      padding: "4px",
+                    }}
+                  />
+                </div>
+              );
+            }
 
-      // H1 Header
-      if (line.startsWith("# ")) {
-        return (
-          <h1
-            key={idx}
-            style={{
-              fontSize: "18px",
-              fontWeight: 800,
-              color: "#f3f4f6",
-              margin: "14px 0 8px 0",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-              paddingBottom: "4px",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(2)}
-          </h1>
-        );
-      }
-      // H2 Header
-      if (line.startsWith("## ")) {
-        return (
-          <h2
-            key={idx}
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#e5e7eb",
-              margin: "12px 0 6px 0",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(3)}
-          </h2>
-        );
-      }
-      // H3 Header
-      if (line.startsWith("### ")) {
-        return (
-          <h3
-            key={idx}
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              color: "#d1d5db",
-              margin: "10px 0 4px 0",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(4)}
-          </h3>
-        );
-      }
-
-      // Inline parser helper for bold and code ticks
-      const parseInlineStyles = (text: string) => {
-        const codeParts = text.split("`");
-        return codeParts.map((codePart, cIdx) => {
-          if (cIdx % 2 === 1) {
             return (
               <code
-                key={cIdx}
                 style={{
                   background: "#1e1e1e",
                   padding: "2px 4px",
@@ -687,66 +467,23 @@ export default function Dashboard() {
                   fontSize: "11px",
                   color: "#d8b4fe",
                 }}
+                {...rest}
               >
-                {codePart}
+                {children}
               </code>
             );
-          }
-          const boldParts = codePart.split("**");
-          return boldParts.map((boldPart, bIdx) => {
-            if (bIdx % 2 === 1) {
-              return (
-                <strong key={bIdx} style={{ color: "#fff", fontWeight: 700 }}>
-                  {boldPart}
-                </strong>
-              );
-            }
-            return boldPart;
-          });
-        });
-      };
-
-      // Unordered List Items
-      if (line.trim().startsWith("- ")) {
-        const content = line.trim().slice(2);
-        return (
-          <li
-            key={idx}
-            style={{
-              marginLeft: "16px",
-              marginBottom: "4px",
-              fontSize: "12px",
-              color: "#d1d5db",
-              listStyleType: "disc",
-              fontFamily: "inherit",
-              lineHeight: 1.6,
-            }}
-          >
-            {parseInlineStyles(content)}
-          </li>
-        );
-      }
-      // Empty spacing line
-      if (!line.trim()) {
-        return <div key={idx} style={{ height: "6px" }} />;
-      }
-
-      // Regular Paragraphs
-      return (
-        <p
-          key={idx}
-          style={{
-            margin: "0 0 6px 0",
-            fontSize: "12px",
-            color: "#d1d5db",
-            lineHeight: 1.6,
-            fontFamily: "inherit",
-          }}
-        >
-          {parseInlineStyles(line)}
-        </p>
-      );
-    });
+          },
+          h1: ({ node, ...props }: any) => <h1 style={{ fontSize: "18px", fontWeight: 800, color: "#f3f4f6", margin: "14px 0 8px 0", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "4px" }} {...props} />,
+          h2: ({ node, ...props }: any) => <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#e5e7eb", margin: "12px 0 6px 0" }} {...props} />,
+          h3: ({ node, ...props }: any) => <h3 style={{ fontSize: "12px", fontWeight: 600, color: "#d1d5db", margin: "10px 0 4px 0" }} {...props} />,
+          li: ({ node, ...props }: any) => <li style={{ marginLeft: "16px", marginBottom: "4px", fontSize: "12px", color: "#d1d5db", fontFamily: "inherit", lineHeight: 1.6 }} {...props} />,
+          p: ({ node, ...props }: any) => <p style={{ margin: "0 0 6px 0", fontSize: "12px", color: "#d1d5db", lineHeight: 1.6, fontFamily: "inherit" }} {...props} />,
+          strong: ({ node, ...props }: any) => <strong style={{ color: "#fff", fontWeight: 700 }} {...props} />
+        }}
+      >
+        {md}
+      </ReactMarkdown>
+    );
   };
 
   const handleCreateGitHubIssue = async (
@@ -1224,685 +961,36 @@ export default function Dashboard() {
         <section
           style={{ display: "flex", flexDirection: "column", gap: "20px" }}
         >
-          {/* Setup Console */}
-          <div className="glass-panel" style={{ padding: "20px" }}>
-            <h2
-              style={{
-                fontSize: "16px",
-                fontWeight: 700,
-                color: "#f3f4f6",
-                margin: "0 0 16px 0",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <FolderGit size={18} style={{ color: "#3b82f6" }} /> Import
-              Repository
-            </h2>
+          <SectionErrorBoundary sectionName="AnalysisForm">
+            <AnalysisForm
+              repoUrl={repoUrl}
+              setRepoUrl={setRepoUrl}
+              company={company}
+              setCompany={setCompany}
+              language={language}
+              setLanguage={setLanguage}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              isLoading={isLoading}
+              handleAnalyze={handleAnalyze}
+            />
+          </SectionErrorBoundary>
 
-            <form
-              onSubmit={handleAnalyze}
-              style={{ display: "flex", flexDirection: "column", gap: "14px" }}
-            >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#9ca3af",
-                    marginBottom: "6px",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  GitHub Repository URL
-                </label>
-                <input
-                  type="url"
-                  required
-                  pattern="https://github\.com/.*"
-                  placeholder="https://github.com/username/repo"
-                  value={repoUrl}
-                  readOnly={isLoading}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    background: "rgba(15, 23, 42, 0.6)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: "6px",
-                    color: "#fff",
-                    fontSize: "13px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
+          <SectionErrorBoundary sectionName="AuditHistory">
+            <AuditHistoryPanel
+              auditHistory={auditHistory}
+              clearAuditHistory={clearAuditHistory}
+              loadAuditFromHistory={loadAuditFromHistory}
+            />
+          </SectionErrorBoundary>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: "10px",
-                }}
-              >
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#9ca3af",
-                      marginBottom: "6px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Target Company
-                  </label>
-                  <select
-                    value={company}
-                    onChange={(e) => setCompany(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      background: "rgba(15, 23, 42, 0.6)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontSize: "13px",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="General">General</option>
-                    <option value="Google">Google</option>
-                    <option value="Stripe">Stripe</option>
-                    <option value="Meta">Meta</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#9ca3af",
-                      marginBottom: "6px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Language
-                  </label>
-                  <select
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      background: "rgba(15, 23, 42, 0.6)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontSize: "13px",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="English">English</option>
-                    <option value="Hindi">Hindi</option>
-                    <option value="Telugu">Telugu</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#9ca3af",
-                      marginBottom: "6px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    AI Model
-                  </label>
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      background: "rgba(15, 23, 42, 0.6)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontSize: "13px",
-                      outline: "none",
-                    }}
-                  >
-                    <option value="llama-3.3-70b-versatile">
-                      Llama 3.3 (70B)
-                    </option>
-                    <option value="deepseek-r1-distill-llama-70b">
-                      DeepSeek R1 (70B)
-                    </option>
-                    <option value="llama-3.1-8b-instant">Llama 3.1 (8B)</option>
-                    <option value="gemma2-9b-it">Google Gemma 2 (9B)</option>
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="glow-btn"
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: "6px",
-                  cursor: isLoading ? "not-allowed" : "pointer",
-                  opacity: isLoading ? 0.65 : 1,
-                  fontSize: "13px",
-                  marginTop: "6px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                }}
-              >
-                {isLoading ? (
-                  <>
-                    <span
-                      className="spin-slow"
-                      style={{
-                        display: "inline-block",
-                        width: "14px",
-                        height: "14px",
-                        border: "2px solid white",
-                        borderTopColor: "transparent",
-                        borderRadius: "50%",
-                      }}
-                    ></span>
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} /> Scan & Document Repo
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Recent Audit History */}
-          <div className="glass-panel" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#f3f4f6', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Clock size={18} style={{ color: '#60a5fa' }} /> Recent Audits
-                </h2>
-                <p style={{ margin: 0, fontSize: '11px', color: '#9ca3af' }}>Reload cached repository scans</p>
-              </div>
-              {auditHistory.length > 0 && (
-                <button aria-label="Clear audit history"
-                  onClick={clearAuditHistory}
-                  title="Clear audit history"
-                  style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-
-            {auditHistory.length === 0 ? (
-              <div style={{ padding: '12px', borderRadius: '6px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.08)', color: '#9ca3af', fontSize: '11px', lineHeight: 1.5 }}>
-                Completed scans will appear here after a successful analysis.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {auditHistory.slice(0, 5).map(entry => (
-                  <button
-                    key={entry.id}
-                    onClick={() => loadAuditFromHistory(entry)}
-                    style={{ width: '100%', textAlign: 'left', padding: '10px', borderRadius: '6px', background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.12)', color: '#e5e7eb', cursor: 'pointer' }}
-                  >
-                    <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.repoName}</span>
-                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '6px', fontSize: '10px', color: '#9ca3af' }}>
-                      <span>{new Date(entry.auditedAt).toLocaleDateString()}</span>
-                      <span>{entry.totalFindings} findings · Grade {entry.overallGrade}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* GSSoC Contributor & Mentorship Portal */}
-          <div className="glass-panel" style={{ padding: "20px" }}>
-            <h2
-              style={{
-                fontSize: "15px",
-                fontWeight: 700,
-                color: "#f3f4f6",
-                margin: "0 0 4px 0",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <Layers size={18} style={{ color: "#a855f7" }} /> Mentorship
-              Portal
-            </h2>
-            <p
-              style={{
-                margin: "0 0 16px 0",
-                fontSize: "11px",
-                color: "#9ca3af",
-              }}
-            >
-              GSSoC Assigned Contributor Issues
-            </p>
-
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(168,85,247,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(168,85,247,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Copy Code Button
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#a855f7" }}>
-                    🏷️ good first issue
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("copy-code-button")}
-                  style={{
-                    background:
-                      assignedContributors["copy-code-button"] === "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["copy-code-button"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(59,130,246,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(59,130,246,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Expand Security Rules
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#3b82f6" }}>
-                    🏷️ backend / security
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    handleAssignContributor("secret-scanning-rules")
-                  }
-                  style={{
-                    background:
-                      assignedContributors["secret-scanning-rules"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["secret-scanning-rules"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(168,85,247,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(168,85,247,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    API Endpoint Spec
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#a855f7" }}>
-                    🏷️ documentation
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("api-documentation")}
-                  style={{
-                    background:
-                      assignedContributors["api-documentation"] === "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["api-documentation"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(34,197,94,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(34,197,94,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Persist Contributor State
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#22c55e" }}>
-                    🏷️ frontend
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("persist-assignments")}
-                  style={{
-                    background:
-                      assignedContributors["persist-assignments"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["persist-assignments"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(168,85,247,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(168,85,247,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Implement Theme Toggle
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#a855f7" }}>
-                    🏷️ frontend / styling
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("theme-toggle")}
-                  style={{
-                    background:
-                      assignedContributors["theme-toggle"] === "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["theme-toggle"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(59,130,246,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(59,130,246,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    File tree filter search
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#3b82f6" }}>
-                    🏷️ frontend
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("file-filter-search")}
-                  style={{
-                    background:
-                      assignedContributors["file-filter-search"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["file-filter-search"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(168,85,247,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(168,85,247,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Export Report to HTML
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#a855f7" }}>
-                    🏷️ backend
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    handleAssignContributor("html-report-exporter")
-                  }
-                  style={{
-                    background:
-                      assignedContributors["html-report-exporter"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["html-report-exporter"]}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "rgba(34,197,94,0.05)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(34,197,94,0.1)",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#f3f4f6",
-                      display: "block",
-                    }}
-                  >
-                    Complexity Metrics Analyzer
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#22c55e" }}>
-                    🏷️ backend
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleAssignContributor("complexity-metrics")}
-                  style={{
-                    background:
-                      assignedContributors["complexity-metrics"] ===
-                        "Unassigned"
-                        ? "#a855f7"
-                        : "#3b82f6",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {assignedContributors["complexity-metrics"]}
-                </button>
-              </div>
-              <button
-                onClick={handleResetAssignments}
-                style={{
-                  marginTop: "14px",
-                  width: "100%",
-                  padding: "8px",
-                  borderRadius: "6px",
-                  background: "rgba(239, 68, 68, 0.1)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  color: "#f87171",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "all 0.2s ease-in-out",
-                }}
-              >
-                Reset Assignments
-              </button>
-            </div>
-          </div>
+          <SectionErrorBoundary sectionName="MentorshipPortal">
+            <MentorshipPortal
+              assignedContributors={assignedContributors}
+              handleAssignContributor={handleAssignContributor}
+              handleResetAssignments={handleResetAssignments}
+            />
+          </SectionErrorBoundary>
         </section>
 
         {/* RIGHT COLUMN: Loading, Dashboard Audit, or Fallback Welcome Screen */}
@@ -2194,190 +1282,12 @@ export default function Dashboard() {
                   </ul>
                 </div>
               )}
-              <div
-  className="glass-panel"
-  style={{
-    padding: "20px",
-    marginBottom: "16px",
-  }}
->
-  <h2
-    style={{
-      margin: 0,
-      marginBottom: "12px",
-      color: "#f3f4f6",
-      fontSize: "18px",
-      fontWeight: "700",
-    }}
-  >
-    🏥 Repository Health Score
-  </h2>
-
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      flexWrap: "wrap",
-      gap: "20px",
-    }}
-  >
-    <div>
-      <h1
-        style={{
-          fontSize: "42px",
-          color: "#22c55e",
-          margin: 0,
-        }}
-      >
-        {analysisResult.repositoryHealth?.score ?? 100}/100
-      </h1>
-
-      <p
-        style={{
-          color: "#9ca3af",
-          marginTop: "6px",
-        }}
-      >
-        Grade:{" "}
-        <strong>
-          {analysisResult.repositoryHealth?.grade ?? "A"}
-        </strong>
-      </p>
-    </div>
-
-    <div>
-      <h4 style={{ color: "#f3f4f6" }}>
-        Recommendations
-      </h4>
-
-      <ul
-        style={{
-          margin: 0,
-          paddingLeft: "18px",
-          color: "#d1d5db",
-        }}
-      >
-        {(analysisResult.repositoryHealth?.recommendations || []).map(
-          (item: string, index: number) => (
-            <li key={index}>{item}</li>
-          )
-        )}
-      </ul>
-    </div>
-  </div>
-</div>
-<HealthScoreGauge
-  fileReviews={analysisResult.analysis.fileReviews}
-  isLoading={isLoading}
-/>
-<div className="glass-panel" style={{ padding: "20px", marginBottom: "16px" }}>
-  <h2>🤖 AI Pull Request Summary</h2>
-
-  <p>
-    <strong>Purpose:</strong><br />
-    {analysisResult.prSummary?.overallPurpose}
-  </p>
-
-  <p>
-    <strong>Files Changed:</strong><br />
-    {analysisResult.prSummary?.filesChanged}
-  </p>
-
-  <p>
-    <strong>Major Logic Updates:</strong>
-  </p>
-
-  <ul>
-    {(analysisResult.prSummary?.majorLogicUpdates || []).map((item, i) => (
-      <li key={i}>{item}</li>
-    ))}
-  </ul>
-
-  <p>
-    <strong>Potential Risks:</strong>
-  </p>
-
-  <ul>
-    {(analysisResult.prSummary?.potentialRisks || []).map((item, i) => (
-      <li key={i}>{item}</li>
-    ))}
-  </ul>
-
-  <p>
-    <strong>Breaking Changes:</strong>
-  </p>
-
-  <ul>
-    {(analysisResult.prSummary?.breakingChanges || []).map((item, i) => (
-      <li key={i}>{item}</li>
-    ))}
-  </ul>
-
-  <p>
-    <strong>Testing Recommendations:</strong>
-  </p>
-
-  <ul>
-    {(analysisResult.prSummary?.testingRecommendations || []).map((item, i) => (
-      <li key={i}>{item}</li>
-    ))}
-  </ul>
-</div>
-<div
-  className="glass-panel"
-  style={{ padding: "20px", marginBottom: "16px" }}
->
-  <h2>📦 Dependency Risk Analyzer</h2>
-
-  {(analysisResult.dependencyReport?.dependencies || []).length === 0 ? (
-    <p style={{ color: "#9ca3af" }}>
-      No dependency information available.
-    </p>
-  ) : (
-    <table
-      style={{
-        width: "100%",
-        borderCollapse: "collapse",
-        marginTop: "15px",
-      }}
-    >
-      <thead>
-        <tr>
-          <th>Package</th>
-          <th>Current</th>
-          <th>Latest</th>
-          <th>Risk</th>
-          <th>Status</th>
-          <th>Recommendation</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {analysisResult.dependencyReport?.dependencies?.map(
-          (dep, index) => (
-            <tr key={index}>
-              <td>{dep.name}</td>
-              <td>{dep.currentVersion}</td>
-              <td>{dep.latestVersion}</td>
-              <td>{dep.risk}</td>
-
-              <td>
-                {dep.vulnerable
-                  ? "⚠️ Vulnerable"
-                  : dep.deprecated
-                  ? "Deprecated"
-                  : "Safe"}
-              </td>
-
-              <td>{dep.recommendation}</td>
-            </tr>
-          )
-        )}
-      </tbody>
-    </table>
-  )}
-</div>
+              <SectionErrorBoundary sectionName="HealthScore">
+                <HealthScoreSection
+                  analysisResult={analysisResult}
+                  isLoading={isLoading}
+                />
+              </SectionErrorBoundary>
               {/* Dashboard View Selection Tabs & Export Controls */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "100%" }}>
                 <div style={{ display: "flex", gap: "10px" }}>
@@ -4137,40 +3047,55 @@ export default function Dashboard() {
                 )}
 
                 {activeDashboardView === "chat" && (
-                  <div
-                    className="glass-panel"
-                    style={{
-                      padding: "20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      boxSizing: "border-box",
-                      minHeight: "68vh",
-                    }}
-                  >
-                    {/* Chat Header */}
+                  <SectionErrorBoundary sectionName="ChatPanel">
+                    <ChatPanel
+                      chatHistory={chatHistory}
+                      isChatLoading={isChatLoading}
+                      chatInput={chatInput}
+                      setChatInput={setChatInput}
+                      chatInputEmpty={chatInputEmpty}
+                      selectedModel={selectedModel}
+                      sessionId={sessionId}
+                      useRag={useRag}
+                      setUseRag={setUseRag}
+                      handleSendChatMessage={handleSendChatMessage}
+                      renderMarkdown={renderMarkdown}
+                    />
+                  </SectionErrorBoundary>
+                )}
+
+                {activeDashboardView === "diagram" && (
+                  <SectionErrorBoundary sectionName="MermaidDiagram">
                     <div
+                      className="glass-panel"
                       style={{
-                        borderBottom: "1px solid rgba(255,255,255,0.08)",
-                        paddingBottom: "12px",
-                        marginBottom: "16px",
+                        padding: "20px",
                         display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
+                        flexDirection: "column",
+                        boxSizing: "border-box",
+                        minHeight: "68vh",
+                        width: "100%",
                       }}
                     >
-                      <div>
+                      <div
+                        style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.08)",
+                          paddingBottom: "12px",
+                          marginBottom: "16px",
+                        }}
+                      >
                         <span
                           style={{
                             fontSize: "10px",
-                            background: "#a855f7",
-                            color: "#fae8ff",
+                            background: "#22c55e",
+                            color: "#dcfce7",
                             padding: "2px 8px",
                             borderRadius: "20px",
                             fontWeight: 600,
                             textTransform: "uppercase",
                           }}
                         >
-                          Interactive Chat
+                          Visualizer
                         </span>
                         <h3
                           style={{
@@ -4180,407 +3105,29 @@ export default function Dashboard() {
                             margin: "4px 0 0 0",
                           }}
                         >
-                          💬 Chat with Codebase
+                          Codebase Dependency Flow
                         </h3>
                       </div>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "#9ca3af",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        Active:{" "}
-                        <strong style={{ color: "#c084fc" }}>
-                          {selectedModel.split("-")[0].toUpperCase()}
-                        </strong>
-                      </span>
-                    </div>
-
-                    {/* Messages Scroller */}
-                    <div
-                      style={{
-                        flexGrow: 1,
-                        overflowY: "auto",
-                        paddingRight: "4px",
-                        marginBottom: "16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "14px",
-                        maxHeight: "52vh",
-                      }}
-                    >
-                      {chatHistory.length === 0 ? (
-                        <div
-                          style={{
-                            textAlign: "center",
-                            padding: "30px 20px",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            minHeight: "40vh",
-                            gap: "16px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              background: "rgba(168, 85, 247, 0.1)",
-                              padding: "16px",
-                              borderRadius: "50%",
-                            }}
-                          >
-                            <Sparkles size={32} style={{ color: "#a855f7" }} />
-                          </div>
-                          <div style={{ maxWidth: "400px" }}>
-                            <span
-                              style={{
-                                fontSize: "13px",
-                                fontWeight: 700,
-                                color: "#f3f4f6",
-                                display: "block",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              Ask anything about your repository
-                            </span>
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                color: "#9ca3af",
-                                lineHeight: 1.5,
-                                display: "block",
-                              }}
-                            >
-                              I have parsed the codebase source code. Ask
-                              questions like:
-                            </span>
-                          </div>
-
-                          {/* Suggested Queries */}
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "1fr",
-                              gap: "6px",
-                              width: "100%",
-                              maxWidth: "380px",
-                              marginTop: "6px",
-                            }}
-                          >
-                            {[
-                              "Explain the overall architecture and setup of this repo.",
-                              "What are the main entry points and critical API paths?",
-                              "Can you find any security flaws or logic bugs here?",
-                              "Write a simple automated test suite for this module structure.",
-                            ].map((queryText, qIdx) => (
-                              <button
-                                key={qIdx}
-                                onClick={() => {
-                                  setChatInput(queryText);
-                                }}
-                                style={{
-                                  background: "rgba(255,255,255,0.02)",
-                                  border: "1px solid rgba(255,255,255,0.05)",
-                                  borderRadius: "6px",
-                                  padding: "8px 12px",
-                                  fontSize: "11px",
-                                  color: "#d1d5db",
-                                  cursor: "pointer",
-                                  textAlign: "left",
-                                  transition: "all 0.15s ease",
-                                }}
-                                className="hover:bg-white/5"
-                              >
-                                💡 {queryText}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        chatHistory.map((msg, index) => (
-                          <div
-                            key={`chat-msg-${index}`}
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              alignSelf:
-                                msg.role === "user" ? "flex-end" : "flex-start",
-                              maxWidth: "85%",
-                              background:
-                                msg.role === "user"
-                                  ? "rgba(59, 130, 246, 0.15)"
-                                  : "rgba(15, 23, 42, 0.4)",
-                              border: "1px solid",
-                              borderColor:
-                                msg.role === "user"
-                                  ? "rgba(59, 130, 246, 0.2)"
-                                  : "rgba(255, 255, 255, 0.05)",
-                              borderRadius:
-                                msg.role === "user"
-                                  ? "12px 12px 0 12px"
-                                  : "12px 12px 12px 0",
-                              padding: "10px 14px",
-                              boxSizing: "border-box",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                              <span
-                                style={{
-                                  fontSize: "9px",
-                                  fontWeight: 700,
-                                  color:
-                                    msg.role === "user" ? "#60a5fa" : "#c084fc",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                {msg.role === "user"
-                                  ? "You"
-                                  : "RepoSage Assistant"}
-                              </span>
-                              <CopyToClipboardButton
-                                textToCopy={msg.content}
-                                style={{ padding: "2px" }}
-                              />
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "12px",
-                                color: "#e5e7eb",
-                                lineHeight: 1.5,
-                                whiteSpace: "pre-wrap",
-                                fontFamily:
-                                  msg.role === "assistant"
-                                    ? "monospace"
-                                    : "inherit",
-                              }}
-                            >
-                              {renderMarkdown(msg.content)}
-                            </div>
-                            {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "6px" }}>
-                                {msg.sources.map((source, sIdx) => (
-                                  <span key={sIdx} style={{ display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "10px", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "4px", padding: "2px 6px", color: "#60a5fa" }}>
-                                    <FileCode size={10} />
-                                    {source.file}{source.line > 0 ? `:${source.line}` : ""}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
-
-                      {isChatLoading && (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignSelf: "flex-start",
-                            background: "rgba(15, 23, 42, 0.4)",
-                            border: "1px solid rgba(255, 255, 255, 0.05)",
-                            borderRadius: "12px 12px 12px 0",
-                            padding: "10px 14px",
-                            gap: "6px",
-                            width: "80px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "9px",
-                              fontWeight: 700,
-                              color: "#c084fc",
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            RepoSage
-                          </span>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: "4px",
-                              padding: "2px 0",
-                            }}
-                          >
-                            <span
-                              className="typing-dot"
-                              style={{
-                                width: "5px",
-                                height: "5px",
-                                background: "#c084fc",
-                                borderRadius: "50%",
-                                display: "inline-block",
-                              }}
-                            ></span>
-                            <span
-                              className="typing-dot"
-                              style={{
-                                width: "5px",
-                                height: "5px",
-                                background: "#c084fc",
-                                borderRadius: "50%",
-                                display: "inline-block",
-                                animationDelay: "0.2s",
-                              }}
-                            ></span>
-                            <span
-                              className="typing-dot"
-                              style={{
-                                width: "5px",
-                                height: "5px",
-                                background: "#c084fc",
-                                borderRadius: "50%",
-                                display: "inline-block",
-                                animationDelay: "0.4s",
-                              }}
-                            ></span>
-                          </div>
-                        </div>
-                      )}
-                      <div ref={chatEndRef} />
-                    </div>
-
-                    {/* Chat Input form */}
-                    {!sessionId && (
-                      <div style={{
-                        background: "rgba(245, 158, 11, 0.1)",
-                        border: "1px solid rgba(245, 158, 11, 0.3)",
-                        borderRadius: "6px",
-                        padding: "8px 12px",
-                        marginBottom: "8px",
-                        fontSize: "11px",
-                        color: "#fbbf24",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}>
-                        <AlertTriangle size={14} />
-                        <span>Please analyze a repository first to enable codebase-aware chat.</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#9ca3af", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={useRag}
-                          onChange={(e) => setUseRag(e.target.checked)}
-                          style={{ accentColor: "#a855f7" }}
+                      {analysisResult.analysis?.mermaidDiagram ? (
+                        <MermaidDiagramViewer
+                          chart={analysisResult.analysis.mermaidDiagram}
+                          repoName={analysisResult.repoName}
                         />
-                        Use RAG context retrieval
-                      </label>
+                      ) : (
+                        <div
+                          style={{
+                            color: "#9ca3af",
+                            fontSize: "12px",
+                            padding: "20px",
+                            textAlign: "center",
+                          }}
+                        >
+                          No architecture diagram was generated for this
+                          repository. Try re-running the analysis.
+                        </div>
+                      )}
                     </div>
-                    <form
-                      onSubmit={handleSendChatMessage}
-                      style={{
-                        display: "flex",
-                        gap: "10px",
-                        marginTop: "auto",
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder="Ask a question about the codebase files..."
-                        style={{
-                          flexGrow: 1,
-                          background: "rgba(0, 0, 0, 0.2)",
-                          border: "1px solid rgba(255, 255, 255, 0.08)",
-                          borderRadius: "6px",
-                          color: "#f3f4f6",
-                          padding: "10px 14px",
-                          fontSize: "12px",
-                          outline: "none",
-                        }}
-                      />
-                      <button
-                        type="submit"
-                        disabled={isChatLoading || chatInputEmpty}
-                        style={{
-                          background:
-                            "linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "10px 18px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          opacity: isChatLoading || chatInputEmpty ? 0.6 : 1,
-                          transition: "opacity 0.15s ease",
-                        }}
-                      >
-                        <Send size={14} />
-                      </button>
-                    </form>
-                  </div>
-                )}
-
-                {activeDashboardView === "diagram" && (
-                  <div
-                    className="glass-panel"
-                    style={{
-                      padding: "20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      boxSizing: "border-box",
-                      minHeight: "68vh",
-                      width: "100%",
-                    }}
-                  >
-                    <div
-                      style={{
-                        borderBottom: "1px solid rgba(255,255,255,0.08)",
-                        paddingBottom: "12px",
-                        marginBottom: "16px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "10px",
-                          background: "#22c55e",
-                          color: "#dcfce7",
-                          padding: "2px 8px",
-                          borderRadius: "20px",
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Visualizer
-                      </span>
-                      <h3
-                        style={{
-                          fontSize: "15px",
-                          fontWeight: 700,
-                          color: "#f3f4f6",
-                          margin: "4px 0 0 0",
-                        }}
-                      >
-                        📊 Codebase Dependency Flow
-                      </h3>
-                    </div>
-                    {analysisResult.analysis.mermaidDiagram ? (
-                      <MermaidViewer
-                        chart={analysisResult.analysis.mermaidDiagram}
-                        repoName={analysisResult.repoName}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          color: "#9ca3af",
-                          fontSize: "12px",
-                          padding: "20px",
-                          textAlign: "center",
-                        }}
-                      >
-                        No architecture diagram was generated for this
-                        repository. Try re-running the analysis.
-                      </div>
-                    )}
-                  </div>
+                  </SectionErrorBoundary>
                 )}
               </div>
             </div>

@@ -24,6 +24,7 @@ export async function getPriorReviewIds(redisClient, owner, repo, pullNumber) {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
+    console.warn(`⚠️ Invalid JSON in review tracker for key ${reviewTrackerKey(owner, repo, pullNumber)}`);
     return [];
   }
 }
@@ -34,8 +35,11 @@ export async function getPriorReviewIds(redisClient, owner, repo, pullNumber) {
  */
 export async function storeReviewIds(redisClient, owner, repo, pullNumber, reviewIds, ttlSeconds = DEFAULT_TTL_SECONDS) {
   const key = reviewTrackerKey(owner, repo, pullNumber);
-  await redisClient.set(key, JSON.stringify(reviewIds));
-  await redisClient.expire(key, ttlSeconds);
+  try {
+    await redisClient.set(key, JSON.stringify(reviewIds), 'EX', ttlSeconds);
+  } catch (err) {
+    console.error(`⚠️ Failed to store review IDs for ${key}: ${err.message}`);
+  }
 }
 
 /**
