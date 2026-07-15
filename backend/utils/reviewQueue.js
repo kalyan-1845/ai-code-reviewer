@@ -65,7 +65,8 @@ class ReviewQueue {
               break;
             } catch (err) {
               if (err.name === 'CircuitBreakerOpenError') {
-                console.error(`ReviewQueue: circuit breaker OPEN for "${key}", requeuing item`);
+                console.error(`ReviewQueue: circuit breaker OPEN for "${key}", scheduling retry after cooldown`);
+                await new Promise(r => setTimeout(r, Math.min(this._circuitBreaker._cooldownMs || 30000, 5000)));
                 queue.unshift(item);
                 break;
               }

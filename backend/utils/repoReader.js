@@ -10,7 +10,7 @@ import simpleGit from 'simple-git';
 import { isValidRepoUrl } from './urlValidator.js';
 import { loadIgnorePatterns, isIgnored } from './ignoreHelper.js';
 import { HARD_SKIP_DIRS } from './skipConstants.js';
-import { deleteFolderRecursive } from './fileHelper.js';
+import { deleteFolderRecursive, resolveSafePath } from './fileHelper.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,7 +107,8 @@ function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxD
 
       let content;
       try {
-        content = fs.readFileSync(full, 'utf-8');
+        const safePath = resolveSafePath(rootDir, full);
+        content = fs.readFileSync(safePath, 'utf-8');
       } catch {
         continue;
       }

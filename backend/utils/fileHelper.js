@@ -89,3 +89,16 @@ export async function getFolderSize(dirPath) {
   }
   return size;
 }
+
+// Helper to resolve and validate paths to prevent directory traversal
+export function resolveSafePath(baseDir, targetPath) {
+  const resolvedBase = path.resolve(baseDir);
+  const absolutePath = path.resolve(resolvedBase, targetPath);
+
+  // Allow the base directory itself, otherwise require it to be strictly inside
+  if (!absolutePath.startsWith(resolvedBase + path.sep) && absolutePath !== resolvedBase) {
+    throw new Error('Path traversal blocked');
+  }
+
+  return absolutePath;
+}

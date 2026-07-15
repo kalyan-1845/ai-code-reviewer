@@ -1,0 +1,14 @@
+FROM node:20-alpine
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+
+RUN npm ci
+
+# The source code will be mounted as a volume in docker-compose.yml
+# Expose the Vite default port
+EXPOSE 3000
+
+# Run Vite in dev mode, bound to all network interfaces
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

@@ -1,12 +1,22 @@
 [
   {
-    "timestamp": "2026-07-03T21:40:06.423Z",
-    "repoName": "after-record",
+    "timestamp": "2026-07-11T18:44:52.518Z",
+    "repoName": "repo1",
     "totalLines": 10,
-    "bugs": 0,
+    "bugs": 1,
     "security": 0,
     "optimization": 0,
     "styling": 0,
-    "filesCount": 0
+    "filesCount": 1
+  },
+  {
+    "timestamp": "2026-07-11T18:44:52.520Z",
+    "repoName": "repo2",
+    "totalLines": 20,
+    "bugs": 2,
+    "security": 0,
+    "optimization": 0,
+    "styling": 0,
+    "filesCount": 2
   }
 ]

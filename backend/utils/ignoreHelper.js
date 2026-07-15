@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { HARD_SKIP_DIRS } from './skipConstants.js';
+import { resolveSafePath } from './fileHelper.js';
 
 // 🟢 Shebang → language map for extensionless scripts (e.g. a file named
 // `deploy` starting with `#!/usr/bin/env python3`). Extension-based detection
@@ -143,7 +144,8 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
             continue;
           }
           const MAX_FILE_CONTENT_LENGTH = 1024 * 1024;
-          const content = fs.readFileSync(filePath, 'utf-8').slice(0, MAX_FILE_CONTENT_LENGTH);
+          const safePath = resolveSafePath(baseDir, filePath);
+          const content = fs.readFileSync(safePath, 'utf-8').slice(0, MAX_FILE_CONTENT_LENGTH);
 
           if (isExtensionless) {
             const detectedLanguage = detectShebangLanguage(content);

@@ -212,6 +212,16 @@ class AnalysisCache {
     for (const [key, entry] of this.cache) {
       if (entry.isMock) {
         this.cache.delete(key);
+        if (entry.repoUrl) {
+          const normalizedUrl = entry.repoUrl.replace(/\/+$/, '').toLowerCase();
+          const index = this._repoUrlIndex.get(normalizedUrl);
+          if (index) {
+            index.delete(key);
+            if (index.size === 0) {
+              this._repoUrlIndex.delete(normalizedUrl);
+            }
+          }
+        }
         cleared++;
       }
     }
@@ -231,26 +241,6 @@ class AnalysisCache {
     this._repoUrlIndex.clear();
     this._startSweeper();
     console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
-  }
-
-  /**
-   * Invalidate all cache entries whose key contains the given repo URL.
-   * Used by push-event webhook handling to evict stale analysis data.
-   */
-  invalidateByRepoUrl(repoUrl) {
-    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
-    let removed = 0;
-    for (const [key] of this.cache) {
-      const keyStr = key;
-      if (keyStr.includes(normalized)) {
-        this.cache.delete(key);
-        removed++;
-      }
-    }
-    if (removed > 0) {
-      console.log(`🗑️  Invalidated ${removed} cache entries for ${repoUrl}`);
-    }
-    return removed;
   }
 
   /**
