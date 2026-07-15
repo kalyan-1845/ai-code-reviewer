@@ -8,7 +8,7 @@ import { loadIgnorePatterns, isIgnored, readFilesRecursively } from '../utils/ig
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-test('loadIgnorePatterns should load patterns correctly from file', () => {
+test('loadIgnorePatterns should load patterns correctly from file', async () => {
   const tempDir = path.join(__dirname, 'temp_test_ignore');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir);
@@ -16,7 +16,7 @@ test('loadIgnorePatterns should load patterns correctly from file', () => {
   const ignoreFile = path.join(tempDir, '.reposageignore');
   fs.writeFileSync(ignoreFile, 'node_modules/\n# comment line\n*.log\n   \nsecret.key');
 
-  const patterns = loadIgnorePatterns(tempDir);
+  const patterns = await loadIgnorePatterns(tempDir);
   assert.deepEqual(patterns, ['node_modules/', '*.log', 'secret.key']);
 
   // Clean up
@@ -37,7 +37,7 @@ test('isIgnored should match directory, extension, and wildcard patterns correct
   assert.equal(isIgnored('/app/temp/sub/data.txt', patterns, baseDir), false);
 });
 
-test('readFilesRecursively should list valid files and respect ignore list', () => {
+test('readFilesRecursively should list valid files and respect ignore list', async () => {
   const tempDir = path.join(__dirname, 'temp_test_read');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir);
@@ -53,7 +53,7 @@ test('readFilesRecursively should list valid files and respect ignore list', () 
   fs.writeFileSync(path.join(tempDir, 'node_modules', 'dep.js'), '/* dependency */');
   fs.writeFileSync(path.join(tempDir, 'ignored.log'), 'logs');
 
-  const files = readFilesRecursively(tempDir, [], tempDir, ['*.log']);
+  const files = await readFilesRecursively(tempDir, [], tempDir, ['*.log']);
   const fileNames = files.map(f => f.name);
 
   // Should include src/main.js and src/style.css
@@ -74,7 +74,7 @@ test('readFilesRecursively should list valid files and respect ignore list', () 
   fs.rmdirSync(tempDir);
 });
 
-test('readFilesRecursively should skip files exceeding 100KB limit', () => {
+test('readFilesRecursively should skip files exceeding 100KB limit', async () => {
   const tempDir = path.join(__dirname, 'temp_test_size');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir);
@@ -90,7 +90,7 @@ test('readFilesRecursively should skip files exceeding 100KB limit', () => {
   fs.writeFileSync(largeFilePath, largeContent);
 
   const skippedFiles = [];
-  const files = readFilesRecursively(tempDir, [], tempDir, [], 0, skippedFiles);
+  const files = await readFilesRecursively(tempDir, [], tempDir, [], 0, skippedFiles);
   const fileNames = files.map(f => f.name);
 
   // Should include small.js

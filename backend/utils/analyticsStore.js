@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { fsWithTimeout } from './fsTimeout.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,6 +10,8 @@ const STORE_PATH = path.join(__dirname, '..', 'analytics_trends.json');
 const BACKUP_PATH = STORE_PATH + '.backup';
 const TMP_PATH = STORE_PATH + '.tmp';
 const MAX_RECORDS = 200;
+
+const FS_TIMEOUT_ANALYTICS = parseInt(process.env.FS_TIMEOUT_ANALYTICS_MS || '10000', 10);
 
 const LOCK_MAX_RETRIES = 50;
 const LOCK_BASE_DELAY_MS = 10;
@@ -34,10 +37,14 @@ async function acquireLock() {
   throw new Error(`Could not acquire analytics store lock after ${LOCK_MAX_RETRIES} attempts`);
 }
 
-function readStore() {
+async function readStore() {
     try {
-        if (!fs.existsSync(STORE_PATH)) return [];
-        const raw = fs.readFileSync(STORE_PATH, 'utf-8');
+        try {
+          await fsWithTimeout.access(STORE_PATH, fs.constants.F_OK, FS_TIMEOUT_ANALYTICS);
+        } catch {
+          return [];
+        }
+        const raw = await fsWithTimeout.readFile(STORE_PATH, 'utf-8', FS_TIMEOUT_ANALYTICS);
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) {
           console.warn('⚠️ Analytics store is not an array, attempting backup recovery');
@@ -50,16 +57,20 @@ function readStore() {
     }
 }
 
-function recoverFromBackup() {
+async function recoverFromBackup() {
     try {
-        if (fs.existsSync(BACKUP_PATH)) {
-            const raw = fs.readFileSync(BACKUP_PATH, 'utf-8');
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-                console.warn('✅ Recovered analytics store from backup');
-                fs.writeFileSync(STORE_PATH, JSON.stringify(parsed, null, 2));
-                return parsed;
-            }
+        try {
+          await fsWithTimeout.access(BACKUP_PATH, fs.constants.F_OK, FS_TIMEOUT_ANALYTICS);
+        } catch {
+          console.warn('⚠️ Starting fresh analytics store');
+          return [];
+        }
+        const raw = await fsWithTimeout.readFile(BACKUP_PATH, 'utf-8', FS_TIMEOUT_ANALYTICS);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            console.warn('✅ Recovered analytics store from backup');
+            await fsWithTimeout.writeFile(STORE_PATH, JSON.stringify(parsed, null, 2), FS_TIMEOUT_ANALYTICS);
+            return parsed;
         }
     } catch (backupErr) {
         console.warn('⚠️ Backup recovery also failed:', backupErr.message);
@@ -68,19 +79,19 @@ function recoverFromBackup() {
     return [];
 }
 
-function writeStoreAtomic(records) {
+async function writeStoreAtomic(records) {
     try {
         const data = JSON.stringify(records, null, 2);
-        fs.writeFileSync(TMP_PATH, data);
+        await fsWithTimeout.writeFile(TMP_PATH, data, FS_TIMEOUT_ANALYTICS);
         try {
-            fs.renameSync(TMP_PATH, STORE_PATH);
+            await fsWithTimeout.rename(TMP_PATH, STORE_PATH, FS_TIMEOUT_ANALYTICS);
         } catch (renameErr) {
             console.warn('⚠️ renameSync failed, falling back to writeFileSync:', renameErr.message);
-            fs.writeFileSync(STORE_PATH, data);
-            try { fs.unlinkSync(TMP_PATH); } catch (e) {}
+            await fsWithTimeout.writeFile(STORE_PATH, data, FS_TIMEOUT_ANALYTICS);
+            try { await fsWithTimeout.unlink(TMP_PATH, FS_TIMEOUT_ANALYTICS); } catch (e) {}
         }
         try {
-            fs.writeFileSync(BACKUP_PATH, data);
+            await fsWithTimeout.writeFile(BACKUP_PATH, data, FS_TIMEOUT_ANALYTICS);
         } catch (backupErr) {
             console.warn('⚠️ Failed to write analytics backup:', backupErr.message);
         }
@@ -92,7 +103,7 @@ function writeStoreAtomic(records) {
 export async function recordAnalysis(record) {
     const release = await acquireLock();
     try {
-        const records = readStore();
+        const records = await readStore();
         records.push({
             timestamp: new Date().toISOString(),
             repoName: record.repoName || 'unknown',
@@ -105,12 +116,12 @@ export async function recordAnalysis(record) {
         });
 
         const trimmed = records.slice(-MAX_RECORDS);
-        writeStoreAtomic(trimmed);
+        await writeStoreAtomic(trimmed);
     } finally {
         release();
     }
 }
 
-export function getTrends() {
-    return readStore();
+export async function getTrends() {
+    return await readStore();
 }

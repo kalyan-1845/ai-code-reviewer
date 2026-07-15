@@ -14,8 +14,8 @@ async function withTempDir(fn) {
   }
 }
 
-test('loadIgnorePatterns returns empty array when no .reposageignore file exists', () => {
-  const result = loadIgnorePatterns('/nonexistent/path');
+test('loadIgnorePatterns returns empty array when no .reposageignore file exists', async () => {
+  const result = await loadIgnorePatterns('/nonexistent/path');
   assert.deepEqual(result, []);
 });
 
@@ -23,7 +23,7 @@ test('loadIgnorePatterns strips comment lines and blank lines', async () => {
   await withTempDir(async (tmpDir) => {
     const ignorePath = path.join(tmpDir, '.reposageignore');
     await fs.promises.writeFile(ignorePath, '# comment\n*.log\n\nbuild/\n');
-    const result = loadIgnorePatterns(tmpDir);
+    const result = await loadIgnorePatterns(tmpDir);
     assert.equal(result.length, 2);
     assert.ok(!result.includes('# comment'));
     assert.ok(result.includes('*.log'));
@@ -35,7 +35,7 @@ test('loadIgnorePatterns trims whitespace', async () => {
   await withTempDir(async (tmpDir) => {
     const ignorePath = path.join(tmpDir, '.reposageignore');
     await fs.promises.writeFile(ignorePath, '  *.js  \n  dist/  \n');
-    const result = loadIgnorePatterns(tmpDir);
+    const result = await loadIgnorePatterns(tmpDir);
     assert.equal(result[0], '*.js');
     assert.equal(result[1], 'dist/');
   });
@@ -123,7 +123,7 @@ test('loadIgnorePatterns and isIgnored work together end-to-end', async () => {
   await withTempDir(async (tmpDir) => {
     const ignorePath = path.join(tmpDir, '.reposageignore');
     await fs.promises.writeFile(ignorePath, '*.log\nbuild/\n**/__pycache__/**\n');
-    const patterns = loadIgnorePatterns(tmpDir);
+    const patterns = await loadIgnorePatterns(tmpDir);
     assert.equal(patterns.length, 3);
     assert.equal(isIgnored(path.join(tmpDir, 'server.log'), patterns, tmpDir), true);
     assert.equal(isIgnored(path.join(tmpDir, 'build', 'asset.js'), patterns, tmpDir), true);

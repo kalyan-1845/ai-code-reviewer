@@ -14,6 +14,7 @@ import crypto from 'crypto';
 
 import fs from 'fs';
 import path from 'path';
+import { fsWithTimeout } from './fsTimeout.js';
 
 const PERSIST_PATH = path.join(new URL('..', import.meta.url).pathname, 'cache_snapshot.json');
 
@@ -407,7 +408,8 @@ class AnalysisCache {
     }
   }
 
-  persistToDisk(filePath = PERSIST_PATH) {
+  async persistToDisk(filePath = PERSIST_PATH) {
+    const FS_TIMEOUT_CACHE = parseInt(process.env.FS_TIMEOUT_CACHE_MS || '15000', 10);
     try {
       const snapshot = [];
       for (const [key, entry] of this.cache) {
@@ -421,19 +423,28 @@ class AnalysisCache {
         });
       }
       const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath + '.tmp', JSON.stringify(snapshot));
-      fs.renameSync(filePath + '.tmp', filePath);
+      try {
+        await fsWithTimeout.access(dir, fs.constants.F_OK, FS_TIMEOUT_CACHE);
+      } catch {
+        await fsWithTimeout.mkdir(dir, { recursive: true }, FS_TIMEOUT_CACHE);
+      }
+      await fsWithTimeout.writeFile(filePath + '.tmp', JSON.stringify(snapshot), FS_TIMEOUT_CACHE);
+      await fsWithTimeout.rename(filePath + '.tmp', filePath, FS_TIMEOUT_CACHE);
       console.log(`💾 Persisted ${snapshot.length} cache entries to ${filePath}`);
     } catch (err) {
       console.warn(`⚠️ Cache persist failed: ${err.message}`);
     }
   }
 
-  restoreFromDisk(filePath = PERSIST_PATH) {
+  async restoreFromDisk(filePath = PERSIST_PATH) {
+    const FS_TIMEOUT_CACHE = parseInt(process.env.FS_TIMEOUT_CACHE_MS || '15000', 10);
     try {
-      if (!fs.existsSync(filePath)) return 0;
-      const raw = fs.readFileSync(filePath, 'utf-8');
+      try {
+        await fsWithTimeout.access(filePath, fs.constants.F_OK, FS_TIMEOUT_CACHE);
+      } catch {
+        return 0;
+      }
+      const raw = await fsWithTimeout.readFile(filePath, 'utf-8', FS_TIMEOUT_CACHE);
       const snapshot = JSON.parse(raw);
       let restored = 0;
       const now = Date.now();
@@ -463,7 +474,7 @@ class AnalysisCache {
     }
   }
 
-  startPersistTimer(intervalMs = 300000) {
+  async startPersistTimer(intervalMs = 300000) {
     if (this._persistTimer) clearInterval(this._persistTimer);
     this._persistTimer = setInterval(() => this.persistToDisk(), intervalMs);
     if (this._persistTimer.unref) this._persistTimer.unref();
@@ -475,6 +486,7 @@ class AnalysisCache {
       this._persistTimer = null;
     }
   }
+
 }
 
 export default AnalysisCache;

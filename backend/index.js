@@ -24,6 +24,7 @@ import escapeHtml from 'lodash.escape';
 import { parseDiff } from './utils/diffParser.js';
 import { analyzeComplexity } from './utils/complexityAnalyzer.js';
 import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
+import { fsWithTimeout } from './utils/fsTimeout.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import ReviewQueue from './utils/reviewQueue.js';
 const reviewQueue = new ReviewQueue();
@@ -452,14 +453,19 @@ app.get('/api/csrf-token', (req, res) => {
 
 // Ensure temp_repos folder is clean on startup
 const tempReposDir = path.join(__dirname, 'temp_repos');
-try {
-  if (fs.existsSync(tempReposDir)) {
-    fs.rmSync(tempReposDir, { recursive: true, force: true });
+const FS_TIMEOUT_TEMP = parseInt(process.env.FS_TIMEOUT_TEMP_MS || '30000', 10);
+(async () => {
+  try {
+    try {
+      await fsWithTimeout.access(tempReposDir, fs.constants.F_OK, FS_TIMEOUT_TEMP);
+      await fsWithTimeout.rm(tempReposDir, { recursive: true, force: true }, FS_TIMEOUT_TEMP);
+    } catch {
+    }
+    await fsWithTimeout.mkdir(tempReposDir, { recursive: true }, FS_TIMEOUT_TEMP);
+  } catch (error) {
+    console.warn(`⚠️ Failed to clean up temp_repos directory on startup: ${error.message}`);
   }
-  fs.mkdirSync(tempReposDir, { recursive: true });
-} catch (error) {
-  console.warn(`ΓÜá∩╕Å Failed to clean up temp_repos directory on startup: ${error.message}`);
-}
+})();
 
 // Clean up temp_repos on process exit to avoid leftover clones
 function cleanupTempRepos() {
@@ -528,10 +534,11 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
   }
 }
 
-// Utility: generate dependency report by scanning cloned repo for package manifests
+const FS_TIMEOUT_DEP = parseInt(process.env.FS_TIMEOUT_DEP_MS || '15000', 10);
+
 const DEPENDENCY_REGISTRIES = {
   'package.json': async (filePath) => {
-    const pkg = JSON.parse(await fs.promises.readFile(filePath, 'utf-8'));
+    const pkg = JSON.parse(await fsWithTimeout.readFile(filePath, 'utf-8', FS_TIMEOUT_DEP));
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     const results = [];
     const maxCheck = 10;
@@ -563,7 +570,7 @@ const DEPENDENCY_REGISTRIES = {
     return results;
   },
   'requirements.txt': async (filePath) => {
-    const content = await fs.promises.readFile(filePath, 'utf-8');
+    const content = await fsWithTimeout.readFile(filePath, 'utf-8', FS_TIMEOUT_DEP);
     const results = [];
     const lines = content.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
     const maxCheck = 10;
@@ -601,7 +608,12 @@ async function generateDependencyReport(clonePath) {
   const deps = [];
   for (const [manifest, checker] of Object.entries(DEPENDENCY_REGISTRIES)) {
     const filePath = path.join(clonePath, manifest);
-    if (fs.existsSync(filePath)) {
+    let manifestExists = false;
+    try {
+      await fsWithTimeout.access(filePath, fs.constants.F_OK, FS_TIMEOUT_DEP);
+      manifestExists = true;
+    } catch {}
+    if (manifestExists) {
       try {
         const found = await checker(filePath);
         deps.push(...found);
@@ -616,6 +628,14 @@ async function generateDependencyReport(clonePath) {
 // Webhook deduplication using Redis SETNX for cross-instance safety
 // TTL matches GitHub's webhook retry window (300 seconds)
 const DELIVERY_REDIS_TTL = 300;
+
+// Replay prevention: store delivery IDs for a much longer period (7 days)
+// so replayed webhooks are rejected even after the delivery dedup TTL expires.
+const DELIVERY_REPLAY_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
+const DELIVERY_REPLAY_TTL_MS = DELIVERY_REPLAY_TTL * 1000;
+// In-memory fallback for delivery replay prevention (bounded)
+const deliveryReplayMap = new Map();
+const DELIVERY_REPLAY_MAX_SIZE = 50000;
 
 // In-memory fallback for webhook SHA dedup when Redis is unavailable
 const shaDedupMemoryMap = new Map();
@@ -670,11 +690,25 @@ const shaDedupCleanupTimer = setInterval(() => {
 }, SHA_DEDUP_CLEANUP_INTERVAL);
 shaDedupCleanupTimer.unref();
 
+// Periodic sweeper for the delivery replay map to prevent unbounded memory growth
+const DELIVERY_REPLAY_CLEANUP_INTERVAL = 5 * 60 * 1000;
+const deliveryReplayCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [deliveryId, timestamp] of deliveryReplayMap) {
+    if (now - timestamp > DELIVERY_REPLAY_TTL_MS) {
+      deliveryReplayMap.delete(deliveryId);
+    }
+  }
+}, DELIVERY_REPLAY_CLEANUP_INTERVAL);
+deliveryReplayCleanupTimer.unref();
+
 function cleanupTimers() {
   clearInterval(cacheMetricsTimer);
   clearInterval(aiEngineHealthTimer);
   clearInterval(exclusiveLockCleanupTimer);
   clearInterval(shaDedupCleanupTimer);
+  clearInterval(deliveryReplayCleanupTimer);
+  clearInterval(endpointErrorResetTimer);
   clearInterval(repoRequestCountsTimer);
 }
 
@@ -850,9 +884,9 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
 
     try {
       // 1. Load ignore patterns and read files
-      const ignorePatterns = loadIgnorePatterns(clonePath);
+      const ignorePatterns = await loadIgnorePatterns(clonePath);
       const severityConfig = loadConfigFile(clonePath);
-      let files = readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
+      let files = await readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
       
       let partial_review = false;
       const MAX_PAYLOAD_CHARS = 30000;
@@ -1507,6 +1541,26 @@ app.post('/api/rag/query', requireApiKey, async (req, res) => {
   }
 });
 
+// Per-endpoint error rate tracking for metrics
+const endpointErrorCounts = new Map();
+const ENDPOINT_ERROR_MAX = 10000;
+
+function recordEndpointError(method, path) {
+  const key = `${method}:${path}`;
+  endpointErrorCounts.set(key, (endpointErrorCounts.get(key) || 0) + 1);
+  if (endpointErrorCounts.size > ENDPOINT_ERROR_MAX) {
+    const oldestKey = endpointErrorCounts.keys().next().value;
+    if (oldestKey !== undefined) endpointErrorCounts.delete(oldestKey);
+  }
+}
+
+// Periodic reset of endpoint error counts to prevent unbounded growth
+const ENDPOINT_ERROR_RESET_INTERVAL = 60 * 60 * 1000;
+const endpointErrorResetTimer = setInterval(() => {
+  endpointErrorCounts.clear();
+}, ENDPOINT_ERROR_RESET_INTERVAL);
+endpointErrorResetTimer.unref();
+
 // Webhook delivery history for recent deliveries (in-memory, bounded)
 const webhookHistory = [];
 const WEBHOOK_HISTORY_MAX = 1000;
@@ -1623,6 +1677,26 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     }
     const safeDeliveryId = sanitizeRedisKey(deliveryId);
     const deliveryDedupKey = `webhook:delivery:${safeDeliveryId}`;
+
+    // Replay prevention: check if this delivery ID was seen before (long-term store).
+    // This catches replays that arrive after the short delivery dedup TTL expires.
+    const replayKey = `webhook:replay:${safeDeliveryId}`;
+    if (redisClient) {
+      const replaySeen = await redisClient.get(replayKey);
+      if (replaySeen) {
+        console.warn(`Replay attack detected: delivery ID ${safeDeliveryId} was already processed`);
+        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'replay_rejected', Date.now() - webhookStartTime);
+        return res.status(403).json({ error: 'This webhook delivery has already been processed.' });
+      }
+    } else {
+      const replayTimestamp = deliveryReplayMap.get(deliveryId);
+      if (replayTimestamp !== undefined) {
+        console.warn(`Replay attack detected: delivery ID ${safeDeliveryId} was already processed`);
+        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'replay_rejected', Date.now() - webhookStartTime);
+        return res.status(403).json({ error: 'This webhook delivery has already been processed.' });
+      }
+    }
+
     let isDuplicate;
     if (redisClient) {
       isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
@@ -1640,6 +1714,17 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     }
     if (redisClient) {
       await redisClient.expire(deliveryDedupKey, DELIVERY_REDIS_TTL);
+    }
+
+    // Mark delivery ID as seen for long-term replay prevention
+    if (redisClient) {
+      await redisClient.setex(replayKey, DELIVERY_REPLAY_TTL, Date.now().toString());
+    } else {
+      if (deliveryReplayMap.size >= DELIVERY_REPLAY_MAX_SIZE) {
+        const oldestKey = deliveryReplayMap.keys().next().value;
+        if (oldestKey !== undefined) deliveryReplayMap.delete(oldestKey);
+      }
+      deliveryReplayMap.set(deliveryId, Date.now());
     }
 
     const action = payload.action;
@@ -1681,6 +1766,15 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       }
       
       console.log(`GitHub Webhook received: PR #${pullNumber} ${sanitizeErrorMessage(action)} in ${sanitizeErrorMessage(owner)}/${sanitizeErrorMessage(repo)}`);
+
+      // Check if this PR already has a pending analysis in the queue to avoid
+      // enqueuing a duplicate when multiple webhook events arrive for the same PR
+      // before the review completes (e.g. rapid synchronize events).
+      if (reviewQueue.hasPendingItem(reviewKey)) {
+        console.log(`PR #${pullNumber} already has a pending review in queue; skipping`);
+        recordWebhookDelivery(event, sanitizeErrorMessage(repoUrl), deliveryId, 'pr_already_pending', Date.now() - webhookStartTime, action);
+        return res.json({ success: true, message: 'Webhook received (already pending).' });
+      }
 
       if (reviewQueue._queues.size >= reviewQueue._maxQueues) {
         if (redisClient) {
@@ -2727,6 +2821,7 @@ app.get('/metrics', requireApiKey, (req, res) => {
       ttlMinutes: cacheStats.ttlMinutes,
     },
     circuitState: reviewQueue.getCircuitState(),
+    endpointErrorCounts: Object.fromEntries(endpointErrorCounts),
     csrfTokenCount: csrfTokenStore.size + csrfGraceTokenStore.size,
     webhookHistoryCount: webhookHistory.length,
     repoRequestCountsSize: repoRequestCounts.size,
@@ -2787,6 +2882,7 @@ const errorHandler = (err, req, res, next) => {
     return next(err);
   }
   const statusCode = err.statusCode || err.status || 500;
+  recordEndpointError(req.method || 'UNKNOWN', req.path || 'UNKNOWN');
   res.status(statusCode).json({
     error: safeMessage,
   });
@@ -2795,14 +2891,19 @@ app.use(errorHandler);
 
 async function startServer() {
   // Restore analysis cache from disk snapshot, then start periodic persistence
-  analysisCache.restoreFromDisk();
-  analysisCache.startPersistTimer(parseInt(process.env.CACHE_PERSIST_INTERVAL_MS || '300000', 10));
+  await analysisCache.restoreFromDisk();
+  await analysisCache.startPersistTimer(parseInt(process.env.CACHE_PERSIST_INTERVAL_MS || '300000', 10));
 
   // Persist in-memory CSRF token stores on shutdown
-  function persistCsrfTokens() {
+  const FS_TIMEOUT_CSRF = parseInt(process.env.FS_TIMEOUT_CSRF_MS || '10000', 10);
+  async function persistCsrfTokens() {
     try {
       const csrfDir = path.join(__dirname, 'data');
-      if (!fs.existsSync(csrfDir)) fs.mkdirSync(csrfDir, { recursive: true });
+      try {
+        await fsWithTimeout.access(csrfDir, fs.constants.F_OK, FS_TIMEOUT_CSRF);
+      } catch {
+        await fsWithTimeout.mkdir(csrfDir, { recursive: true }, FS_TIMEOUT_CSRF);
+      }
       const now = Date.now();
       const validTokens = [];
       for (const [token, expiry] of csrfTokenStore) {
@@ -2811,7 +2912,7 @@ async function startServer() {
       for (const [token, expiry] of csrfGraceTokenStore) {
         if (now <= expiry) validTokens.push({ token, expiry, grace: true });
       }
-      fs.writeFileSync(path.join(csrfDir, 'csrf_tokens.json'), JSON.stringify(validTokens));
+      await fsWithTimeout.writeFile(path.join(csrfDir, 'csrf_tokens.json'), JSON.stringify(validTokens), FS_TIMEOUT_CSRF);
     } catch (err) {
       console.warn('⚠️ CSRF token persist failed:', err.message);
     }
@@ -2824,8 +2925,9 @@ async function startServer() {
   // Restore CSRF tokens from disk
   try {
     const csrfPath = path.join(__dirname, 'data', 'csrf_tokens.json');
-    if (fs.existsSync(csrfPath)) {
-      const raw = fs.readFileSync(csrfPath, 'utf-8');
+    try {
+      await fsWithTimeout.access(csrfPath, fs.constants.F_OK, FS_TIMEOUT_CSRF);
+      const raw = await fsWithTimeout.readFile(csrfPath, 'utf-8', FS_TIMEOUT_CSRF);
       const tokens = JSON.parse(raw);
       const now = Date.now();
       for (const t of tokens) {
@@ -2837,15 +2939,15 @@ async function startServer() {
         }
       }
       console.log(`📂 Restored ${tokens.length} CSRF tokens from disk`);
+    } catch {
     }
   } catch (err) {
     console.warn('⚠️ CSRF token restore failed:', err.message);
   }
 
-  // Persist in-memory state on shutdown
-  function persistAllState() {
-    analysisCache.persistToDisk();
-    persistCsrfTokens();
+  async function persistAllState() {
+    await analysisCache.persistToDisk().catch(() => {});
+    await persistCsrfTokens().catch(() => {});
   }
   const originalOnShutdown = onShutdown;
   const origCleanupTimers = cleanupTimers;

@@ -120,6 +120,11 @@ class ReviewQueue {
     return next;
   }
 
+  hasPendingItem(key) {
+    const queue = this._queues.get(key);
+    return queue && queue.length > 0;
+  }
+
   cleanupStaleExclusiveLocks(maxAgeMs) {
     const now = Date.now();
     for (const [key, entry] of this._exclusiveLocksTimestamps) {

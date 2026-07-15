@@ -142,13 +142,13 @@ function normalizeExtensions(input) {
  * @param {object} [options]
  * @returns {Array<{path: string, content: string, sizeBytes: number, language: string}>}
  */
-export function readCodeFilesFromLocalDir(localDir, options = {}) {
+export async function readCodeFilesFromLocalDir(localDir, options = {}) {
   const extensions = normalizeExtensions(options.extensions);
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const extensionSet = new Set(extensions);
-  const ignorePatterns = loadIgnorePatterns(localDir);
+  const ignorePatterns = await loadIgnorePatterns(localDir);
   return walkForExtensions(localDir, extensionSet, ignorePatterns, maxFiles, maxDepth, maxBytes);
 }
 
@@ -203,7 +203,7 @@ export async function readCodeFilesFromRepo(repoUrl, options = {}) {
     ]);
     await git.cwd(clonePath).checkout(['HEAD']);
 
-    const ignorePatterns = loadIgnorePatterns(clonePath);
+    const ignorePatterns = await loadIgnorePatterns(clonePath);
     return walkForExtensions(
       clonePath,
       extensionSet,
@@ -213,7 +213,7 @@ export async function readCodeFilesFromRepo(repoUrl, options = {}) {
       maxBytes
     );
   } finally {
-    deleteFolderRecursive(clonePath);
+    await deleteFolderRecursive(clonePath).catch(() => {});
   }
 }
 

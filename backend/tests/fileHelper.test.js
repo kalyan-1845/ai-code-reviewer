@@ -36,19 +36,17 @@ test('deleteFolderRecursive should delete nested directories and files correctly
 
   assert.equal(fs.existsSync(tempDir), true);
 
-  deleteFolderRecursive(tempDir);
+  await deleteFolderRecursive(tempDir);
 
   assert.equal(fs.existsSync(tempDir), false);
 });
 
-test('deleteFolderRecursive should not throw if directory does not exist', () => {
+test('deleteFolderRecursive should not throw if directory does not exist', async () => {
   const nonExistentDir = path.join(__dirname, 'does_not_exist_folder');
-  assert.doesNotThrow(() => {
-    deleteFolderRecursive(nonExistentDir);
-  });
+  await deleteFolderRecursive(nonExistentDir);
 });
 
-test('deleteFolderRecursive skips valid symlinks without following them', { skip: !canCreateSymlinks }, () => {
+test('deleteFolderRecursive skips valid symlinks without following them', { skip: !canCreateSymlinks }, async () => {
   // Create a real external directory as the symlink target
   const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'symlink-external-'));
   const safeFile = path.join(externalDir, 'safe_file.txt');
@@ -65,7 +63,7 @@ test('deleteFolderRecursive skips valid symlinks without following them', { skip
 
   assert.equal(fs.lstatSync(symlinkPath).isSymbolicLink(), true);
 
-  deleteFolderRecursive(parentDir);
+  await deleteFolderRecursive(parentDir);
 
   // The parent tree must be gone
   assert.equal(fs.existsSync(parentDir), false);
@@ -78,17 +76,14 @@ test('deleteFolderRecursive skips valid symlinks without following them', { skip
   fs.rmdirSync(externalDir);
 });
 
-test('deleteFolderRecursive skips broken symlinks without throwing', { skip: !canCreateSymlinks }, () => {
+test('deleteFolderRecursive skips broken symlinks without throwing', { skip: !canCreateSymlinks }, async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'broken_symlink_test-'));
   const brokenLink = path.join(tempDir, 'broken_link');
-  // symlink to nonexistent target
   fs.symlinkSync('/this/path/does/not/exist', brokenLink);
 
   assert.equal(fs.lstatSync(brokenLink).isSymbolicLink(), true);
 
-  assert.doesNotThrow(() => {
-    deleteFolderRecursive(tempDir);
-  });
+  await deleteFolderRecursive(tempDir);
 
   // Directory is removed (broken symlink was skipped without error)
   assert.equal(fs.existsSync(tempDir), false);

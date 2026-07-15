@@ -8,7 +8,7 @@ import { readFilesRecursively } from '../utils/ignoreHelper.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-test('readFilesRecursively should include .json files', () => {
+test('readFilesRecursively should include .json files', async () => {
   const tempDir = path.join(__dirname, 'temp_ext_json');
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true });
@@ -18,7 +18,7 @@ test('readFilesRecursively should include .json files', () => {
   fs.writeFileSync(path.join(tempDir, 'config.json'), '{"key": "value"}');
   fs.writeFileSync(path.join(tempDir, 'package.json'), '{"name": "test"}');
 
-  const files = readFilesRecursively(tempDir, [], tempDir, []);
+  const files = await readFilesRecursively(tempDir, [], tempDir, []);
   const fileNames = files.map(f => f.name);
 
   assert.ok(fileNames.includes('config.json'), 'config.json should be included');
@@ -32,7 +32,7 @@ test('readFilesRecursively should include .json files', () => {
   fs.rmdirSync(tempDir);
 });
 
-test('readFilesRecursively should include .yaml and .yml files', () => {
+test('readFilesRecursively should include .yaml and .yml files', async () => {
   const tempDir = path.join(__dirname, 'temp_ext_yaml');
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true });
@@ -42,7 +42,7 @@ test('readFilesRecursively should include .yaml and .yml files', () => {
   fs.writeFileSync(path.join(tempDir, 'config.yaml'), 'server:\n  port: 3000');
   fs.writeFileSync(path.join(tempDir, 'settings.yml'), 'debug: true');
 
-  const files = readFilesRecursively(tempDir, [], tempDir, []);
+  const files = await readFilesRecursively(tempDir, [], tempDir, []);
   const fileNames = files.map(f => f.name);
 
   assert.ok(fileNames.includes('config.yaml'), 'config.yaml should be included');
@@ -56,7 +56,7 @@ test('readFilesRecursively should include .yaml and .yml files', () => {
   fs.rmdirSync(tempDir);
 });
 
-test('readFilesRecursively should not include unsupported file extensions', () => {
+test('readFilesRecursively should not include unsupported file extensions', async () => {
   const tempDir = path.join(__dirname, 'temp_ext_unsupported');
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true });
@@ -70,7 +70,7 @@ test('readFilesRecursively should not include unsupported file extensions', () =
   fs.writeFileSync(path.join(tempDir, 'notes.txt'), 'some notes');
 
   // We expect these NOT to be in validExtensions, so they won't be included
-  const files = readFilesRecursively(tempDir, [], tempDir, []);
+  const files = await readFilesRecursively(tempDir, [], tempDir, []);
   const fileNames = files.map(f => f.name);
 
   assert.equal(fileNames.some(f => f.endsWith('.md')), false, '.md files should not be included');

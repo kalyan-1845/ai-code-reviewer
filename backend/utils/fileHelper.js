@@ -1,86 +1,80 @@
 import fs from 'fs';
 import path from 'path';
+import { fsWithTimeout } from './fsTimeout.js';
 
-// Helper to delete a folder recursively
-export function deleteFolderRecursive(directoryPath) {
-  let isTopLevelSymlink = false;
+const FS_TIMEOUT_RM = parseInt(process.env.FS_TIMEOUT_RM_MS || '30000', 10);
+const FS_TIMEOUT_STAT = parseInt(process.env.FS_TIMEOUT_STAT_MS || '15000', 10);
+const FS_TIMEOUT_READDIR = parseInt(process.env.FS_TIMEOUT_READDIR_MS || '15000', 10);
+
+export async function deleteFolderRecursive(directoryPath) {
   try {
-    isTopLevelSymlink = fs.lstatSync(directoryPath).isSymbolicLink();
-  } catch {
-    // Path does not exist or is inaccessible; fall through to the exists check below.
-  }
-  if (isTopLevelSymlink) {
-    // If the directory path itself is a symlink, remove only the link and
-    // never recurse into the target (prevents deleting the symlink target's
-    // contents, e.g. /etc or a sibling project directory).
+    let isTopLevelSymlink = false;
     try {
-      fs.unlinkSync(directoryPath);
+      isTopLevelSymlink = (await fsWithTimeout.lstat(directoryPath, FS_TIMEOUT_STAT)).isSymbolicLink();
     } catch {
-      // Skip if the symlink cannot be removed (e.g., permission error).
     }
-    return;
-  }
-  if (fs.existsSync(directoryPath)) {
-    fs.readdirSync(directoryPath).forEach((file) => {
-      const curPath = path.join(directoryPath, file);
+    if (isTopLevelSymlink) {
+      try {
+        await fsWithTimeout.unlink(directoryPath, FS_TIMEOUT_STAT);
+      } catch {
+      }
+      return;
+    }
+    try {
+      await fsWithTimeout.access(directoryPath, fs.constants.F_OK, FS_TIMEOUT_STAT);
+    } catch {
+      return;
+    }
+    const entries = await fsWithTimeout.readdir(directoryPath, { withFileTypes: true }, FS_TIMEOUT_READDIR);
+    for (const file of entries) {
+      const curPath = path.join(directoryPath, file.name);
       let isSymlink = false;
       try {
-        const stat = fs.lstatSync(curPath);
-        isSymlink = stat.isSymbolicLink();
+        isSymlink = file.isSymbolicLink();
       } catch {
-        // Entry no longer exists or is inaccessible; skip it.
-        return;
+        try {
+          await fsWithTimeout.unlink(curPath, FS_TIMEOUT_STAT);
+        } catch {
+        }
+        continue;
       }
       if (isSymlink) {
-        // Symlinks are skipped to avoid circular-reference DoS or
-        // accidentally deleting the symlink target outside this tree.
-        // Broken file-symlinks (dangling) also trigger stat failure and
-        // land here via the try block; they are simply unlinked.
         try {
-          fs.unlinkSync(curPath);
+          await fsWithTimeout.unlink(curPath, FS_TIMEOUT_STAT);
         } catch {
-          // Skip if the symlink cannot be removed (e.g., permission error).
         }
-        return;
+        continue;
       }
-      // Not a symlink — determine if it is a directory.
-      let isDir = false;
-      try {
-        isDir = fs.statSync(curPath).isDirectory();
-      } catch {
-        // stat failed but lstat succeeded; treat as a regular file.
+      if (file.isFile()) {
         try {
-          fs.unlinkSync(curPath);
+          await fsWithTimeout.unlink(curPath, FS_TIMEOUT_STAT);
         } catch {
-          // Skip.
         }
-        return;
-      }
-      if (isDir) {
-        deleteFolderRecursive(curPath);
+      } else if (file.isDirectory()) {
+        await deleteFolderRecursive(curPath);
       } else {
         try {
-          fs.unlinkSync(curPath);
+          await fsWithTimeout.unlink(curPath, FS_TIMEOUT_STAT);
         } catch {
-          // Skip files that cannot be deleted (e.g., permission errors).
         }
       }
-    });
-    fs.rmSync(directoryPath, { recursive: true, force: true });
+    }
+    await fsWithTimeout.rm(directoryPath, { recursive: true, force: true }, FS_TIMEOUT_RM);
+  } catch (err) {
+    console.warn(`deleteFolderRecursive: error with ${directoryPath}: ${err.message}`);
   }
 }
 
-// Helper to calculate folder size
 export async function getFolderSize(dirPath) {
   let size = 0;
   try {
-    const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    const files = await fsWithTimeout.readdir(dirPath, { withFileTypes: true }, FS_TIMEOUT_READDIR);
     for (const file of files) {
       const filePath = path.join(dirPath, file.name);
       if (file.isDirectory() && !file.isSymbolicLink()) {
         size += await getFolderSize(filePath);
       } else if (!file.isSymbolicLink()) {
-        const stats = await fs.promises.stat(filePath);
+        const stats = await fsWithTimeout.stat(filePath, FS_TIMEOUT_STAT);
         size += stats.size;
       }
     }
