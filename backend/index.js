@@ -80,6 +80,20 @@ if (trustProxy) {
 // correct. A custom function that reads X-Forwarded-For directly would trust the
 // leftmost (client-controlled) value, allowing IP spoofing to bypass rate limits.
 
+// Request ID middleware — assigns a unique ID to every request and includes it
+// in all error responses for traceability
+app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
+  const originalJson = res.json.bind(res);
+  res.json = function (body) {
+    if (body && typeof body === 'object' && body.error) {
+      body.requestId = req.requestId;
+    }
+    return originalJson(body);
+  };
+  next();
+});
+
 // Enable CORS with explicit origin
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173').split(',').map(s => s.trim());
 app.use(cors({
@@ -97,10 +111,12 @@ if (process.env.REDIS_URL) {
 }
 const dedupStore = new DedupStore(redisClient);
 
-// Per-IP rate limiting for expensive endpoints
+// Per-IP rate limiting for expensive endpoints (configurable via env vars)
+const ANALYZE_RATE_LIMIT_WINDOW_MS = parseInt(process.env.ANALYZE_RATE_LIMIT_WINDOW_MS || '300000', 10);
+const ANALYZE_RATE_LIMIT_MAX = parseInt(process.env.ANALYZE_RATE_LIMIT_MAX || '5', 10);
 const analyzeLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 5,
+  windowMs: ANALYZE_RATE_LIMIT_WINDOW_MS,
+  max: ANALYZE_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   // No keyGenerator: express-rate-limit defaults to req.ip, which Express has already
@@ -489,6 +505,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
 }
 
 // Utility: generate dependency report by scanning cloned repo for package manifests
+const DEPENDENCY_TIMEOUT_MS = parseInt(process.env.DEPENDENCY_TIMEOUT_MS || '5000', 10);
 const DEPENDENCY_REGISTRIES = {
   'package.json': async (filePath) => {
     const pkg = JSON.parse(await fs.promises.readFile(filePath, 'utf-8'));
@@ -502,7 +519,7 @@ const DEPENDENCY_REGISTRIES = {
         continue;
       }
       try {
-        const resp = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}/latest`, { signal: AbortSignal.timeout(5000) });
+        const resp = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}/latest`, { signal: AbortSignal.timeout(DEPENDENCY_TIMEOUT_MS) });
         if (resp.ok) {
           const data = await resp.json();
           const current = version.replace('^', '').replace('~', '');
@@ -538,7 +555,7 @@ const DEPENDENCY_REGISTRIES = {
         const pkgName = match[1];
         const spec = match[2] || 'latest';
         try {
-          const resp = await fetch(`https://pypi.org/pypi/${encodeURIComponent(pkgName)}/json`, { signal: AbortSignal.timeout(5000) });
+          const resp = await fetch(`https://pypi.org/pypi/${encodeURIComponent(pkgName)}/json`, { signal: AbortSignal.timeout(DEPENDENCY_TIMEOUT_MS) });
           if (resp.ok) {
             const data = await resp.json();
             const latest = data.info?.version || 'unknown';
@@ -1552,116 +1569,9 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   if (!payload || typeof payload !== 'object') {
     return res.status(400).json({ error: 'Invalid webhook payload.' });
   }
-  const validEvents = ['pull_request', 'push', 'ping', 'issue_comment', 'pull_request_review_comment'];
+  const validEvents = ['pull_request'];
   if (!validEvents.includes(event)) {
     return res.status(400).json({ error: `Unsupported webhook event: ${event}` });
-  }
-
-  if (event === 'issue_comment') {
-    if (payload.action === 'created' && payload.issue?.pull_request) {
-      if (payload.comment?.body?.includes('/ai-review')) {
-        const owner = payload.repository.owner.login;
-        const repo = payload.repository.name;
-        const pullNumber = payload.issue.number;
-        console.log(`Manual trigger /ai-review detected on PR #${pullNumber}`);
-        
-        try {
-          const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
-          const { data: prData } = await octokit.rest.pulls.get({
-            owner,
-            repo,
-            pull_number: pullNumber
-          });
-          const headSha = prData.head.sha;
-          
-          const reviewKey = `${owner}/${repo}`;
-          reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
-            await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
-          }).catch(error => {
-            console.error(`❌ Webhook review failed for manual trigger on PR #${pullNumber}:`, error.message);
-          });
-          
-          return res.json({ message: "Review queued via manual trigger" });
-        } catch (err) {
-          console.error("Error fetching PR data for manual trigger:", err.message);
-          return res.status(500).json({ error: "Failed to queue manual review" });
-        }
-      }
-    }
-    return res.json({ message: "Ignored issue_comment event" });
-  }
-
-  if (event === 'pull_request_review_comment') {
-    if (payload.action === 'created' && payload.comment?.body?.includes('@ai-reviewer')) {
-      const owner = payload.repository.owner.login;
-      const repo = payload.repository.name;
-      const pullNumber = payload.pull_request.number;
-      const commentId = payload.comment.id;
-      const diffHunk = payload.comment.diff_hunk;
-      const filePath = payload.comment.path;
-      const userMessage = payload.comment.body;
-      
-      console.log(`💬 Conversational AI trigger on PR #${pullNumber}, file: ${filePath}`);
-      
-      try {
-        const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
-        const baseUrl = aiEngineUrl.replace(/\/+$/, '');
-        const aiResponse = await fetchWithTimeout(`${baseUrl}/chat-inline`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
-          body: JSON.stringify({
-            file_path: filePath,
-            diff_hunk: diffHunk,
-            message: userMessage
-          })
-        }, 60000);
-        
-        if (aiResponse.ok) {
-          const result = await aiResponse.json();
-          const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
-          
-          await octokit.rest.pulls.createReplyForReviewComment({
-            owner,
-            repo,
-            pull_number: pullNumber,
-            comment_id: commentId,
-            body: `<!-- RepoSage Chat -->\n${result.reply}`
-          });
-          
-          return res.json({ message: "Conversational reply posted" });
-        } else {
-          console.error("AI engine returned error for chat-inline:", await aiResponse.text());
-        }
-      } catch (err) {
-        console.error("Error handling conversational AI comment:", err.message);
-      }
-      return res.status(500).json({ error: "Failed to process conversational comment" });
-    }
-    return res.json({ message: "Ignored pull_request_review_comment event" });
-  }
-
-  if (event === 'push') {
-    const owner = payload.repository?.owner?.login;
-    const repo = payload.repository?.name;
-    if (owner && repo) {
-      const repoUrl = `https://github.com/${owner}/${repo}`;
-      const removed = analysisCache.invalidateByRepoUrl(repoUrl);
-      if (removed > 0) {
-        console.log(`🗑️ Push event invalidated ${removed} cache entries for ${repoUrl}`);
-      }
-    }
-  }
-
-  if (event === 'pull_request_review_comment') {
-    if (payload.action === 'resolved') {
-      const repoName = payload.repository?.full_name;
-      if (repoName) {
-        console.log(`Tracking resolved AI comment for ROI on ${repoName}`);
-        await RoiMetrics.recordAcceptedSuggestion(repoName).catch(e => console.error("ROI tracking error", e));
-      }
-    }
-    // We only care about resolved comments for ROI metrics right now
-    return res.status(200).json({ message: 'Review comment event processed' });
   }
 
   if (event === 'pull_request') {
@@ -2825,10 +2735,11 @@ function sanitizeErrorMessage(msg) {
 }
 
 const errorHandler = (err, req, res, next) => {
+  const requestId = req.requestId || 'unknown';
   const safeMessage = sanitizeErrorMessage(err.message);
-  console.error('Unhandled error in request:', safeMessage);
+  console.error(`[${requestId}] Unhandled error in request:`, safeMessage);
   if (err.stack) {
-    console.error(err.stack);
+    console.error(`[${requestId}]`, err.stack);
   }
   if (res.headersSent) {
     return next(err);
@@ -2836,6 +2747,7 @@ const errorHandler = (err, req, res, next) => {
   const statusCode = err.statusCode || err.status || 500;
   res.status(statusCode).json({
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : safeMessage,
+    requestId,
   });
 };
 app.use(errorHandler);
