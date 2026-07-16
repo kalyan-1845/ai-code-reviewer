@@ -10,17 +10,25 @@ class ReviewQueue {
     this._maxItemsPerQueue = maxItemsPerQueue;
     this._exclusiveLockTtlMs = exclusiveLockTtlMs;
     this._maxRetries = maxRetries;
-    this._circuitBreaker = new CircuitBreaker({
-      failureThreshold: 5,
-      cooldownMs: 30000,
-      halfOpenMaxRequests: 3,
-      timeoutMs: 10000,
-    });
+    this._circuitBreakers = new Map();
   }
 
-  getCircuitState() {
+  _getCircuitBreaker(key) {
+    if (!this._circuitBreakers.has(key)) {
+      this._circuitBreakers.set(key, new CircuitBreaker({
+        failureThreshold: 5,
+        cooldownMs: 30000,
+        halfOpenMaxRequests: 3,
+        timeoutMs: 10000,
+      }));
+    }
+    return this._circuitBreakers.get(key);
+  }
+
+  getCircuitState(key = 'global') {
+    const breaker = this._getCircuitBreaker(key);
     return {
-      state: this._circuitBreaker.getState(),
+      state: breaker.getState(),
     };
   }
 
@@ -57,17 +65,18 @@ class ReviewQueue {
           this._queueLocks.delete(key);
           return;
         }
+        const breaker = this._getCircuitBreaker(key);
         while (queue.length > 0) {
           const item = queue.shift();
           for (let attempt = 0; attempt <= this._maxRetries; attempt++) {
             try {
-              await this._circuitBreaker.call(() => processor(item));
+              await breaker.call(() => processor(item));
               break;
             } catch (err) {
               if (err.name === 'CircuitBreakerOpenError') {
                 console.error(`ReviewQueue: circuit breaker OPEN for "${key}", requeuing item`);
                 queue.unshift(item);
-                break;
+                return;
               }
               if (attempt < this._maxRetries) {
                 const delay = Math.pow(2, attempt) * 1000;
@@ -75,7 +84,7 @@ class ReviewQueue {
                 await new Promise(r => setTimeout(r, delay));
               } else {
                 console.error(`ReviewQueue: item permanently failed for "${key}" after ${this._maxRetries + 1} attempts:`, err);
-                this._circuitBreaker.onFailure();
+                breaker.onFailure();
               }
             }
           }

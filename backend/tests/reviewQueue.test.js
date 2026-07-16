@@ -187,3 +187,33 @@ test('items are processed in FIFO order', async () => {
   await new Promise(r => setTimeout(r, 100));
   assert.deepEqual(results, [0, 1, 2, 3, 4], 'items should be processed in FIFO order');
 });
+
+test('ReviewQueue: circuit breaker is scoped per key and does not trip other keys', async () => {
+  // Use a short cooldown / low failure threshold queue config
+  const q = new ReviewQueue(10, 10, 60000, 0); // maxRetries = 0 to speed up failure
+  
+  // key1 will fail 5 times consecutively to trip its breaker
+  let key1Failures = 0;
+  const failingProcessor = async () => {
+    key1Failures++;
+    throw new Error('Failing key1');
+  };
+
+  // Enqueue 6 failing items to trigger the breaker
+  for (let i = 0; i < 6; i++) {
+    await q.enqueue('key1', i, failingProcessor);
+  }
+
+  // Verify key1 circuit breaker is OPEN
+  assert.equal(q.getCircuitState('key1').state, 'OPEN');
+
+  // Verify key2 circuit breaker is CLOSED and can successfully process items
+  let key2Processed = false;
+  const successfulProcessor = async () => {
+    key2Processed = true;
+  };
+
+  await q.enqueue('key2', 'ok', successfulProcessor);
+  assert.equal(q.getCircuitState('key2').state, 'CLOSED');
+  assert.equal(key2Processed, true);
+});
