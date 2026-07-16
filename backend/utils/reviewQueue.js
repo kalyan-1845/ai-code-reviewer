@@ -12,6 +12,9 @@ class ReviewQueue {
     this._maxRetries = maxRetries;
     this._circuitBreakers = new Map();
     this._circuitBreakerTimestamps = new Map();
+    // Dead letter queue: stores items that exhausted all retries
+    this._deadLetterQueue = [];
+    this._maxDeadLetterQueueSize = 1000;
   }
 
   _getCircuitBreaker(key) {
@@ -33,7 +36,17 @@ class ReviewQueue {
     for (const [key, cb] of this._circuitBreakers) {
       states[key] = cb.getState();
     }
-    return { states };
+    return { states, deadLetterQueueSize: this._deadLetterQueue.length };
+  }
+
+  getDeadLetterQueue() {
+    return this._deadLetterQueue.slice();
+  }
+
+  clearDeadLetterQueue() {
+    const count = this._deadLetterQueue.length;
+    this._deadLetterQueue = [];
+    return count;
   }
 
   cleanupStaleCircuitBreakers(maxAgeMs = 5 * 60 * 1000) {
@@ -100,6 +113,12 @@ class ReviewQueue {
               } else {
                 console.error(`ReviewQueue: item permanently failed for "${key}" after ${this._maxRetries + 1} attempts:`, err);
                 circuitBreaker.onFailure();
+                // Push to dead letter queue for later inspection
+                const dlqEntry = { key, item, failedAt: Date.now(), error: err.message, attempts: this._maxRetries + 1 };
+                if (this._deadLetterQueue.length >= this._maxDeadLetterQueueSize) {
+                  this._deadLetterQueue.shift();
+                }
+                this._deadLetterQueue.push(dlqEntry);
               }
             }
           }

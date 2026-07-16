@@ -136,6 +136,15 @@ const chatLimiter = rateLimit({
   message: { error: 'Too many chat requests. Please slow down and retry after 1 minute.' }
 });
 
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
+  message: { error: 'Too many search requests. Please slow down and retry after 1 minute.' }
+});
+
 const exportLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -1443,7 +1452,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
 });
 
 // ≡ƒƒó Route: Proxy for RAG query ΓÇö forwards to the AI engine
-app.post('/api/rag/query', requireApiKey, async (req, res) => {
+app.post('/api/rag/query', requireApiKey, searchLimiter, async (req, res) => {
   const { question, repoUrl } = req.body;
   if (!question) {
     return res.status(400).json({ error: 'question is required.' });
@@ -1915,6 +1924,28 @@ app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimit
   }
 });
 
+// ≡ƒƒó Route: Get analysis cache stats with pagination
+app.get('/api/cache/stats', requireApiKey, async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const stats = analysisCache.getStats();
+  const entries = [];
+  for (const [key, entry] of analysisCache.cache) {
+    entries.push({
+      key: key.slice(0, 12) + '...',
+      isMock: !!entry.isMock,
+      expiresAt: entry.expiresAt,
+      absoluteExpiresAt: entry.absoluteExpiresAt,
+      repoUrl: entry.repoUrl || null,
+      ageMs: Date.now() - (entry.expiresAt - analysisCache.ttlMs),
+    });
+  }
+  const total = entries.length;
+  const skip = (page - 1) * limit;
+  const paginatedEntries = entries.slice(skip, skip + limit);
+  res.json({ entries: paginatedEntries, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }, stats });
+});
+
 // ≡ƒƒó Route: Invalidate analysis cache by repo URL
 app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
   const { repoUrl } = req.body;
@@ -1950,8 +1981,27 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     pull_number: pullNumber
   });
   if (headSha && pullRequest.head.sha !== headSha) {
-    console.log(`ΓÅ¡∩╕Å Skipping stale review ${headSha.substring(0, 7)}; current head is ${pullRequest.head.sha.substring(0, 7)}.`);
+    console.log(`⏭️ Skipping stale review ${headSha.substring(0, 7)}; current head is ${pullRequest.head.sha.substring(0, 7)}.`);
     return;
+  }
+
+  // Validate that the base ref (target branch) exists before proceeding
+  const baseRef = pullRequest.base?.ref;
+  if (baseRef) {
+    try {
+      await octokit.rest.git.getRef({ owner, repo, ref: `heads/${baseRef}` });
+    } catch (err) {
+      console.error(`❌ Base branch "${baseRef}" does not exist for PR #${pullNumber} in ${owner}/${repo}. Rejecting review.`);
+      const { data: createdReview } = await octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number: pullNumber,
+        commit_id: headSha,
+        event: 'COMMENT',
+        body: `## ❌ Review Skipped\n\nThe base branch \`${baseRef}\` does not exist on this repository. Please ensure the target branch is valid and push again to trigger a new review.`
+      });
+      return;
+    }
   }
 
   // Supersede whatever review was posted for a prior commit on this PR, so
@@ -2832,6 +2882,21 @@ app.get('/api/health/circuit-breaker', (req, res) => {
     ...reviewQueue.getCircuitState(),
     timestamp: new Date().toISOString(),
   });
+});
+
+app.get('/api/health/dead-letter-queue', requireApiKey, (req, res) => {
+  const dlq = reviewQueue.getDeadLetterQueue();
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const total = dlq.length;
+  const skip = (page - 1) * limit;
+  const paginated = dlq.slice(skip, skip + limit);
+  res.json({ items: paginated, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+});
+
+app.post('/api/health/dead-letter-queue/clear', requireApiKey, (req, res) => {
+  const cleared = reviewQueue.clearDeadLetterQueue();
+  res.json({ success: true, cleared });
 });
 
 // Sanitize error messages that may contain API keys or sensitive tokens.
