@@ -60,10 +60,9 @@ const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
-const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
-const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 const ANALYSIS_CACHE_MOCK_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 120)(parseInt(process.env.ANALYSIS_CACHE_MOCK_TTL_SECONDS || '120', 10)) * 1000;
 const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, ANALYSIS_CACHE_MOCK_TTL_MS);
+const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
@@ -116,6 +115,15 @@ const issueLimiter = rateLimit({
   legacyHeaders: false,
   store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
   message: { error: 'Too many issue creation requests.' }
+});
+
+const notificationsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
+  message: { error: 'Too many notification requests. Please slow down and retry after 1 minute.' }
 });
 
 const chatLimiter = rateLimit({
@@ -1161,8 +1169,8 @@ if (reviewResult?.fileReviews) {
       // Do NOT set a second CSRF cookie here to avoid token mismatch.
 
       // 8. Return result
-      const responseObject = { ...(sessionPersisted ? { csrfToken } : {}),
-      return res.json({ ...(sessionPersisted ? { csrfToken: res.locals.rotatedCsrfToken || csrfToken } : {}),
+      const responseObject = {
+  ...(sessionPersisted ? { csrfToken: res.locals.rotatedCsrfToken || csrfToken } : {}),
   success: true,
 
   repoName,
@@ -1527,6 +1535,9 @@ app.get('/api/roi', async (req, res) => {
 
 // 🚀 Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', webhookLimiter, async (req, res) => {
+  const requestId = crypto.randomUUID();
+  res.setHeader('x-request-id', requestId);
+
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('Γ¥î WEBHOOK_SECRET not configured');
@@ -1552,7 +1563,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   if (!payload || typeof payload !== 'object') {
     return res.status(400).json({ error: 'Invalid webhook payload.' });
   }
-  const validEvents = ['pull_request', 'push', 'ping', 'issue_comment', 'pull_request_review_comment'];
+  const validEvents = ['pull_request', 'push', 'ping', 'issue_comment', 'pull_request_review_comment', 'repository'];
   if (!validEvents.includes(event)) {
     return res.status(400).json({ error: `Unsupported webhook event: ${event}` });
   }
@@ -1652,6 +1663,19 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     }
   }
 
+  if (event === 'repository') {
+    if (payload.action === 'deleted') {
+      const owner = payload.repository?.owner?.login;
+      const repo = payload.repository?.name;
+      if (owner && repo) {
+        const repoUrl = `https://github.com/${owner}/${repo}`;
+        const removed = analysisCache.invalidateByRepoUrl(repoUrl);
+        console.log(`🗑️ Repository deleted event invalidated ${removed} cache entries for ${repoUrl}`);
+      }
+    }
+    return res.json({ success: true, message: 'Repository event processed.' });
+  }
+
   if (event === 'pull_request_review_comment') {
     if (payload.action === 'resolved') {
       const repoName = payload.repository?.full_name;
@@ -1695,7 +1719,12 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     }
 
     const action = payload.action;
-    if (action === 'opened' || action === 'synchronize') {
+    const VALID_PR_ACTIONS = ['opened', 'synchronize', 'reopened'];
+    if (!VALID_PR_ACTIONS.includes(action) && action !== 'closed') {
+      return res.status(400).json({ error: `Unsupported pull_request action: ${action}` });
+    }
+
+    if (action === 'opened' || action === 'synchronize' || action === 'reopened') {
       const pullNumber = payload.pull_request.number;
       const headSha = payload.pull_request.head.sha;
       const owner = payload.repository.owner.login;
@@ -1809,6 +1838,22 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   return res.json({ success: true, message: 'Webhook received.' });
+});
+
+// ≡ƒƒó Route: Notifications endpoint for review notification preferences
+app.post('/api/notifications', requireApiKey, requireJsonContentType, notificationsLimiter, async (req, res) => {
+  const { email, repoUrl, events } = req.body;
+  if (email && typeof email !== 'string') {
+    return res.status(400).json({ error: 'Invalid email format.' });
+  }
+  if (events && !Array.isArray(events)) {
+    return res.status(400).json({ error: 'Events must be an array.' });
+  }
+  return res.json({ success: true, message: 'Notification preferences updated.' });
+});
+
+app.get('/api/notifications', requireApiKey, notificationsLimiter, async (req, res) => {
+  return res.json({ success: true, notifications: [] });
 });
 
 // ≡ƒƒó Route: Create GitHub Issue automatically for Code Reviews
