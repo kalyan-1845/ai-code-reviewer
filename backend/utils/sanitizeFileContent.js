@@ -1,12 +1,17 @@
 import { DANGEROUS_PHRASES } from '../shared/dangerousPhrases.js';
 
+const NEUTRALIZATION_RULES = DANGEROUS_PHRASES.map((pattern, i) => ({
+  pattern,
+  regex: new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+  replacement: `[INSTRUCTION_${i}_NEUTRALIZED]`,
+}));
+
 export function sanitizeFileContent(content) {
   if (typeof content !== 'string') return '';
   let sanitized = content;
-  DANGEROUS_PHRASES.forEach((pattern, i) => {
-    const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    sanitized = sanitized.replace(regex, `[INSTRUCTION_${i}_NEUTRALIZED]`);
-  });
+  for (const rule of NEUTRALIZATION_RULES) {
+    sanitized = sanitized.replace(rule.regex, rule.replacement);
+  }
   const lines = sanitized.split('\n');
   const truncatedLines = lines.map(line => line.slice(0, 500));
   const wrapped = truncatedLines.join('\n');
@@ -16,10 +21,10 @@ export function sanitizeFileContent(content) {
 export function scanFileContentForWarnings(content) {
   if (typeof content !== 'string') return [];
   const warnings = [];
-  for (const pattern of DANGEROUS_PHRASES) {
-    const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    if (regex.test(content)) {
-      warnings.push(`File contains potentially malicious content matching: "${pattern}"`);
+  for (const rule of NEUTRALIZATION_RULES) {
+    rule.regex.lastIndex = 0;
+    if (rule.regex.test(content)) {
+      warnings.push(`File contains potentially malicious content matching: "${rule.pattern}"`);
     }
   }
   return warnings;
