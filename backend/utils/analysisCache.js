@@ -48,7 +48,25 @@ class AnalysisCache {
     this._locks = new Map();
     this._repoUrlIndex = new Map();
     this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0 };
-    this._startSweeper();
+    this._initLock = null;
+    this._initialized = false;
+  }
+
+  async init() {
+    if (this._initialized) return;
+    if (this._initLock) {
+      await this._initLock;
+      return;
+    }
+    let resolveLock;
+    this._initLock = new Promise(resolve => { resolveLock = resolve; });
+    try {
+      this._startSweeper();
+      this._initialized = true;
+    } finally {
+      resolveLock();
+      this._initLock = null;
+    }
   }
 
   /**
@@ -85,6 +103,12 @@ class AnalysisCache {
   /**
    * Retrieve a cached analysis result if it exists and hasn't expired.
    */
+  async _ensureInit() {
+    if (!this._initialized) {
+      await this.init();
+    }
+  }
+
   get(key) {
     const entry = this.cache.get(key);
     if (!entry) {
@@ -166,6 +190,7 @@ class AnalysisCache {
    * Uses per-key locks to prevent duplicate fetches (thundering herd mitigation).
    */
   async getOrSet(key, fetcher, repoUrl) {
+    await this._ensureInit();
     const cached = this.get(key);
     if (cached) return cached;
     let lock = this._locks.get(key);

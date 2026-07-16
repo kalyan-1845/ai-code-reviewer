@@ -63,6 +63,8 @@ const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(pars
 const ANALYSIS_CACHE_MOCK_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 120)(parseInt(process.env.ANALYSIS_CACHE_MOCK_TTL_SECONDS || '120', 10)) * 1000;
 const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, ANALYSIS_CACHE_MOCK_TTL_MS);
 const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
+analysisCache.init();
+responseCache.init();
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
@@ -1565,6 +1567,11 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
 
   const event = req.headers['x-github-event'];
   const payload = req.body;
+
+  // Respond 200 OK to ping events immediately without any processing (#2595)
+  if (event === 'ping') {
+    return res.json({ success: true, message: 'ping received' });
+  }
 
   if (!event || typeof event !== 'string') {
     return res.status(400).json({ error: 'Missing x-github-event header.' });

@@ -90,6 +90,8 @@ LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 ANALYSIS_TIMEOUT_SECONDS = float(os.getenv("ANALYSIS_TIMEOUT_SECONDS", "300"))
 # Maximum seconds per individual batch during analysis (#2173)
 BATCH_TIMEOUT_SECONDS = float(os.getenv("BATCH_TIMEOUT_SECONDS", "60"))
+# Maximum seconds for the /review-diff endpoint to complete before 504 (#2594)
+REVIEW_DIFF_TIMEOUT_SECONDS = float(os.getenv("REVIEW_DIFF_TIMEOUT_SECONDS", "60"))
 # Maximum number of Groq batch requests to run concurrently during /analyze.
 # Bounds fan-out so large repositories don't blow past Groq's rate limits. (#1675)
 GROQ_CONCURRENCY_LIMIT = int(os.getenv("GROQ_CONCURRENCY_LIMIT", "10"))
@@ -1195,9 +1197,9 @@ async def review_diff(request: ReviewDiffRequest, raw_request: Request):
 
     print(f"📡 Forwarding PR diff reviews to Groq using model: {groq_model}")
 
-    # Overall timeout mirroring /analyze to prevent unbounded resource consumption
+    # Overall timeout specific to review-diff to prevent long-running reviews (#2594)
     try:
-        async with asyncio.timeout(ANALYSIS_TIMEOUT_SECONDS):
+        async with asyncio.timeout(REVIEW_DIFF_TIMEOUT_SECONDS):
             for file in files_to_review:
                 # Stop processing if the client has disconnected
                 if await raw_request.is_disconnected():
@@ -1281,7 +1283,7 @@ If no issues are found, reply with: {{ "reviews": [] }}"""
                 except Exception as e:
                     print(f"⚠️ Error reviewing file {file.path} on Groq: {sanitize_error(str(e), api_key)}")
     except asyncio.TimeoutError:
-        print(f"⚠️ review-diff timed out after {int(ANALYSIS_TIMEOUT_SECONDS)}s, returning partial results")
+        print(f"⚠️ review-diff timed out after {int(REVIEW_DIFF_TIMEOUT_SECONDS)}s, returning partial results")
 
     result = {"comments": comments}
     if truncated:

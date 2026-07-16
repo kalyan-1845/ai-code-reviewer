@@ -1,6 +1,9 @@
 const GITHUB_API_BASE = 'https://api.github.com';
 const MAX_ANNOTATIONS_PER_REQUEST = 50;
 
+const ALLOWED_CONCLUSIONS = ['action_required', 'cancelled', 'failure', 'neutral', 'success', 'skipped', 'timed_out'];
+const ALLOWED_STATUSES = ['queued', 'in_progress', 'completed'];
+
 function severityToGitHubLevel(severity) {
   const levelMap = {
     error: 'failure',
@@ -37,6 +40,16 @@ async function createCheckRun(octokit, owner, repo, sha, findings) {
   if (!findings || findings.length === 0) {
     console.log('No findings to report as check run');
     return null;
+  }
+
+  // Validate findings against allowed custom status ranges (#2596)
+  for (const finding of findings) {
+    if (finding.conclusion && !ALLOWED_CONCLUSIONS.includes(finding.conclusion)) {
+      throw new Error(`Invalid conclusion: "${finding.conclusion}". Must be one of: ${ALLOWED_CONCLUSIONS.join(', ')}`);
+    }
+    if (finding.status && !ALLOWED_STATUSES.includes(finding.status)) {
+      throw new Error(`Invalid status: "${finding.status}". Must be one of: ${ALLOWED_STATUSES.join(', ')}`);
+    }
   }
 
   const annotations = formatAnnotations(findings);
