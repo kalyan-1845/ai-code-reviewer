@@ -1411,7 +1411,8 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
   }
 
-  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
+  const timestamp = req.headers['x-hub-request-timestamp'];
+  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret, timestamp)) {
     console.warn('Γ¥î Webhook signature verification failed');
     return res.status(401).json({ error: 'Invalid webhook signature' });
   }
@@ -2440,7 +2441,80 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
 
 });
 
+// ≡ƒƒó Route: Config endpoint — update application settings with input validation
+app.post('/api/config', requireApiKey, requireJsonContentType, async (req, res) => {
+  const { defaultModel, maxTokens, temperature, defaultLanguage } = req.body;
+
+  const ALLOWED_LANGUAGES = ['English', 'Spanish', 'French', 'German', 'Chinese', 'Japanese', 'Hindi'];
+
+  if (defaultModel !== undefined) {
+    if (typeof defaultModel !== 'string' || !ALLOWED_ANALYSIS_MODELS.includes(defaultModel)) {
+      return res.status(400).json({ error: `Invalid defaultModel. Must be one of: ${ALLOWED_ANALYSIS_MODELS.join(', ')}` });
+    }
+  }
+
+  if (maxTokens !== undefined) {
+    const max = parseInt(maxTokens, 10);
+    if (!Number.isFinite(max) || max < 1 || max > 32768) {
+      return res.status(400).json({ error: 'maxTokens must be an integer between 1 and 32768.' });
+    }
+  }
+
+  if (temperature !== undefined) {
+    const t = parseFloat(temperature);
+    if (!Number.isFinite(t) || t < 0 || t > 2) {
+      return res.status(400).json({ error: 'temperature must be a number between 0 and 2.' });
+    }
+  }
+
+  if (defaultLanguage !== undefined) {
+    if (typeof defaultLanguage !== 'string' || !ALLOWED_LANGUAGES.includes(defaultLanguage)) {
+      return res.status(400).json({ error: `Invalid defaultLanguage. Must be one of: ${ALLOWED_LANGUAGES.join(', ')}` });
+    }
+  }
+
+  return res.json({ success: true, message: 'Config updated successfully.' });
+});
+
+// ≡ƒƒó Route: Server-Sent Events stream for real-time updates
+// Clients are tracked in an array and cleaned up on disconnect.
+const sseClients = [];
+app.get('/api/events', requireApiKey, (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write('data: {"type":"connected"}\n\n');
+
+  const client = { id: Date.now(), res };
+  sseClients.push(client);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 30000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    const idx = sseClients.indexOf(client);
+    if (idx !== -1) {
+      sseClients.splice(idx, 1);
+    }
+  });
+});
+
 app.get('/health', (req, res) => {
+  if (!serverReady) {
+    return res.status(503).json({ status: 'starting_up', timestamp: new Date().toISOString() });
+  }
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/health', requireApiKey, (req, res) => {
   if (!serverReady) {
     return res.status(503).json({
       status: 'starting_up',
@@ -2458,7 +2532,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/api/health/circuit-breaker', (req, res) => {
+app.get('/api/health/circuit-breaker', requireApiKey, (req, res) => {
   res.json({
     ...reviewQueue.getCircuitState(),
     timestamp: new Date().toISOString(),
