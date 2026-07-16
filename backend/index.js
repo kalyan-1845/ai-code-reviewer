@@ -25,7 +25,8 @@ import { analyzeComplexity } from './utils/complexityAnalyzer.js';
 import { deleteFolderRecursive, getFolderSize } from './utils/fileHelper.js';
 import { verifyWebhookSignature } from './utils/signatureVerifier.js';
 import ReviewQueue from './utils/reviewQueue.js';
-const reviewQueue = new ReviewQueue();
+const WEBHOOK_MAX_RETRIES = ((n) => Number.isFinite(n) && n >= 0 ? n : 3)(parseInt(process.env.WEBHOOK_MAX_RETRIES || '3', 10));
+const reviewQueue = new ReviewQueue(undefined, undefined, undefined, WEBHOOK_MAX_RETRIES);
 import { scanFileContentForWarnings } from './utils/sanitizeFileContent.js';
 import { DANGEROUS_PHRASES, HOMOGLYPH_MAP } from './shared/dangerousPhrases.js';
 import { verifyPort } from './utils/envVerifier.js';
@@ -1442,6 +1443,12 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   if (event === 'pull_request') {
+    // Validate webhook URL is from github.com
+    const repoUrl = payload.repository?.html_url;
+    if (!repoUrl || typeof repoUrl !== 'string' || !repoUrl.startsWith('https://github.com/')) {
+      console.warn(`Rejected webhook from non-github.com URL: ${repoUrl}`);
+      return res.status(400).json({ error: 'Webhook repository must be on github.com.' });
+    }
     let deliveryId = req.headers['x-github-delivery'];
     if (!deliveryId || typeof deliveryId !== 'string') {
       return res.status(400).json({ error: 'Missing x-github-delivery header.' });

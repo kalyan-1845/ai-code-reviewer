@@ -47,8 +47,9 @@ class AnalysisCache {
     this.pending = new Map();
     this._locks = new Map();
     this._repoUrlIndex = new Map();
-    this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0 };
-    this._startSweeper();
+    this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0, perRepoMisses: {} };
+    const sweeperInterval = ((n) => Number.isFinite(n) && n > 0 ? n : 60000)(parseInt(process.env.CACHE_SWEEP_INTERVAL_MS || '60000', 10));
+    this._startSweeper(sweeperInterval);
   }
 
   /**
@@ -85,10 +86,14 @@ class AnalysisCache {
   /**
    * Retrieve a cached analysis result if it exists and hasn't expired.
    */
-  get(key) {
+  get(key, repoUrl) {
     const entry = this.cache.get(key);
     if (!entry) {
       this.stats.misses++;
+      if (repoUrl) {
+        const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+        this.stats.perRepoMisses[normalized] = (this.stats.perRepoMisses[normalized] || 0) + 1;
+      }
       return null;
     }
 
@@ -99,6 +104,10 @@ class AnalysisCache {
       this.cache.delete(key);
       this.stats.absoluteExpiries++;
       this.stats.misses++;
+      if (repoUrl) {
+        const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+        this.stats.perRepoMisses[normalized] = (this.stats.perRepoMisses[normalized] || 0) + 1;
+      }
       console.log(`⏰ Analysis cache entry reached absolute max lifetime for key ${key.slice(0, 8)}...`);
       return null;
     }
@@ -108,6 +117,10 @@ class AnalysisCache {
       this.cache.delete(key);
       this.stats.slidingExpiries++;
       this.stats.misses++;
+      if (repoUrl) {
+        const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+        this.stats.perRepoMisses[normalized] = (this.stats.perRepoMisses[normalized] || 0) + 1;
+      }
       console.log(`⏰ Analysis cache sliding TTL expired for key ${key.slice(0, 8)}...`);
       return null;
     }
@@ -166,7 +179,7 @@ class AnalysisCache {
    * Uses per-key locks to prevent duplicate fetches (thundering herd mitigation).
    */
   async getOrSet(key, fetcher, repoUrl) {
-    const cached = this.get(key);
+    const cached = this.get(key, repoUrl);
     if (cached) return cached;
     let lock = this._locks.get(key);
     if (!lock) {
@@ -175,7 +188,7 @@ class AnalysisCache {
     }
 
     return lock.acquire(async () => {
-      const recheck = this.get(key);
+      const recheck = this.get(key, repoUrl);
       if (recheck) {
         this.stats.dedupSaves++;
         return recheck;
@@ -318,6 +331,7 @@ class AnalysisCache {
       maxEntries: this.maxEntries,
       hits: this.stats.hits,
       misses: this.stats.misses,
+      perRepoMisses: { ...this.stats.perRepoMisses },
       mockCount,
       avgAgeMs: this.cache.size > 0 ? Math.round(totalAge / this.cache.size) : 0,
       evictions: this.stats.evictions,
