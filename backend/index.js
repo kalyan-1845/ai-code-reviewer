@@ -40,6 +40,7 @@ import mongoose from 'mongoose';
 import Analytics from './models/Analytics.js';
 import Session, { estimateSessionSize } from './models/Session.js';
 import { RoiMetrics } from './models/RoiMetrics.js';
+import NotificationSettings from './models/NotificationSettings.js';
 import { connectDatabase, isDatabaseConnected, ensureConnection, closeDatabase } from './config/db.js';
 
 dotenv.config();
@@ -1125,6 +1126,7 @@ const prSummary = {
           try {
             await Analytics.create({
               sessionId,
+              clientId: req.clientId || 'unknown',
               repoUrl,
               repoName,
               filesReviewedCount: files.length,
@@ -1542,12 +1544,93 @@ app.get('/api/roi', async (req, res) => {
   }
 });
 
+// Route: Notification Settings — save with input validation
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SLACK_URL_RE = /^https:\/\/(hooks\.slack\.com|slack\.com)\//;
+
+app.post('/api/notification-settings', requireApiKey, requireJsonContentType, async (req, res) => {
+  try {
+    await ensureConnection();
+    const { email, slackWebhookUrl, onReviewComplete, onSecurityFinding, onError } = req.body;
+
+    if (email !== undefined && email !== '') {
+      if (typeof email !== 'string' || email.length > 254 || !EMAIL_RE.test(email)) {
+        return res.status(400).json({ error: 'Invalid email address format.' });
+      }
+    }
+
+    if (slackWebhookUrl !== undefined && slackWebhookUrl !== '') {
+      if (typeof slackWebhookUrl !== 'string' || slackWebhookUrl.length > 512 || !SLACK_URL_RE.test(slackWebhookUrl)) {
+        return res.status(400).json({ error: 'Invalid Slack webhook URL. Must be a hooks.slack.com or slack.com URL.' });
+      }
+    }
+
+    if (onReviewComplete !== undefined && typeof onReviewComplete !== 'boolean') {
+      return res.status(400).json({ error: 'onReviewComplete must be a boolean.' });
+    }
+    if (onSecurityFinding !== undefined && typeof onSecurityFinding !== 'boolean') {
+      return res.status(400).json({ error: 'onSecurityFinding must be a boolean.' });
+    }
+    if (onError !== undefined && typeof onError !== 'boolean') {
+      return res.status(400).json({ error: 'onError must be a boolean.' });
+    }
+
+    const update = {};
+    if (email !== undefined) update.email = email;
+    if (slackWebhookUrl !== undefined) update.slackWebhookUrl = slackWebhookUrl;
+    if (onReviewComplete !== undefined) update.onReviewComplete = onReviewComplete;
+    if (onSecurityFinding !== undefined) update.onSecurityFinding = onSecurityFinding;
+    if (onError !== undefined) update.onError = onError;
+    update.updatedAt = new Date();
+
+    const settings = await NotificationSettings.findOneAndUpdate(
+      { clientId: req.clientId },
+      { $set: update },
+      { upsert: true, new: true, runValidators: true }
+    ).lean();
+
+    return res.json({ success: true, settings });
+  } catch (err) {
+    console.error('Error saving notification settings:', err.message);
+    return res.status(500).json({ error: 'Failed to save notification settings.' });
+  }
+});
+
+app.get('/api/notification-settings', requireApiKey, async (req, res) => {
+  try {
+    await ensureConnection();
+    const settings = await NotificationSettings.findOne({ clientId: req.clientId }).lean();
+    return res.json({
+      success: true,
+      settings: settings || {
+        email: '',
+        slackWebhookUrl: '',
+        onReviewComplete: false,
+        onSecurityFinding: false,
+        onError: true,
+      },
+    });
+  } catch (err) {
+    console.error('Error fetching notification settings:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch notification settings.' });
+  }
+});
+
 // 🚀 Route: GitHub Webhook Receiver for automated Pull Request Reviews
 app.post('/api/webhook', webhookLimiter, async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error('Γ¥î WEBHOOK_SECRET not configured');
+    console.error('WEBHOOK_SECRET not configured');
     return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
+  }
+
+  // Validate JSON body structure before processing
+  if (!req.rawBody || !Buffer.isBuffer(req.rawBody) || req.rawBody.length === 0) {
+    return res.status(400).json({ error: 'Invalid webhook payload: empty body.' });
+  }
+  const payload = req.body;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return res.status(400).json({ error: 'Invalid webhook payload: expected a JSON object.' });
   }
 
   const signature = req.headers['x-hub-signature-256'];
@@ -1556,18 +1639,13 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
-    console.warn('Γ¥î Webhook signature verification failed');
+    console.warn('Webhook signature verification failed');
     return res.status(401).json({ error: 'Invalid webhook signature' });
   }
 
   const event = req.headers['x-github-event'];
-  const payload = req.body;
-
   if (!event || typeof event !== 'string') {
     return res.status(400).json({ error: 'Missing x-github-event header.' });
-  }
-  if (!payload || typeof payload !== 'object') {
-    return res.status(400).json({ error: 'Invalid webhook payload.' });
   }
   const validEvents = ['pull_request'];
   if (!validEvents.includes(event)) {
@@ -1597,7 +1675,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       }
     }
     if (isDuplicate === 0) {
-      console.log(`ΓÅ¡∩╕Å Skipping duplicate webhook delivery: ${deliveryId}`);
+      console.log(`Skipping duplicate webhook delivery: ${deliveryId}`);
       return res.json({ success: true, message: 'Webhook received (duplicate skipped).' });
     }
     if (redisClient) {
@@ -1627,7 +1705,6 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         const mapKey = `${shaDedupKey}:${headSha}`;
         shaAlreadyReviewed = shaDedupMemoryMap.has(mapKey) ? 1 : 0;
         if (!shaAlreadyReviewed) {
-          // Enforce max size cap with oldest-entry eviction
           if (shaDedupMemoryMap.size >= SHA_DEDUP_MAX_SIZE) {
             const oldestKey = shaDedupMemoryMap.keys().next().value;
             if (oldestKey !== undefined) {
@@ -1638,11 +1715,11 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         }
       }
       if (shaAlreadyReviewed) {
-        console.log(`ΓÅ¡∩╕Å Already reviewed commit ${headSha.substring(0,7)} for PR #${pullNumber}`);
+        console.log(`Already reviewed commit ${headSha.substring(0,7)} for PR #${pullNumber}`);
         return res.json({ success: true, message: 'Webhook received (duplicate SHA skipped).' });
       }
-      
-      console.log(`≡ƒôí GitHub Webhook received: PR #${pullNumber} ${action} (${headSha.substring(0,7)}) in ${owner}/${repo}`);
+
+      console.log(`GitHub Webhook received: PR #${pullNumber} ${action} (${headSha.substring(0,7)}) in ${owner}/${repo}`);
 
       if (reviewQueue._queues.size >= reviewQueue._maxQueues) {
         if (redisClient) {
@@ -1675,7 +1752,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       }
 
       if (currentCount > REPO_MAX_REQUESTS) {
-        console.warn(`ΓÜá∩╕Å Rate limit exceeded for repository ${repoKey}`);
+        console.warn(`Rate limit exceeded for repository ${repoKey}`);
         if (redisClient) {
           await redisClient.srem(shaDedupKey, headSha);
         } else {
@@ -1684,31 +1761,21 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         return res.status(429).json({ error: 'Too many requests for this repository. Try again later.' });
       }
 
-      const enqueuePromise = reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
+      // Enqueue review asynchronously — handler responds immediately without
+      // awaiting the queue processing, making git operations truly non-blocking
+      reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
         try {
           await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
         } catch (error) {
-          console.error(`Γ¥î Webhook review failed for ${headSha}:`, error.message);
+          console.error(`Webhook review failed for ${headSha}:`, error.message);
           if (redisClient) {
             await redisClient.srem(shaDedupKey, headSha);
           } else {
             shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
           }
         }
-      });
-      if (!enqueuePromise) {
-        // Revert dedup if enqueue failed synchronously
-        if (redisClient) {
-          await redisClient.srem(shaDedupKey, headSha);
-        } else {
-          shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
-        }
-        return res.status(429).json({ error: 'Review queue full. Try again later.' });
-      }
+      }).catch(() => {});
     } else if (action === 'closed') {
-      // Covers both merged and closed-without-merging PRs. Clear the tracked
-      // review so a later reopen of this same PR number doesn't try to
-      // supersede a review from a previous, already-finished lifecycle.
       const pullNumber = payload.pull_request.number;
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
