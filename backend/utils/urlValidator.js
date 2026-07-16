@@ -25,10 +25,17 @@ const METADATA_IPS = new Set([
   '100.100.100.204',
 ]);
 
-function isPrivateIP(ip) {
+export function isPrivateIP(ip) {
+  if (typeof ip !== 'string') return false;
   if (METADATA_IPS.has(ip)) return true;
   if (net.isIPv6(ip)) {
     const normalized = ip.toLowerCase();
+    if (normalized.startsWith('::ffff:')) {
+      const ipv4 = ip.slice(7);
+      if (net.isIPv4(ipv4)) {
+        return isPrivateIP(ipv4);
+      }
+    }
     if (normalized === '::1') return true;
     if (normalized.startsWith('fe80:')) return true;
     if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;

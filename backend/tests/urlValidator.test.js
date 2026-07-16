@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidRepoUrl, parseRepoUrl } from '../utils/urlValidator.js';
+import { isValidRepoUrl, parseRepoUrl, isSafeUrl, isPrivateIP } from '../utils/urlValidator.js';
 
 test('isValidRepoUrl should accept valid GitHub URLs', () => {
   assert.equal(isValidRepoUrl('https://github.com/owner/repo'), true);
@@ -74,4 +74,10 @@ test('parseRepoUrl returns null for URLs with multiple trailing slashes', () => 
 test('parseRepoUrl should return null for URLs with extra path segments', () => {
   assert.equal(parseRepoUrl('https://github.com/owner/repo/pull/1'), null);
   assert.equal(parseRepoUrl('https://github.com/owner/repo/tree/main/src'), null);
+});
+
+test('isPrivateIP should correctly handle IPv4-mapped IPv6 addresses', () => {
+  assert.equal(isPrivateIP('::ffff:127.0.0.1'), true, '::ffff:127.0.0.1 is loopback');
+  assert.equal(isPrivateIP('::FFFF:192.168.0.1'), true, '::FFFF:192.168.0.1 is private');
+  assert.equal(isPrivateIP('::ffff:8.8.8.8'), false, '::ffff:8.8.8.8 is public');
 });
