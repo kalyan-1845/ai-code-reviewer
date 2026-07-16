@@ -628,6 +628,8 @@ export default function Dashboard() {
   const [useRag, setUseRag] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatHistoryRef = useRef<ChatMessage[]>(chatHistory);
+  chatHistoryRef.current = chatHistory;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -661,11 +663,10 @@ export default function Dashboard() {
     const userMessage = chatInput;
     setChatInput("");
 
-    // Build the updated history array locally FIRST so it includes the user's
-    // current message when sent to the API, rather than relying on the stale
-    // chatHistory closure value (which would be one message behind).
+    // Use chatHistoryRef to avoid stale closure — the ref always holds the latest
+    // Zustand state, so rapid successive sends never drop messages.
     const updatedHistory = truncateChatHistory([
-      ...(chatHistory || []),
+      ...(chatHistoryRef.current || []),
       { role: "user" as const, content: userMessage }
     ]);
     setChatHistory(updatedHistory);
