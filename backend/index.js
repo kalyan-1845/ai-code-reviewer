@@ -632,6 +632,57 @@ const shaDedupCleanupTimer = setInterval(() => {
 }, SHA_DEDUP_CLEANUP_INTERVAL);
 shaDedupCleanupTimer.unref();
 
+// Schema definition for validating analysis output format
+function validateAnalysisOutput(result) {
+  if (!result || typeof result !== 'object') {
+    return { valid: false, error: 'Analysis result must be a non-null object' };
+  }
+  if (result.fileReviews !== undefined) {
+    if (typeof result.fileReviews !== 'object' || result.fileReviews === null) {
+      return { valid: false, error: 'fileReviews must be a non-null object' };
+    }
+    for (const [fileName, review] of Object.entries(result.fileReviews)) {
+      if (typeof review !== 'object' || review === null) {
+        return { valid: false, error: `fileReviews.${fileName} must be a non-null object` };
+      }
+      for (const category of ['bugs', 'security', 'optimization', 'styling']) {
+        if (review[category] !== undefined) {
+          if (!Array.isArray(review[category])) {
+            return { valid: false, error: `fileReviews.${fileName}.${category} must be an array` };
+          }
+          for (let i = 0; i < review[category].length; i++) {
+            const item = review[category][i];
+            if (typeof item !== 'object' || item === null) {
+              return { valid: false, error: `fileReviews.${fileName}.${category}[${i}] must be a non-null object` };
+            }
+            if (item.type !== undefined && typeof item.type !== 'string') {
+              return { valid: false, error: `fileReviews.${fileName}.${category}[${i}].type must be a string` };
+            }
+            if (item.line !== undefined && typeof item.line !== 'number') {
+              return { valid: false, error: `fileReviews.${fileName}.${category}[${i}].line must be a number` };
+            }
+            if (item.description !== undefined && typeof item.description !== 'string') {
+              return { valid: false, error: `fileReviews.${fileName}.${category}[${i}].description must be a string` };
+            }
+            if (item.suggestion !== undefined && typeof item.suggestion !== 'string') {
+              return { valid: false, error: `fileReviews.${fileName}.${category}[${i}].suggestion must be a string` };
+            }
+          }
+        }
+      }
+    }
+  }
+  return { valid: true };
+}
+
+const COMMENT_MAX_LENGTH = 65536;
+
+function truncateComment(text, maxLen = COMMENT_MAX_LENGTH) {
+  if (!text || typeof text !== 'string') return text;
+  if (text.length <= maxLen) return text;
+  return text.substring(0, maxLen - 3) + '...';
+}
+
 function cleanupTimers() {
   clearInterval(cacheMetricsTimer);
   clearInterval(aiEngineHealthTimer);
@@ -873,13 +924,18 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
 
           if (aiResponse.ok) {
             const resData = await aiResponse.json();
+            const schemaCheck = validateAnalysisOutput(resData);
+            if (!schemaCheck.valid) {
+              console.warn(`⚠️ AI Engine returned malformed analysis output: ${schemaCheck.error}`);
+              throw new Error(`AI engine response validation failed: ${schemaCheck.error}`);
+            }
             resData._mock = false;
             return resData;
           } else {
             throw new Error('AI engine responded with error');
           }
         } catch (err) {
-          console.warn('ΓÜá∩╕Å FastAPI engine not running, falling back to local Express review handler');
+          console.warn('⚠️ FastAPI engine not running, falling back to local Express review handler');
           const mockRes = mockAIReview(files, model);
           mockRes._mock = true;
           mockRes._mockWarning = true;
@@ -1263,6 +1319,10 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
 
       if (aiResponse.ok) {
         const resData = await aiResponse.json();
+        const schemaCheck = validateAnalysisOutput(resData);
+        if (!schemaCheck.valid) {
+          throw new Error(`AI engine response validation failed: ${schemaCheck.error}`);
+        }
         reviewResult = resData;
       } else if (aiResponse.status === 401) {
         const errData = await aiResponse.json().catch(() => ({}));
@@ -1558,6 +1618,33 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   const validEvents = ['pull_request', 'push', 'ping', 'issue_comment', 'pull_request_review_comment'];
   if (!validEvents.includes(event)) {
     return res.status(400).json({ error: `Unsupported webhook event: ${event}` });
+  }
+
+  // Validate webhook sender has push/collaborator permissions on the repository
+  const sender = payload.sender;
+  if (sender && sender.login && payload.repository?.full_name) {
+    try {
+      const { data: membership } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+        username: sender.login,
+      });
+      const permitted = ['admin', 'write'];
+      if (!permitted.includes(membership.permission)) {
+        console.warn(`🚫 Webhook sender ${sender.login} has ${membership.permission} permission on ${payload.repository.full_name}; requires admin or write`);
+        return res.status(403).json({ error: 'Webhook sender does not have sufficient permissions on the repository.' });
+      }
+    } catch (permErr) {
+      if (permErr.status === 404) {
+        console.warn(`🚫 Webhook sender ${sender.login} is not a collaborator on ${payload.repository.full_name}`);
+        return res.status(403).json({ error: 'Webhook sender is not a collaborator on this repository.' });
+      }
+      if (permErr.status === 403) {
+        console.warn(`🚫 Cannot verify webhook sender permissions: GITHUB_PAT may lack access to ${payload.repository.full_name}`);
+      } else {
+        console.warn(`⚠️ Error checking webhook sender permissions: ${permErr.message}`);
+      }
+    }
   }
 
   if (event === 'issue_comment') {
@@ -1985,7 +2072,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       commentsToPost.push({
         path: file.path,
         line: f.line,
-        body: `<!-- RepoSage Review Comment -->\n${f.comment}`
+        body: truncateComment(`<!-- RepoSage Review Comment -->\n${f.comment}`)
       });
     });
     if (scanTruncated) {
@@ -1999,7 +2086,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       commentsToPost.push({
         path: file.path,
         line: file.changes[0]?.line || 1,
-        body: `<!-- RepoSage Review Comment -->\n⚠️ **Prompt Injection Warning:** ${warning}`
+        body: truncateComment(`<!-- RepoSage Review Comment -->\n⚠️ **Prompt Injection Warning:** ${warning}`)
       });
     });
 
@@ -2048,6 +2135,8 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
               aiCommentsDiscarded++;
               return;
             }
+            // Truncate comment body to max length to avoid GitHub API rejection
+            if (c.body) c.body = truncateComment(c.body);
             // Avoid duplicate comments if secrets scanner already flagged it
             const duplicate = commentsToPost.some(exist => exist.path === c.path && exist.line === c.line);
             if (!duplicate) {

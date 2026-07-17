@@ -440,9 +440,16 @@ class AnalysisCache {
     }
   }
 
-  async loadFromDisk(filePath) {
+  async loadFromDisk(filePath, timeoutMs = 10000) {
     try {
-      const data = JSON.parse(await fs.promises.readFile(filePath, 'utf-8'));
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      let data;
+      try {
+        data = JSON.parse(await fs.promises.readFile(filePath, { encoding: 'utf-8', signal: controller.signal }));
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (data.entries && Array.isArray(data.entries)) {
         for (const entry of data.entries) {
           this.cache.set(entry.key, {
@@ -464,7 +471,9 @@ class AnalysisCache {
       }
       return data.entries ? data.entries.length : 0;
     } catch (err) {
-      if (err.code === 'ENOENT') {
+      if (err.name === 'AbortError') {
+        console.warn(`⏰ Cache load from disk timed out after ${timeoutMs}ms`);
+      } else if (err.code === 'ENOENT') {
         console.log('No persisted cache file found, starting fresh');
       } else {
         console.warn(`⚠️ Failed to load cache from disk: ${err.message}`);

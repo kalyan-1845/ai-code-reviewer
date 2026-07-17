@@ -6,6 +6,14 @@ import { scanSecretsInChanges } from './utils/secretsScanner.js';
 import { globToRegex } from './utils/globToRegex.js';
 import { cleanAndParseJSON, normalizeReviewLineNumber } from './utils/actionUtils.js';
 
+const COMMENT_MAX_LENGTH = 65536;
+
+function truncateComment(text, maxLen = COMMENT_MAX_LENGTH) {
+  if (!text || typeof text !== 'string') return text;
+  if (text.length <= maxLen) return text;
+  return text.substring(0, maxLen - 3) + '...';
+}
+
 import { GitHubProvider } from './providers/GitHubProvider.js';
 import { GitLabProvider } from './providers/GitLabProvider.js';
 
@@ -186,7 +194,7 @@ async function run() {
         // 1. Run local secrets scanner
         const { findings: localSecretIssues, truncated: scanTruncated, totalChanges: scanTotal, skippedReason: scanReason } = scanSecretsInChanges(file.changes);
         for (const issue of localSecretIssues) {
-          const bodyText = `<!-- RepoSage Review Comment -->\n${issue.comment}`;
+          const bodyText = truncateComment(`<!-- RepoSage Review Comment -->\n${issue.comment}`);
           batchComments.push({
             path: file.path,
             line: issue.line,
@@ -264,7 +272,7 @@ If no issues are found, reply with: { "reviews": [] }`;
               const issueLine = normalizeReviewLineNumber(issue.line);
               const changeExists = issueLine !== null && file.changes.some(c => c.line === issueLine);
               if (changeExists) {
-                const bodyText = `<!-- RepoSage Review Comment -->\n${issue.comment}`;
+                const bodyText = truncateComment(`<!-- RepoSage Review Comment -->\n${issue.comment}`);
                 const alreadyFlagged = batchComments.some(c => c.path === file.path && c.line === issueLine && c.body === bodyText);
                 if (!alreadyFlagged) {
                   batchComments.push({
