@@ -24,7 +24,7 @@ test('saveCacheFile creates a cache file without throwing', async () => {
   await withTempDir(async (tmpDir) => {
     const cachePath = path.join(tmpDir, 'my-repo');
     // Should not throw
-    saveCacheFile(cachePath, { 'file1.js': 'hash1' });
+    await saveCacheFile(cachePath, { 'file1.js': 'hash1' });
     // Verify file was created
     const cacheDir = path.join(os.tmpdir(), 'reposage-review-cache');
     const files = await fs.promises.readdir(cacheDir);
@@ -41,7 +41,7 @@ test('saveCacheFile and loadCacheFile round-trip a populated cache', async () =>
       'tests/main.js': 'ghi789',
     };
 
-    saveCacheFile(cachePath, cacheData);
+    await saveCacheFile(cachePath, cacheData);
 
     const loaded = loadCacheFile(cachePath);
     assert.deepEqual(loaded, cacheData, 'loaded cache should match saved cache');
@@ -51,7 +51,7 @@ test('saveCacheFile and loadCacheFile round-trip a populated cache', async () =>
 test('saveCacheFile and loadCacheFile round-trip an empty cache', async () => {
   await withTempDir(async (tmpDir) => {
     const cachePath = path.join(tmpDir, 'empty-repo');
-    saveCacheFile(cachePath, {});
+    await saveCacheFile(cachePath, {});
     const loaded = loadCacheFile(cachePath);
     assert.deepEqual(loaded, {}, 'empty cache should round-trip correctly');
   });
@@ -104,7 +104,7 @@ test('loadCacheFile returns empty object when fs.readFileSync throws', async () 
 
 test('saveCacheFile silently handles write errors without throwing', async () => {
   // Write to an invalid path should not throw
-  const result = saveCacheFile('/nonexistent/readonly/path/repo', { key: 'value' });
+  const result = await saveCacheFile('/nonexistent/readonly/path/repo', { key: 'value' });
   // Function returns void (undefined), no exception should be thrown
   assert.equal(result, undefined);
 });
@@ -121,11 +121,11 @@ test('loadCacheFile returns correct data after multiple saveCacheFile calls', as
   await withTempDir(async (tmpDir) => {
     const cachePath = path.join(tmpDir, 'multi-save-repo');
 
-    saveCacheFile(cachePath, { 'file1.js': 'hash1' });
+    await saveCacheFile(cachePath, { 'file1.js': 'hash1' });
     const first = loadCacheFile(cachePath);
     assert.equal(first['file1.js'], 'hash1');
 
-    saveCacheFile(cachePath, { 'file1.js': 'hash2', 'file2.js': 'hash3' });
+    await saveCacheFile(cachePath, { 'file1.js': 'hash2', 'file2.js': 'hash3' });
     const second = loadCacheFile(cachePath);
     assert.equal(second['file1.js'], 'hash2');
     assert.equal(second['file2.js'], 'hash3');
@@ -136,7 +136,7 @@ test('saveCacheFile produces valid JSON in the cache file', async () => {
   await withTempDir(async (tmpDir) => {
     const cachePath = path.join(tmpDir, 'json-verify-repo');
     const cacheData = { a: 1, b: 'string', c: true, d: null, e: [1, 2, 3] };
-    saveCacheFile(cachePath, cacheData);
+    await saveCacheFile(cachePath, cacheData);
 
     const loaded = loadCacheFile(cachePath);
     assert.deepEqual(loaded, cacheData);

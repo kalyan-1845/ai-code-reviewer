@@ -48,10 +48,10 @@ function loadCacheFile(cachePath) {
   return {};
 }
 
-function saveCacheFile(cachePath, cache) {
+async function saveCacheFile(cachePath, cache) {
   const fullPath = path.join(getCacheDir(cachePath), CACHE_FILENAME);
   try {
-    fs.writeFileSync(fullPath, JSON.stringify(cache, null, 2), 'utf-8');
+    await fs.promises.writeFile(fullPath, JSON.stringify(cache, null, 2), 'utf-8', { signal: AbortSignal.timeout(5000) });
   } catch (err) {
     console.warn(`Failed to save cache file at ${fullPath}: ${err.message}`);
   }
@@ -120,7 +120,7 @@ async function analyzeIncremental(repoPath, baseRef = 'main', allFiles) {
     cacheStatus: 'active',
   };
 
-  saveCacheFile(repoPath, result.currentCache);
+  await saveCacheFile(repoPath, result.currentCache);
 
   return {
     ...summary,

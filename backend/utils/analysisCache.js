@@ -433,6 +433,16 @@ class AnalysisCache {
       }
     }
   }
+
+  /**
+   * Reset hit/miss/dedup stats (used on interval rollover to track per-window
+   * cache performance without accumulating from process start).
+   */
+  resetStats() {
+    this.stats.hits = 0;
+    this.stats.misses = 0;
+    this.stats.dedupSaves = 0;
+  }
 }
 
 export default AnalysisCache;

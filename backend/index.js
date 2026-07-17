@@ -615,6 +615,7 @@ const SHA_DEDUP_MAX_SIZE = 10000;
 const cacheMetricsTimer = setInterval(() => {
   const stats = analysisCache.getStats();
   console.log(`[cache] entries=${stats.size}/${stats.maxEntries} mock=${stats.mockCount} avgAge=${stats.avgAgeMs}ms hitRate=${stats.hitRate}`);
+  analysisCache.resetStats();
 }, 5 * 60 * 1000);
 cacheMetricsTimer.unref();
 
@@ -1609,24 +1610,16 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         console.log(`Manual trigger /ai-review detected on PR #${pullNumber}`);
         
         try {
-          const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
-          const { data: prData } = await octokit.rest.pulls.get({
-            owner,
-            repo,
-            pull_number: pullNumber
-          });
-          const headSha = prData.head.sha;
-          
           const reviewKey = `${owner}/${repo}`;
-          reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber, headSha }, async (item) => {
-            await runWebhookReview(item.owner, item.repo, item.pullNumber, item.headSha);
+          reviewQueue.enqueue(reviewKey, { owner, repo, pullNumber }, async (item) => {
+            await runWebhookReview(item.owner, item.repo, item.pullNumber, null);
           }).catch(error => {
             console.error(`❌ Webhook review failed for manual trigger on PR #${pullNumber}:`, error.message);
           });
           
           return res.json({ message: "Review queued via manual trigger" });
         } catch (err) {
-          console.error("Error fetching PR data for manual trigger:", err.message);
+          console.error("Error queueing manual review:", err.message);
           return res.status(500).json({ error: "Failed to queue manual review" });
         }
       }
@@ -1661,7 +1654,6 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         
         if (aiResponse.ok) {
           const result = await aiResponse.json();
-          const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
           
           await octokit.rest.pulls.createReplyForReviewComment({
             owner,
@@ -1984,6 +1976,13 @@ app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
 // 🚀 Helper to execute Webhook PR review logic
 async function runWebhookReview(owner, repo, pullNumber, headSha) {
   const token = process.env.GITHUB_PAT;
+  const MAX_COMMENT_BODY_LENGTH = 65535;
+  function truncateCommentBody(body) {
+    if (typeof body === 'string' && body.length > MAX_COMMENT_BODY_LENGTH) {
+      return body.substring(0, MAX_COMMENT_BODY_LENGTH);
+    }
+    return body;
+  }
   if (!token) {
     console.error(`[CRITICAL] GITHUB_PAT not configured. Webhook review for ${owner}/${repo}#${pullNumber} (SHA: ${headSha}) will fail. Dedup marker will be cleaned up for retry.`);
     throw new Error(
@@ -1994,8 +1993,6 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   }
 
   try {
-
-  const octokit = new Octokit({ auth: token });
 
   // Validate that the repository exists before proceeding (#2600)
   try {
@@ -2106,7 +2103,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       commentsToPost.push({
         path: file.path,
         line: f.line,
-        body: `<!-- RepoSage Review Comment -->\n${f.comment}`
+        body: truncateCommentBody(`<!-- RepoSage Review Comment -->\n${f.comment}`)
       });
     });
     if (scanTruncated) {
@@ -2120,7 +2117,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       commentsToPost.push({
         path: file.path,
         line: file.changes[0]?.line || 1,
-        body: `<!-- RepoSage Review Comment -->\n⚠️ **Prompt Injection Warning:** ${warning}`
+        body: truncateCommentBody(`<!-- RepoSage Review Comment -->\n⚠️ **Prompt Injection Warning:** ${warning}`)
       });
     });
 
@@ -2172,7 +2169,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
             // Avoid duplicate comments if secrets scanner already flagged it
             const duplicate = commentsToPost.some(exist => exist.path === c.path && exist.line === c.line);
             if (!duplicate) {
-              commentsToPost.push(c);
+              commentsToPost.push({ path: c.path, line: c.line, body: truncateCommentBody(c.body) });
             }
           });
           if (aiCommentsDiscarded > 0) {
