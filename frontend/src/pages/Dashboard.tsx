@@ -116,6 +116,7 @@ export interface BackendResponse {
   filesReviewedCount: number;
   analysis: AnalysisData;
   sessionId?: string;
+  sessionOwnerToken?: string;
   sessionPersisted?: boolean;
   _mock?: boolean;
   partial_review?: boolean;
@@ -914,6 +915,9 @@ export default function Dashboard() {
       setSessionId(
         data.sessionPersisted === true ? data.sessionId ?? null : null
       );
+      if (data.sessionPersisted && data.sessionOwnerToken) {
+        localStorage.setItem("sessionOwnerToken", data.sessionOwnerToken);
+      }
       persistAuditHistory(data);
       setChatHistory([]);
 
