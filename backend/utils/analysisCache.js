@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * In-memory cache for code analysis results with TTL support.
@@ -394,6 +396,76 @@ class AnalysisCache {
         }
         this.stats.evictions++;
       }
+    }
+  }
+
+  async persist(filePath, timeoutMs = 5000) {
+    const dir = path.dirname(filePath);
+    try {
+      await fs.promises.mkdir(dir, { recursive: true });
+    } catch {
+      // directory may already exist
+    }
+    const snapshot = {
+      timestamp: Date.now(),
+      entries: Array.from(this.cache.entries()).map(([key, entry]) => ({
+        key,
+        result: entry.result,
+        expiresAt: entry.expiresAt,
+        absoluteExpiresAt: entry.absoluteExpiresAt,
+        repoUrl: entry.repoUrl,
+        isMock: entry.isMock,
+      })),
+      stats: { ...this.stats },
+    };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      await fs.promises.writeFile(filePath, JSON.stringify(snapshot), {
+        signal: controller.signal,
+      });
+      console.log(`💾 Persisted ${snapshot.entries.length} cache entries to ${filePath}`);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.warn(`⏰ Cache persist timed out after ${timeoutMs}ms`);
+      } else {
+        console.warn(`⚠️ Cache persist failed: ${err.message}`);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async loadFromDisk(filePath) {
+    try {
+      const data = JSON.parse(await fs.promises.readFile(filePath, 'utf-8'));
+      if (data.entries && Array.isArray(data.entries)) {
+        for (const entry of data.entries) {
+          this.cache.set(entry.key, {
+            result: entry.result,
+            expiresAt: entry.expiresAt,
+            absoluteExpiresAt: entry.absoluteExpiresAt,
+            repoUrl: entry.repoUrl,
+            isMock: entry.isMock,
+          });
+          if (entry.repoUrl) {
+            const normalized = entry.repoUrl.replace(/\/+$/, '').toLowerCase();
+            if (!this._repoUrlIndex.has(normalized)) {
+              this._repoUrlIndex.set(normalized, new Set());
+            }
+            this._repoUrlIndex.get(normalized).add(entry.key);
+          }
+        }
+        console.log(`📂 Loaded ${data.entries.length} cache entries from ${filePath}`);
+      }
+      return data.entries ? data.entries.length : 0;
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        console.log('No persisted cache file found, starting fresh');
+      } else {
+        console.warn(`⚠️ Failed to load cache from disk: ${err.message}`);
+      }
+      return 0;
     }
   }
 }

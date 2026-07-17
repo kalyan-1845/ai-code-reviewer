@@ -60,10 +60,9 @@ const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
-const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
-const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 const ANALYSIS_CACHE_MOCK_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 120)(parseInt(process.env.ANALYSIS_CACHE_MOCK_TTL_SECONDS || '120', 10)) * 1000;
 const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, ANALYSIS_CACHE_MOCK_TTL_MS);
+const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
@@ -431,9 +430,12 @@ function cleanupTempRepos() {
     console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
   }
 }
+const CACHE_PERSIST_PATH = path.join(__dirname, 'temp_cache', 'analysis-cache.json');
+
 async function onShutdown() {
   cleanupTempRepos();
   cleanupTimers();
+  await analysisCache.persist(CACHE_PERSIST_PATH, 5000).catch(() => {});
   if (redisClient) redisClient.quit();
   await closeDatabase();
   process.exit(0);
@@ -1161,8 +1163,7 @@ if (reviewResult?.fileReviews) {
       // Do NOT set a second CSRF cookie here to avoid token mismatch.
 
       // 8. Return result
-      const responseObject = { ...(sessionPersisted ? { csrfToken } : {}),
-      return res.json({ ...(sessionPersisted ? { csrfToken: res.locals.rotatedCsrfToken || csrfToken } : {}),
+      const responseObject = { ...(sessionPersisted ? { csrfToken: res.locals.rotatedCsrfToken || csrfToken } : {}),
   success: true,
 
   repoName,
@@ -1695,6 +1696,12 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     }
 
     const action = payload.action;
+
+    if (action === 'deleted') {
+      console.log(`⏭️ Skipping webhook processing for deleted PR #${payload.pull_request.number}`);
+      return res.json({ success: true, message: 'Webhook received for deleted PR, skipped.' });
+    }
+
     if (action === 'opened' || action === 'synchronize') {
       const pullNumber = payload.pull_request.number;
       const headSha = payload.pull_request.head.sha;
@@ -2764,7 +2771,15 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
 
 });
 
-app.get('/health', (req, res) => {
+const healthLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many health check requests.' }
+});
+
+app.get('/health', healthLimiter, (req, res) => {
   if (!serverReady) {
     return res.status(503).json({
       status: 'starting_up',
@@ -2782,7 +2797,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/api/health/circuit-breaker', (req, res) => {
+app.get('/api/health/circuit-breaker', healthLimiter, (req, res) => {
   res.json({
     ...reviewQueue.getCircuitState(),
     timestamp: new Date().toISOString(),

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { load as yamlLoad } from 'js-yaml';
+import { validateNotificationPriority } from './notificationValidator.js';
 
 const DEFAULT_CONFIG = {
   severity: {
@@ -106,6 +107,15 @@ function validateConfig(config) {
     for (const [category, severity] of Object.entries(config.severity)) {
       if (!validSeverities.includes(severity)) {
         errors.push(`Invalid severity "${severity}" for category "${category}". Must be one of: ${validSeverities.join(', ')}`);
+      }
+    }
+  }
+
+  if (config.notification) {
+    if (config.notification.priority) {
+      const result = validateNotificationPriority(config.notification.priority);
+      if (!result.valid) {
+        errors.push(result.error);
       }
     }
   }
