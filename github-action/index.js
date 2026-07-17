@@ -70,6 +70,7 @@ async function run() {
     }
     provider.init();
     
+    const octokit = github.getOctokit(githubToken);
     const groq = new Groq({ apiKey: groqApiKey });
 
     // 3. Verify Context
