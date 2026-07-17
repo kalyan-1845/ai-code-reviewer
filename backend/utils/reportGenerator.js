@@ -31,7 +31,7 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
               severity,
               category,
               message: issue.description || issue.message || '',
-              rule_id: issue.rule || 'unknown',
+              rule_id: issue.rule_id || issue.rule || 'unknown',
             };
             allFindings.push(finding);
             severityCount[severity] = (severityCount[severity] || 0) + 1;
@@ -59,6 +59,7 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
   };
 
   try {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, JSON.stringify(report, null, 2), 'utf-8');
     return {
       success: true,
@@ -87,7 +88,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
               severity,
               category,
               message: issue.description || issue.message || '',
-              rule_id: issue.rule || 'unknown',
+              rule_id: issue.rule_id || issue.rule || 'unknown',
             });
             severityCount[severity] = (severityCount[severity] || 0) + 1;
           });
@@ -109,7 +110,9 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
 
   const sortedFindings = allFindings.sort((a, b) => {
     const severityOrder = { error: 0, warning: 1, info: 2 };
-    return severityOrder[a.severity] - severityOrder[b.severity];
+    const orderA = severityOrder[a.severity] !== undefined ? severityOrder[a.severity] : 3;
+    const orderB = severityOrder[b.severity] !== undefined ? severityOrder[b.severity] : 3;
+    return orderA - orderB;
   });
 
   const findingRows = sortedFindings.map(f => `
@@ -119,7 +122,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
       <td><span style="background-color: ${severityColors[f.severity]}; color: white; padding: 4px 8px; border-radius: 3px; font-weight: bold;">${escapeHtml(f.severity)}</span></td>
       <td>${escapeHtml(f.category)}</td>
       <td>${escapeHtml(f.rule_id)}</td>
-      <td>${escapeHtml(f.message)}</td>
+      <td><div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(f.message)}</div></td>
     </tr>
   `).join('');
 
@@ -204,6 +207,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
   `;
 
   try {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, html, 'utf-8');
     return {
       success: true,

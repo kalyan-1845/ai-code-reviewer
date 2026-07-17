@@ -177,6 +177,7 @@ test('notebookParser: isNotebookFile returns true for .ipynb files', () => {
   assert.equal(isNotebookFile('notebook.ipynb'), true);
   assert.equal(isNotebookFile('path/to/file.ipynb'), true);
   assert.equal(isNotebookFile('NOTEBOOK.ipynb'), true);
+  assert.equal(isNotebookFile('notebook.IPYNB'), true);
 });
 
 test('notebookParser: isNotebookFile returns false for non-ipynb files', () => {
@@ -184,6 +185,9 @@ test('notebookParser: isNotebookFile returns false for non-ipynb files', () => {
   assert.equal(isNotebookFile('script.js'), false);
   assert.equal(isNotebookFile('notebook.py'), false);
   assert.equal(isNotebookFile('notebook.ipynb.txt'), false);
+  assert.equal(isNotebookFile(null), false);
+  assert.equal(isNotebookFile(undefined), false);
+  assert.equal(isNotebookFile(123), false);
 });
 
 test('notebookParser: formatNotebookFindings adds cellContext to each finding', () => {
@@ -196,4 +200,10 @@ test('notebookParser: formatNotebookFindings adds cellContext to each finding', 
   assert.equal(result[0].cellContext, 'Cell 2');
   assert.equal(result[1].cellContext, 'Cell 2');
   assert.equal(result[0].message, 'Bug in cell', 'original fields preserved');
+});
+
+test('notebookParser: stripMagicCommands removes indented magics but preserves %s format specifiers', () => {
+  const code = '  %matplotlib inline\n%s FROM users\n  !ls -la';
+  const result = stripMagicCommands(code);
+  assert.equal(result, '%s FROM users');
 });

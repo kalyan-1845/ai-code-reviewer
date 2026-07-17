@@ -38,8 +38,9 @@ function mergeWithDefaults(userConfig) {
 }
 
 function categorizeFinding(finding) {
-  const message = (finding.message || '').toLowerCase();
-  const ruleId = (finding.rule_id || '').toLowerCase();
+  if (!finding) return 'other';
+  const message = (finding.description || finding.message || '').toLowerCase();
+  const ruleId = (finding.rule || finding.rule_id || '').toLowerCase();
 
   if (message.includes('security') || ruleId.includes('security') ||
       message.includes('injection') || message.includes('credential') ||
@@ -66,7 +67,10 @@ function applySeverityConfig(findings, config) {
   const severityMap = config.severity || DEFAULT_CONFIG.severity;
 
   return findings
-    .filter(finding => !suppressedRules.has(finding.rule_id))
+    .filter(finding => {
+      const ruleId = finding.rule_id || finding.rule;
+      return !suppressedRules.has(ruleId);
+    })
     .map(finding => {
       const category = categorizeFinding(finding);
       const mappedSeverity = severityMap[category] || finding.severity;

@@ -302,3 +302,26 @@ test('AnalysisCache: setMaxEntries does nothing if cache is already below new li
   assert.equal(cache.maxEntries, 100);
   assert.equal(cache.cache.size, 1, 'Single entry should remain');
 });
+
+test('AnalysisCache: sweeper evicts expired keys from _repoUrlIndex and cleans empty Sets', async () => {
+  const cache = new AnalysisCache(20); // 20ms TTL
+  const repo = 'https://github.com/owner/repo-sweeper';
+  const key = cache.generateKey(repo, [{ name: 'file.js', content: 'content' }]);
+  
+  // Set entry
+  cache.set(key, { data: 123 }, { repoUrl: repo });
+  assert.equal(cache._repoUrlIndex.has(repo), true);
+  assert.equal(cache._repoUrlIndex.get(repo).has(key), true);
+
+  // Stop default sweeper and start a fast one
+  cache._stopSweeper();
+  cache._startSweeper(10);
+
+  // Wait for eviction
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  assert.equal(cache.cache.has(key), false, 'Cache key should be deleted');
+  assert.equal(cache._repoUrlIndex.has(repo), false, 'Empty Set should be deleted from index map');
+  
+  cache._stopSweeper();
+});

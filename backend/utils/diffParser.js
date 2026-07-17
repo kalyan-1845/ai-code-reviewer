@@ -11,10 +11,9 @@ export function parseDiff(diffStr) {
 
   for (const line of lines) {
     if (line.startsWith('diff --git')) {
-      const match = line.match(/b\/(.+)$/);
+      const match = line.match(/(?:^| )"?b\/(.+?)"?$/);
       if (match) {
-        const rawPath = match[1];
-        const cleanPath = rawPath.replace(/^"(.*)"$/, '$1');
+        const cleanPath = match[1];
         currentFile = {
           path: cleanPath,
           changes: [],

@@ -13,10 +13,10 @@ const STATES = {
 
 export class CircuitBreaker {
   constructor(options = {}) {
-    this._failureThreshold = options.failureThreshold || 5;
-    this._cooldownMs = options.cooldownMs || 30000;
-    this._halfOpenMaxRequests = options.halfOpenMaxRequests || 3;
-    this._timeoutMs = options.timeoutMs || 10000;
+    this._failureThreshold = typeof options.failureThreshold === 'number' ? options.failureThreshold : 5;
+    this._cooldownMs = typeof options.cooldownMs === 'number' ? options.cooldownMs : 30000;
+    this._halfOpenMaxRequests = typeof options.halfOpenMaxRequests === 'number' ? options.halfOpenMaxRequests : 3;
+    this._timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 10000;
     this._state = STATES.CLOSED;
     this._failureCount = 0;
     this._successCount = 0;
@@ -47,7 +47,9 @@ export class CircuitBreaker {
       );
     }
 
-    this._halfOpenRequests++;
+    if (this._state === STATES.HALF_OPEN) {
+      this._halfOpenRequests++;
+    }
 
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
@@ -71,14 +73,19 @@ export class CircuitBreaker {
   onSuccess() {
     this._failureCount = 0;
     this._successCount++;
-    this._halfOpenRequests = 0;
     if (this._state === STATES.HALF_OPEN) {
-      this._state = STATES.CLOSED;
+      if (this._successCount >= this._halfOpenMaxRequests) {
+        this._state = STATES.CLOSED;
+        this._halfOpenRequests = 0;
+      }
+    } else {
+      this._halfOpenRequests = 0;
     }
   }
 
   onFailure() {
     this._failureCount++;
+    this._successCount = 0;
     this._lastFailureTime = Date.now();
     if (this._state === STATES.HALF_OPEN) {
       this._state = STATES.OPEN;

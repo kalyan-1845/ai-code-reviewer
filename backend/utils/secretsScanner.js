@@ -1,22 +1,22 @@
 export const rules = [
   {
     type: "AWS Access Key Check",
-    regex: /AKIA[0-9A-Z]{16}/g,
+    regex: /\bAKIA[0-9A-Z]{16}\b/g,
     description: "Potential AWS Access Key ID detected. If pushed to a public repository, malicious parties can hijack your AWS cloud infrastructure."
   },
   {
     type: "GitHub Personal Access Token",
-    regex: /ghp_[a-zA-Z0-9]{36}/g,
+    regex: /\bghp_[a-zA-Z0-9]{36}\b/g,
     description: "Hardcoded GitHub Personal Access Token detected. Unauthorized users can gain complete read/write access to your repositories."
   },
   {
     type: "Stripe Secret API Key",
-    regex: /sk_live_[0-9a-zA-Z]{24}/g,
+    regex: /\bsk_live_[0-9a-zA-Z]{24}\b/g,
     description: "Hardcoded live Stripe Secret Key detected. This can expose customer transaction history or result in financial exploitation."
   },
   {
     type: "Google Cloud API Key",
-    regex: /AIzaSy[a-zA-Z0-9-_]{33}/g,
+    regex: /\bAIzaSy[a-zA-Z0-9-_]{33,40}\b/g,
     description: "Hardcoded Google Cloud API Key detected. Allows unauthorized usage of GCP billing services and resources."
   },
   {
@@ -76,12 +76,12 @@ export const rules = [
   },
   {
     type: "Slack Token Check",
-    regex: /xox[baprs]-[0-9a-zA-Z]{10,48}/g,
+    regex: /\bxox[baprs]-[0-9a-zA-Z]{10,48}\b/g,
     description: "Potential hardcoded Slack token (User, Bot, App, or Workspace) detected. Unauthorized users can interact with your Slack workspace APIs."
   },
   {
     type: "Discord Bot Token",
-    regex: /[a-zA-Z0-9_-]{24}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}/g,
+    regex: /\b[a-zA-Z0-9_-]{24}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}\b/g,
     description: "Potential hardcoded Discord Bot Token detected. This allows attackers to fully control your Discord bot and access guilds/channels."
   }
 ];
