@@ -54,15 +54,28 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const NOTIFICATION_TIMEOUT = parseInt(process.env.NOTIFICATION_TIMEOUT_MS || "10000", 10);
 const PORT = verifyPort(process.env.PORT || 5000);
 
 const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill-llama-70b", "llama-3.1-8b-instant", "gemma2-9b-it"];
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
+let lastStatsReset = Date.now();
+const statsResetInterval = setInterval(() => {
+  const s = analysisCache.getStats();
+  if (s) { s.hits = 0; s.misses = 0; s.evictions = 0; }
+  lastStatsReset = Date.now();
+}, 3600000);
 const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 const ANALYSIS_CACHE_MOCK_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 120)(parseInt(process.env.ANALYSIS_CACHE_MOCK_TTL_SECONDS || '120', 10)) * 1000;
+let lastStatsReset = Date.now();
+const statsResetInterval = setInterval(() => {
+  const s = analysisCache.getStats();
+  if (s) { s.hits = 0; s.misses = 0; s.evictions = 0; }
+  lastStatsReset = Date.now();
+}, 3600000);
 const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, ANALYSIS_CACHE_MOCK_TTL_MS);
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
