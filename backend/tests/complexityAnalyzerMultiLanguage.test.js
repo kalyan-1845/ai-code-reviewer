@@ -224,3 +224,17 @@ test('analyzeComplexity detects CSS block comments', () => {
   const result = analyzeComplexity(code, 'style.css');
   assert.equal(result.commentLines >= 2, true);
 });
+
+// ---------- HTML multi-line block comment ----------
+
+test('analyzeComplexity handles HTML multi-line block comments', () => {
+  const code = [
+    '<!-- This is a',
+    '   multi-line HTML',
+    '   block comment -->',
+    '<div>Hello</div>',
+  ].join('\n');
+  const result = analyzeComplexity(code, 'index.html');
+  assert.equal(result.commentLines, 3);
+  assert.equal(result.codeLines, 1);
+});
