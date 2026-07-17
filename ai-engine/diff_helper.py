@@ -55,6 +55,10 @@ def get_changed_files_from_git(base: str, head: str) -> Set[str]:
         return set()
 
 
+MAX_CHANGED_FILES = 500
+MAX_PAGES = (MAX_CHANGED_FILES + 99) // 100  # 5 pages for 500 files
+
+
 def get_changed_files_from_github_pr(
     owner: str, repo: str, pull_number: int, github_token: str
 ) -> Set[str]:
@@ -80,7 +84,7 @@ def get_changed_files_from_github_pr(
         all_files = set()
         page = 1
 
-        while True:
+        while page <= MAX_PAGES:
             params = {"per_page": 100, "page": page}
             response = requests.get(url, headers=headers, params=params, timeout=30)
             response.raise_for_status()
@@ -93,7 +97,14 @@ def get_changed_files_from_github_pr(
                 if "filename" in file_obj:
                     all_files.add(file_obj["filename"])
 
+            if len(all_files) >= MAX_CHANGED_FILES:
+                print(f"⚠️  Changed files reached cap of {MAX_CHANGED_FILES}, stopping pagination")
+                break
+
             page += 1
+
+        if page > MAX_PAGES:
+            print(f"⚠️  Changed files exceeded {MAX_PAGES} pages, results may be incomplete")
 
         return all_files
     except requests.exceptions.RequestException as e:
