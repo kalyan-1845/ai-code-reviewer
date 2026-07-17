@@ -146,15 +146,17 @@ async function autoAssignAndMerge() {
           continue;
         }
 
-        // Verify at least one approved review exists (skip if PR author)
+        // Verify at least one approved review exists (skip self-approvals)
         const { data: reviews } = await octokit.rest.pulls.listReviews({
           owner,
           repo,
           pull_number: pr.number,
         });
-        const hasApprovedReview = reviews.some(r => r.state === 'APPROVED');
+        const hasApprovedReview = reviews.some(
+          r => r.state === 'APPROVED' && r.user.login !== pr.user.login
+        );
         if (!hasApprovedReview) {
-          console.log(`   ⏭️ Skipping PR #${pr.number} — no approved review found`);
+          console.log(`   ⏭️ Skipping PR #${pr.number} — no approved review found (self-approvals excluded)`);
           continue;
         }
 
