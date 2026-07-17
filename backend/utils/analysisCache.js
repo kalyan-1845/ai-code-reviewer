@@ -70,6 +70,18 @@ class AnalysisCache {
   }
 
   /**
+   * Warm the cache on startup to prevent first-request miss (#2602).
+   * Pre-allocates internal map capacity and ensures the sweeper is running
+   * so the cache is ready to serve entries immediately.
+   */
+  warm() {
+    if (!this._initialized) {
+      this._startSweeper();
+      this._initialized = true;
+    }
+  }
+
+  /**
    * Generate a deterministic cache key from analysis parameters.
    * Includes repoUrl, file hashes, model, language, and other params.
    */

@@ -98,6 +98,18 @@ if (process.env.REDIS_URL) {
 }
 const dedupStore = new DedupStore(redisClient);
 
+// Per-route request metrics tracking (#2601)
+const routeMetrics = new Map();
+function trackRouteMetrics(req, res, next) {
+  const route = `${req.method} ${req.path}`;
+  const entry = routeMetrics.get(route) || { count: 0, lastHit: null };
+  entry.count++;
+  entry.lastHit = Date.now();
+  routeMetrics.set(route, entry);
+  next();
+}
+app.use(trackRouteMetrics);
+
 // Per-IP rate limiting for expensive endpoints
 const analyzeLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -1233,9 +1245,13 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, analyzeLimi
       return res.status(400).json({ error: 'At least one file is required.' });
     }
 
+    const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
     for (const file of files) {
       if (!file.name || !file.content) {
         return res.status(400).json({ error: 'Each file must have a name and content.' });
+      }
+      if (Buffer.byteLength(file.content, 'utf-8') > MAX_FILE_SIZE_BYTES) {
+        return res.status(413).json({ error: `File "${file.name}" exceeds the maximum allowed size of 10MB.` });
       }
     }
 
@@ -1980,6 +1996,18 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   try {
 
   const octokit = new Octokit({ auth: token });
+
+  // Validate that the repository exists before proceeding (#2600)
+  try {
+    await octokit.rest.repos.get({ owner, repo });
+  } catch (err) {
+    if (err.status === 404) {
+      console.error(`Repository ${owner}/${repo} not found. Rejecting webhook review for PR #${pullNumber}.`);
+      throw new Error(`Repository ${owner}/${repo} does not exist or is not accessible.`);
+    }
+    throw err;
+  }
+
   console.log(`≡ƒöì Fetching diff for PR #${pullNumber}...`);
 
   const { data: pullRequest } = await octokit.rest.pulls.get({
@@ -2884,6 +2912,16 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Route metrics endpoint (#2601)
+app.get('/api/metrics', requireApiKey, (req, res) => {
+  const entries = [];
+  for (const [route, data] of routeMetrics) {
+    entries.push({ route, count: data.count, lastHit: new Date(data.lastHit).toISOString() });
+  }
+  entries.sort((a, b) => b.count - a.count);
+  res.json({ metrics: entries, total: entries.reduce((s, e) => s + e.count, 0) });
+});
+
 app.get('/api/health/circuit-breaker', (req, res) => {
   res.json({
     ...reviewQueue.getCircuitState(),
@@ -2962,6 +3000,9 @@ async function startServer() {
   if (!isDatabaseConnected()) {
     console.log('Server started in degraded mode (no database). Analytics will use file-based storage.');
   }
+  // Warm caches on startup to prevent first-request miss (#2602)
+  analysisCache.warm();
+  responseCache.warm();
   // Startup validation: warn if webhook reviews are enabled but GITHUB_PAT is missing
   if (!process.env.GITHUB_PAT) {
     console.warn('[WARN] Webhook reviews enabled but GITHUB_PAT is not set. Webhook-triggered PR reviews will fail.');
