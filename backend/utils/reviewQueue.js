@@ -93,6 +93,11 @@ class ReviewQueue {
                 queue.push(item);
                 break;
               }
+              // Don't retry 4xx client errors — they are not transient
+              if (err.status >= 400 && err.status < 500) {
+                console.error(`ReviewQueue: not retrying 4xx error for "${key}":`, err.message);
+                break;
+              }
               if (attempt < this._maxRetries) {
                 const delay = Math.pow(2, attempt) * 1000;
                 console.warn(`ReviewQueue: retry ${attempt + 1}/${this._maxRetries} for "${key}" in ${delay}ms:`, err.message);

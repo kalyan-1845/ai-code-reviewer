@@ -42,8 +42,8 @@ test('REPO_READER_DEFAULTS.maxBytes is at least 1MB', () => {
 
 // ---------- Pure unit tests (no network) ----------
 
-test('readCodeFilesFromLocalDir returns an array with the expected shape', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir returns an array with the expected shape', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   assert.ok(Array.isArray(result));
   assert.ok(result.length > 0);
   for (const entry of result) {
@@ -57,8 +57,8 @@ test('readCodeFilesFromLocalDir returns an array with the expected shape', () =>
   }
 });
 
-test('readCodeFilesFromLocalDir filters to .js, .py, .ts by default', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir filters to .js, .py, .ts by default', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   const extensions = new Set(result.map((e) => path.extname(e.path).toLowerCase()));
   // Every returned file must be one of the three default extensions.
   for (const ext of extensions) {
@@ -74,8 +74,8 @@ test('readCodeFilesFromLocalDir filters to .js, .py, .ts by default', () => {
   );
 });
 
-test('readCodeFilesFromLocalDir skips node_modules and .git directories', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir skips node_modules and .git directories', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   for (const entry of result) {
     assert.ok(
       !entry.path.includes('node_modules'),
@@ -88,8 +88,8 @@ test('readCodeFilesFromLocalDir skips node_modules and .git directories', () => 
   }
 });
 
-test('readCodeFilesFromLocalDir honors .reposageignore', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir honors .reposageignore', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   assert.ok(
     !result.some((e) => e.path === 'src/ignored.js'),
     'src/ignored.js should be ignored via .reposageignore'
@@ -101,27 +101,27 @@ test('readCodeFilesFromLocalDir honors .reposageignore', () => {
   );
 });
 
-test('readCodeFilesFromLocalDir populates language labels from extension', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir populates language labels from extension', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   const byPath = Object.fromEntries(result.map((e) => [e.path, e]));
   assert.equal(byPath['src/hello.js'].language, 'javascript');
   assert.equal(byPath['src/app.py'].language, 'python');
   assert.equal(byPath['src/index.ts'].language, 'typescript');
 });
 
-test('readCodeFilesFromLocalDir respects an explicit extensions override', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir, { extensions: ['.md'] });
+test('readCodeFilesFromLocalDir respects an explicit extensions override', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir, { extensions: ['.md'] });
   assert.equal(result.length, 1);
   assert.equal(result[0].path, 'src/README.md');
 });
 
-test('readCodeFilesFromLocalDir respects the maxFiles cap', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir, { maxFiles: 1 });
+test('readCodeFilesFromLocalDir respects the maxFiles cap', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir, { maxFiles: 1 });
   assert.equal(result.length, 1);
 });
 
-test('readCodeFilesFromLocalDir respects the maxDepth cap', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir, { maxDepth: 0 });
+test('readCodeFilesFromLocalDir respects the maxDepth cap', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir, { maxDepth: 0 });
   // With depth 0, only the root dir's direct files are returned (no subdir files)
   // The fixture has all files under src/ subdirectory
   const paths = result.map((e) => e.path);
@@ -129,34 +129,34 @@ test('readCodeFilesFromLocalDir respects the maxDepth cap', () => {
   assert.ok(!paths.some((p) => p.startsWith('src/')), 'src/ should be beyond maxDepth 0');
 });
 
-test('readCodeFilesFromLocalDir skips files exceeding maxBytes', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir, { maxBytes: 1 });
+test('readCodeFilesFromLocalDir skips files exceeding maxBytes', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir, { maxBytes: 1 });
   // All fixture files are larger than 1 byte, so result should be empty
   assert.equal(result.length, 0);
 });
 
-test('readCodeFilesFromLocalDir handles a non-existent directory gracefully', () => {
-  const result = readCodeFilesFromLocalDir('/non/existent/path/nowhere');
+test('readCodeFilesFromLocalDir handles a non-existent directory gracefully', async () => {
+  const result = await readCodeFilesFromLocalDir('/non/existent/path/nowhere');
   assert.deepEqual(result, []);
 });
 
-test('readCodeFilesFromLocalDir handles extensions without leading dot', () => {
+test('readCodeFilesFromLocalDir handles extensions without leading dot', async () => {
   // Extensions without leading dot should still be accepted
-  const result = readCodeFilesFromLocalDir(fixtureDir, { extensions: ['py', 'JS'] });
+  const result = await readCodeFilesFromLocalDir(fixtureDir, { extensions: ['py', 'JS'] });
   const paths = result.map((e) => e.path);
   assert.ok(paths.some((p) => p.endsWith('.py')), 'Should include .py files');
   assert.ok(paths.some((p) => p.endsWith('.js')), 'Should include .js files (case-insensitive)');
 });
 
-test('readCodeFilesFromLocalDir extensions option is case-insensitive', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir, { extensions: ['.PY', '.Ts'] });
+test('readCodeFilesFromLocalDir extensions option is case-insensitive', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir, { extensions: ['.PY', '.Ts'] });
   const extensions = new Set(result.map((e) => path.extname(e.path).toLowerCase()));
   assert.ok(extensions.has('.py'), 'Should include .py');
   assert.ok(extensions.has('.ts'), 'Should include .ts');
 });
 
-test('readCodeFilesFromLocalDir populates correct sizeBytes', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir populates correct sizeBytes', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   for (const entry of result) {
     assert.ok(entry.sizeBytes > 0, `sizeBytes should be positive for ${entry.path}`);
     assert.ok(Number.isInteger(entry.sizeBytes), `sizeBytes should be integer for ${entry.path}`);

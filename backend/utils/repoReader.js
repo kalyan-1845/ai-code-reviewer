@@ -24,6 +24,7 @@ const DEFAULT_MAX_FILES = 500;
 const DEFAULT_MAX_DEPTH = 10;
 const DEFAULT_MAX_BYTES = 1024 * 1024; // 1 MB per file
 const DEFAULT_CLONE_TIMEOUT_MS = 120000;
+const FILE_READ_TIMEOUT_MS = 10000;
 
 // Directories always skipped (shared with ignoreHelper.js#readFilesRecursively).
 
@@ -61,7 +62,7 @@ const EXTENSION_LANGUAGE = {
  * `extensionSet`. Symlinks are skipped to avoid symlink-loop DoS (matches
  * ignoreHelper.js).
  */
-function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxDepth, maxBytes) {
+async function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxDepth, maxBytes) {
   const out = [];
   const stack = [{ dir: rootDir, depth: 0 }];
 
@@ -72,7 +73,7 @@ function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxD
 
     let entries;
     try {
-      entries = fs.readdirSync(dir);
+      entries = await fs.promises.readdir(dir);
     } catch {
       continue;
     }
@@ -83,7 +84,7 @@ function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxD
 
       let stat;
       try {
-        stat = fs.lstatSync(full);
+        stat = await fs.promises.lstat(full);
       } catch {
         continue;
       }
@@ -108,8 +109,17 @@ function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxD
       let content;
       try {
         const safePath = resolveSafePath(rootDir, full);
-        content = fs.readFileSync(safePath, 'utf-8');
-      } catch {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), FILE_READ_TIMEOUT_MS);
+        try {
+          content = await fs.promises.readFile(safePath, { encoding: 'utf-8', signal: controller.signal });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          console.warn(`File read timed out after ${FILE_READ_TIMEOUT_MS}ms: ${full}`);
+        }
         continue;
       }
       out.push({
@@ -143,7 +153,7 @@ function normalizeExtensions(input) {
  * @param {object} [options]
  * @returns {Array<{path: string, content: string, sizeBytes: number, language: string}>}
  */
-export function readCodeFilesFromLocalDir(localDir, options = {}) {
+export async function readCodeFilesFromLocalDir(localDir, options = {}) {
   const extensions = normalizeExtensions(options.extensions);
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
@@ -211,7 +221,7 @@ export async function readCodeFilesFromRepo(repoUrl, options = {}) {
     await git.cwd(clonePath).checkout(['HEAD']);
 
     const ignorePatterns = loadIgnorePatterns(clonePath);
-    return walkForExtensions(
+    return await walkForExtensions(
       clonePath,
       extensionSet,
       ignorePatterns,

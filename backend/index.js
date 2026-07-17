@@ -15,7 +15,7 @@ import RedisStore from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
 import { recordAnalysis as recordFileAnalytics } from './utils/analyticsStore.js';
-import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
+import { loadIgnorePatterns, readFilesRecursivelyAsync } from './utils/ignoreHelper.js';
 import { isValidRepoUrl, parseRepoUrl, isSafeUrl } from './utils/urlValidator.js';
 import { isValidGithubToken } from './utils/tokenValidator.js';
 import simpleGit from 'simple-git';
@@ -814,7 +814,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       // 1. Load ignore patterns and read files
       const ignorePatterns = loadIgnorePatterns(clonePath);
       const severityConfig = loadConfigFile(clonePath);
-      let files = readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
+      let files = await readFilesRecursivelyAsync(clonePath, [], clonePath, ignorePatterns);
       
       let partial_review = false;
       const MAX_PAYLOAD_CHARS = 30000;

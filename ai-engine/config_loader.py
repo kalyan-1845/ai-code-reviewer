@@ -92,8 +92,10 @@ def _normalize_yaml_bool_severities(rules: Dict[str, Any]) -> None:
     string authors actually wrote, in place, before validation.
     """
     for rule_settings in rules.values():
-        if isinstance(rule_settings, dict) and rule_settings.get("severity") is False:
-            rule_settings["severity"] = "off"
+        if isinstance(rule_settings, dict):
+            sv = rule_settings.get("severity")
+            if sv is False:
+                rule_settings["severity"] = "off"
 
 
 def _validate_raw_config(raw: Dict[str, Any]) -> None:

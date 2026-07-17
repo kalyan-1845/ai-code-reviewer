@@ -3,6 +3,19 @@ import path from 'path';
 import { HARD_SKIP_DIRS } from './skipConstants.js';
 import { resolveSafePath } from './fileHelper.js';
 
+const FILE_READ_TIMEOUT_MS = 10000;
+
+async function readFileWithTimeout(filePath, timeoutMs = FILE_READ_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const content = await fs.promises.readFile(filePath, { encoding: 'utf-8', signal: controller.signal });
+    return content;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // 🟢 Shebang → language map for extensionless scripts (e.g. a file named
 // `deploy` starting with `#!/usr/bin/env python3`). Extension-based detection
 // alone treats these as unsupported and silently drops them from analysis,
@@ -166,6 +179,91 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
           });
         } catch (e) {
           console.warn(`Could not read file: ${filePath}`, e.message);
+        }
+      }
+    }
+  }
+  return fileList;
+}
+
+export async function readFilesRecursivelyAsync(dir, fileList = [], baseDir = dir, ignorePatterns = [], depth = 0, skippedFiles = []) {
+  if (depth > MAX_DEPTH) return fileList;
+  if (fileList.length >= MAX_FILES) return fileList;
+  let entries;
+  try {
+    entries = await fs.promises.readdir(dir);
+  } catch {
+    return fileList;
+  }
+  for (const file of entries) {
+    if (fileList.length >= MAX_FILES) return fileList;
+    const filePath = path.join(dir, file);
+    let stat;
+    try {
+      stat = await fs.promises.lstat(filePath);
+    } catch {
+      continue;
+    }
+
+    if (stat.isSymbolicLink()) continue;
+
+    if (HARD_SKIP_DIRS.has(file)) {
+      continue;
+    }
+
+    if (file === '.reposageignore' || isIgnored(filePath, ignorePatterns, baseDir)) {
+      continue;
+    }
+
+    if (stat.isDirectory()) {
+      try {
+        const realPath = await fs.promises.realpath(filePath);
+        const resolvedBase = await fs.promises.realpath(baseDir);
+        if (realPath.startsWith(resolvedBase)) {
+          await readFilesRecursivelyAsync(filePath, fileList, baseDir, ignorePatterns, depth + 1, skippedFiles);
+        }
+      } catch (e) {
+        // Skip on error
+      }
+    } else {
+      const ext = path.extname(file).toLowerCase();
+      const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.go', '.rs', '.cpp', '.h', '.cs', '.php', '.rb', '.sql', '.html', '.css', '.json', '.yaml', '.yml'];
+      const isExtensionless = ext === '';
+
+      if (validExtensions.includes(ext) || isExtensionless) {
+        try {
+          const fileStat = await fs.promises.stat(filePath);
+          if (fileStat.size > MAX_FILE_SIZE) {
+            if (validExtensions.includes(ext)) {
+              skippedFiles.push({ name: path.relative(baseDir, filePath).replace(/\\/g, '/'), reason: 'File exceeds size limit of 100KB', size: fileStat.size });
+            }
+            continue;
+          }
+          const MAX_FILE_CONTENT_LENGTH = 1024 * 1024;
+          const safePath = resolveSafePath(baseDir, filePath);
+          const content = (await readFileWithTimeout(safePath)).slice(0, MAX_FILE_CONTENT_LENGTH);
+
+          if (isExtensionless) {
+            const detectedLanguage = detectShebangLanguage(content);
+            if (!detectedLanguage) continue;
+            fileList.push({
+              name: path.relative(baseDir, filePath).replace(/\\/g, '/'),
+              content: content,
+              detectedLanguage,
+            });
+            continue;
+          }
+
+          fileList.push({
+            name: path.relative(baseDir, filePath).replace(/\\/g, '/'),
+            content: content
+          });
+        } catch (e) {
+          if (e.name === 'AbortError') {
+            console.warn(`File read timed out: ${filePath}`);
+          } else {
+            console.warn(`Could not read file: ${filePath}`, e.message);
+          }
         }
       }
     }

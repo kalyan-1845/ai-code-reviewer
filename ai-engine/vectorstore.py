@@ -26,12 +26,15 @@ def _load():
 
 
 def _save():
-    tmp = VECTORS_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(_vectors, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, VECTORS_FILE)
+    try:
+        tmp = VECTORS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(_vectors, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, VECTORS_FILE)
+    except (OSError, IOError) as exc:
+        print(f"WARNING: Failed to persist vectors to disk: {exc}. In-memory state preserved.")
 
 
 def _compute_content_hash(content: str) -> str:

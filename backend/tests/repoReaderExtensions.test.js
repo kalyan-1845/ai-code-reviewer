@@ -78,58 +78,58 @@ test('REPO_READER_DEFAULTS.maxDepth defaults to 10', () => {
 // ---------------------------------------------------------------------------
 // Tests: Extension-to-language mapping through public API
 // ---------------------------------------------------------------------------
-test('readCodeFilesFromLocalDir assigns language javascript to .js files', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir assigns language javascript to .js files', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   // src/hello.js is the JS file in the fixture
   const helloEntry = result.find((e) => e.path === 'src/hello.js');
   assert.ok(helloEntry, 'src/hello.js should be found');
   assert.equal(helloEntry.language, 'javascript', '.js files should have language javascript');
 });
 
-test('readCodeFilesFromLocalDir assigns language python to .py files', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir assigns language python to .py files', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   const pyFile = result.find((e) => e.path.endsWith('.py'));
   assert.ok(pyFile, 'app.py should be found');
   assert.equal(pyFile.language, 'python', '.py files should have language python');
 });
 
-test('readCodeFilesFromLocalDir assigns language typescript to .ts files', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir assigns language typescript to .ts files', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   const tsFile = result.find((e) => e.path.endsWith('.ts'));
   assert.ok(tsFile, 'index.ts should be found');
   assert.equal(tsFile.language, 'typescript', '.ts files should have language typescript');
 });
 
-test('readCodeFilesFromLocalDir skips .md files by default', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir skips .md files by default', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   const mdFiles = result.filter((e) => e.path.endsWith('.md'));
   assert.equal(mdFiles.length, 0, '.md files should be skipped by default');
 });
 
-test('readCodeFilesFromLocalDir allows .md when explicitly requested', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir, { extensions: ['.md'] });
+test('readCodeFilesFromLocalDir allows .md when explicitly requested', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir, { extensions: ['.md'] });
   const mdFiles = result.filter((e) => e.path.endsWith('.md'));
   assert.ok(mdFiles.length > 0, '.md files should be included when explicitly requested');
 });
 
-test('readCodeFilesFromLocalDir returns language as a string for each entry', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir returns language as a string for each entry', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   result.forEach((entry) => {
     assert.equal(typeof entry.language, 'string', `language for ${entry.path} should be a string`);
     assert.ok(entry.language.length > 0, `language for ${entry.path} should not be empty`);
   });
 });
 
-test('readCodeFilesFromLocalDir applies .reposageignore patterns', () => {
-  const result = readCodeFilesFromLocalDir(fixtureDir);
+test('readCodeFilesFromLocalDir applies .reposageignore patterns', async () => {
+  const result = await readCodeFilesFromLocalDir(fixtureDir);
   const ignored = result.find((e) => e.path.endsWith('ignored.js') || e.path.includes('ignored'));
   assert.ok(!ignored, 'src/ignored.js should be excluded by .reposageignore');
 });
 
-test('readCodeFilesFromLocalDir returns empty language for unknown extensions when extended', () => {
+test('readCodeFilesFromLocalDir returns empty language for unknown extensions when extended', async () => {
   // When we override extensions to include .txt (not in the language map),
   // it should still work but language might be empty or undefined
-  const result = readCodeFilesFromLocalDir(fixtureDir, { extensions: ['.txt'] });
+  const result = await readCodeFilesFromLocalDir(fixtureDir, { extensions: ['.txt'] });
   // .txt is not in the default extension map, so language would be empty/undefined
   // This test documents the current behavior
   result.forEach((entry) => {
@@ -162,7 +162,7 @@ test('readCodeFilesFromLocalDir returns empty array for empty directory', async 
   const emptyDir = path.join(os.tmpdir(), `repo_reader_empty_${Date.now()}`);
   fs.mkdirSync(emptyDir, { recursive: true });
   try {
-    const result = readCodeFilesFromLocalDir(emptyDir);
+    const result = await readCodeFilesFromLocalDir(emptyDir);
     assert.deepEqual(result, [], 'Empty directory should return empty array');
   } finally {
     fs.rmdirSync(emptyDir);
@@ -179,7 +179,7 @@ test('readCodeFilesFromLocalDir returns empty array when only unsupported file t
     fs.writeFileSync(path.join(unsuppDir, 'data.csv'), 'a,b,c\n1,2,3');
     fs.writeFileSync(path.join(unsuppDir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     fs.writeFileSync(path.join(unsuppDir, 'config.toml'), '[section]\nkey=value');
-    const result = readCodeFilesFromLocalDir(unsuppDir);
+    const result = await readCodeFilesFromLocalDir(unsuppDir);
     // csv, png, and toml are not in the default extension set (.js, .py, .ts)
     assert.deepEqual(result, [], 'Only unsupported extensions should return empty array');
   } finally {
@@ -196,7 +196,7 @@ test('readCodeFilesFromLocalDir returns files when extension filter includes uns
   try {
     fs.writeFileSync(path.join(mixedDir, 'script.py'), 'x = 1');
     fs.writeFileSync(path.join(mixedDir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    const result = readCodeFilesFromLocalDir(mixedDir, { extensions: ['.py', '.png'] });
+    const result = await readCodeFilesFromLocalDir(mixedDir, { extensions: ['.py', '.png'] });
     assert.equal(result.length, 2, 'Should include both py and png when both extensions are specified');
     const extensions = result.map(e => path.extname(e.path).toLowerCase()).sort();
     assert.deepEqual(extensions, ['.png', '.py']);
