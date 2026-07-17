@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 
 // Replicate the fetchWithTimeout logic for isolated testing.
 // This mirrors the implementation in backend/index.js.
-function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = fetch(url, { ...options, signal: controller.signal });
+    const response = await fetch(url, { ...options, signal: controller.signal });
     return response;
   } finally {
     clearTimeout(timeoutId);
@@ -67,19 +67,26 @@ test('fetchWithTimeout passes headers through in options', async () => {
 
 test('fetchWithTimeout throws when timeout expires before fetch resolves', async () => {
   const originalFetch = globalThis.fetch;
-  // Use a fetch that resolves after 500ms — well past our 5ms timeout
-  globalThis.fetch = async () => new Promise(resolve => setTimeout(() => resolve(new Response('late')), 500));
+  // Use a fetch that respects AbortSignal and resolves after 500ms — well past our 5ms timeout
+  globalThis.fetch = async (url, opts) => new Promise((resolve, reject) => {
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        reject(new DOMException('The operation was aborted', 'AbortError'));
+        return;
+      }
+      opts.signal.addEventListener('abort', () => {
+        reject(new DOMException('The operation was aborted', 'AbortError'));
+      }, { once: true });
+    }
+    setTimeout(() => resolve(new Response('late')), 500);
+  });
 
   try {
-    const promise = fetchWithTimeout('https://example.com/api', {}, 5);
-    // Wait long enough for the abort to fire (5ms timeout, give it 200ms)
-    await new Promise(resolve => setTimeout(resolve, 200));
-    // If we get here without throwing, the test should fail
-    await promise;
+    await fetchWithTimeout('https://example.com/api', {}, 5);
     assert.fail('Expected an error to be thrown due to timeout');
   } catch (err) {
-    // Any error from fetch due to abort is acceptable
     assert.ok(err != null, 'Expected an error to be thrown');
+    assert.ok(err.name === 'AbortError', 'Expected AbortError for timeout');
   } finally {
     globalThis.fetch = originalFetch;
   }

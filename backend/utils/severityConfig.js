@@ -19,6 +19,11 @@ function loadConfigFile(repoPath) {
     if (fs.existsSync(configPath)) {
       const fileContent = fs.readFileSync(configPath, 'utf-8');
       const config = yamlLoad(fileContent) || {};
+      const validation = validateConfig(config);
+      if (!validation.valid) {
+        console.warn(`Invalid .codereview.yml: ${validation.errors.join('; ')}. Falling back to defaults.`);
+        return DEFAULT_CONFIG;
+      }
       return mergeWithDefaults(config);
     }
   } catch (err) {

@@ -637,6 +637,8 @@ function cleanupTimers() {
   clearInterval(aiEngineHealthTimer);
   clearInterval(exclusiveLockCleanupTimer);
   clearInterval(shaDedupCleanupTimer);
+  analysisCache.stopSweeper();
+  dedupStore.stopSweeper();
 }
 
   // Loaded from shared-safety-config.json via dangerousPhrases.js
@@ -2805,10 +2807,23 @@ app.get('/api/health/circuit-breaker', healthLimiter, (req, res) => {
 });
 
 // Sanitize error messages that may contain API keys or sensitive tokens.
-const SANITIZE_PATTERNS = [
-  { pattern: /(?:sk-|gsk_|api[_-]?key|apikey|token|secret|password|auth)[\s=:"']+[^\s"']{8,}/gi, replacement: '***' },
-  { pattern: /[A-Za-z0-9_-]{32,}/g, replacement: '***' },
-];
+function buildSanitizePatterns() {
+  const patterns = [
+    { pattern: /(?:sk-|gsk_|api[_-]?key|apikey|token|secret|password|auth)[\s=:"']+[^\s"']{8,}/gi, replacement: '***' },
+    { pattern: /[A-Za-z0-9_-]{32,}/g, replacement: '***' },
+  ];
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  if (webhookSecret && webhookSecret.length >= 4) {
+    patterns.push({ pattern: new RegExp(escapeRegex(webhookSecret), 'g'), replacement: '***' });
+  }
+  return patterns;
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+let SANITIZE_PATTERNS = buildSanitizePatterns();
 
 function fullyDecode(str) {
   let prev = str;
