@@ -9,8 +9,13 @@
 const REVIEW_TRACKER_PREFIX = 'webhook:lastReview:';
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days — well beyond any realistic PR lifetime
 
+import { sanitizeRedisKey } from './redisSafe.js';
+
 export function reviewTrackerKey(owner, repo, pullNumber) {
-  return `${REVIEW_TRACKER_PREFIX}${owner}/${repo}/#${pullNumber}`;
+  const safeOwner = sanitizeRedisKey(owner);
+  const safeRepo = sanitizeRedisKey(repo);
+  const safePull = sanitizeRedisKey(String(pullNumber));
+  return `${REVIEW_TRACKER_PREFIX}${safeOwner}/${safeRepo}/#${safePull}`;
 }
 
 /**
