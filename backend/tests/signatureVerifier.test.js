@@ -123,3 +123,10 @@ test('verifyWebhookSignature should return false for mismatched digest lengths',
   const result = verifyWebhookSignature(rawBody, shortSig, secret);
   assert.equal(result, false);
 });
+
+test('verifyWebhookSignature should return false and not crash for non-string signatures (Type Pollution)', () => {
+  const secret = 'type_pollution_test';
+  const rawBody = 'body';
+  assert.equal(verifyWebhookSignature(rawBody, ['sig1', 'sig2'], secret), false);
+  assert.equal(verifyWebhookSignature(rawBody, {}, secret), false);
+});

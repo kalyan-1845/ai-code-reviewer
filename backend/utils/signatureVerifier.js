@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 
 export function verifyWebhookSignature(rawBody, signature, secret) {
-  if (!signature || !secret) return false;
+  if (typeof signature !== 'string' || !secret) return false;
   // Ensure rawBody is treated as a string to prevent type errors in hmac.update
   const bodyStr = typeof rawBody === 'string' ? rawBody : Buffer.isBuffer(rawBody) ? rawBody.toString('utf-8') : '';
   const sig = signature.startsWith('sha256=') ? signature : `sha256=${signature}`;
