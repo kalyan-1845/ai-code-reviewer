@@ -4,20 +4,6 @@ import { promisify } from 'node:util';
 
 const dnsLookup = promisify(dns.lookup);
 
-const PRIVATE_IP_RANGES = [
-  { prefix: '127.', mask: 8 },
-  { prefix: '10.', mask: 8 },
-  { prefix: '192.168.', mask: 16 },
-  { prefix: '172.16.', mask: 12 },
-  { prefix: '0.', mask: 8 },
-  { prefix: '100.64.', mask: 10 },
-  { prefix: '198.18.', mask: 15 },
-];
-
-const LINK_LOCAL_RANGES = [
-  { prefix: '169.254.', mask: 16 },
-];
-
 const METADATA_IPS = new Set([
   '169.254.169.254',
   'fd00:ec2::254',
@@ -34,12 +20,32 @@ function isPrivateIP(ip) {
     if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
     return false;
   }
-  for (const range of PRIVATE_IP_RANGES) {
-    if (ip.startsWith(range.prefix)) return true;
-  }
-  for (const range of LINK_LOCAL_RANGES) {
-    if (ip.startsWith(range.prefix)) return true;
-  }
+
+  if (!net.isIPv4(ip)) return false;
+
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(isNaN)) return false;
+
+  const first = parts[0];
+  const second = parts[1];
+
+  // 127.0.0.0/8 (Loopback)
+  if (first === 127) return true;
+  // 10.0.0.0/8 (Private)
+  if (first === 10) return true;
+  // 192.168.0.0/16 (Private)
+  if (first === 192 && second === 168) return true;
+  // 172.16.0.0/12 (Private range: 172.16.0.0 - 172.31.255.255)
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  // 0.0.0.0/8 (Broadcast/Local)
+  if (first === 0) return true;
+  // 100.64.0.0/10 (Shared Address Space: 100.64.0.0 - 100.127.255.255)
+  if (first === 100 && second >= 64 && second <= 127) return true;
+  // 198.18.0.0/15 (Benchmark: 198.18.0.0 - 198.19.255.255)
+  if (first === 198 && second >= 18 && second <= 19) return true;
+  // 169.254.0.0/16 (Link Local)
+  if (first === 169 && second === 254) return true;
+
   return false;
 }
 

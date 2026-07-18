@@ -10,18 +10,40 @@ class ReviewQueue {
     this._maxItemsPerQueue = maxItemsPerQueue;
     this._exclusiveLockTtlMs = exclusiveLockTtlMs;
     this._maxRetries = maxRetries;
-    this._circuitBreaker = new CircuitBreaker({
-      failureThreshold: 5,
-      cooldownMs: 30000,
-      halfOpenMaxRequests: 3,
-      timeoutMs: 10000,
-    });
+    this._circuitBreakers = new Map();
+    this._circuitBreakerTimestamps = new Map();
+  }
+
+  _getCircuitBreaker(key) {
+    if (!this._circuitBreakers.has(key)) {
+      this._circuitBreakers.set(key, new CircuitBreaker({
+        failureThreshold: 5,
+        cooldownMs: 30000,
+        halfOpenMaxRequests: 3,
+        timeoutMs: 10000,
+      }));
+      this._circuitBreakerTimestamps.set(key, Date.now());
+    }
+    this._circuitBreakerTimestamps.set(key, Date.now());
+    return this._circuitBreakers.get(key);
   }
 
   getCircuitState() {
-    return {
-      state: this._circuitBreaker.getState(),
-    };
+    const states = {};
+    for (const [key, cb] of this._circuitBreakers) {
+      states[key] = cb.getState();
+    }
+    return { states };
+  }
+
+  cleanupStaleCircuitBreakers(maxAgeMs = 5 * 60 * 1000) {
+    const now = Date.now();
+    for (const [key, timestamp] of this._circuitBreakerTimestamps) {
+      if (now - timestamp > maxAgeMs) {
+        this._circuitBreakers.delete(key);
+        this._circuitBreakerTimestamps.delete(key);
+      }
+    }
   }
 
   async enqueue(key, item, processor) {
@@ -59,14 +81,16 @@ class ReviewQueue {
         }
         while (queue.length > 0) {
           const item = queue.shift();
+          const circuitBreaker = this._getCircuitBreaker(key);
           for (let attempt = 0; attempt <= this._maxRetries; attempt++) {
             try {
-              await this._circuitBreaker.call(() => processor(item));
+              await circuitBreaker.call(() => processor(item));
               break;
             } catch (err) {
               if (err.name === 'CircuitBreakerOpenError') {
-                console.error(`ReviewQueue: circuit breaker OPEN for "${key}", requeuing item`);
-                queue.unshift(item);
+                console.error(`ReviewQueue: circuit breaker OPEN for "${key}", scheduling retry after cooldown`);
+                await new Promise(r => setTimeout(r, Math.min(circuitBreaker._cooldownMs || 30000, 5000)));
+                queue.push(item);
                 break;
               }
               if (attempt < this._maxRetries) {
@@ -75,7 +99,7 @@ class ReviewQueue {
                 await new Promise(r => setTimeout(r, delay));
               } else {
                 console.error(`ReviewQueue: item permanently failed for "${key}" after ${this._maxRetries + 1} attempts:`, err);
-                this._circuitBreaker.onFailure();
+                circuitBreaker.onFailure();
               }
             }
           }

@@ -14,6 +14,10 @@ import MentorshipPortal from "../components/MentorshipPortal";
 import HealthScoreSection from "../components/HealthScoreSection";
 import ChatPanel from "../components/ChatPanel";
 import MermaidDiagramViewer from "../components/MermaidDiagramViewer";
+import HealthScoreGauge from "../components/HealthScoreGauge";
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   Terminal,
   ShieldAlert,
@@ -133,6 +137,7 @@ export interface AuditHistoryEntry {
 export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   // Input State
@@ -304,29 +309,61 @@ export default function Dashboard() {
           searchInputRef.current?.blur();
         }
       }
-      
+
       // Ctrl+K to search files
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
 
-      // J/K for navigating views (mocked logic - just toggling tabs)
-      if (e.target === document.body || document.activeElement === document.body) {
-        if (e.key.toLowerCase() === "j" || e.key.toLowerCase() === "k") {
-          // Simply show help or focus first clickable as a demo
-          setShowShortcutsHelp(true);
-        }
-        
-        // ? to show shortcuts
-        if (e.key === "?") {
-          setShowShortcutsHelp(true);
-        }
+      // / to focus search input
+      if (e.key === "/" && e.target !== searchInputRef.current &&
+          document.activeElement?.tagName !== "INPUT" &&
+          document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+
+      // Ctrl+N to start a new analysis
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault();
+        const repoInput = document.querySelector<HTMLInputElement>("input[placeholder*='github.com']");
+        repoInput?.focus();
+      }
+
+      // Ctrl+L to clear chat history
+      if ((e.metaKey || e.ctrlKey) && e.key === "l") {
+        e.preventDefault();
+        setChatHistory([]);
+      }
+
+      // Ctrl+B to toggle sidebar (focus file list)
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        const fileTree = document.querySelector<HTMLElement>("[class*='file-tree'], [class*='FileTree']");
+        fileTree?.focus();
+      }
+
+      // Ctrl+E to export HTML report
+      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+        e.preventDefault();
+        downloadReadme();
+      }
+
+      // Ctrl+, to open settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setShowSettings(true);
+      }
+
+      // ? to show shortcuts
+      if (e.key === "?" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        setShowShortcutsHelp(true);
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [apiError]);
+  }, [apiError, setChatHistory]);
 
   const isValidAuditEntry = (entry: unknown): entry is AuditHistoryEntry => {
     if (!entry || typeof entry !== 'object') return false;
@@ -368,126 +405,94 @@ export default function Dashboard() {
 
   // Simple markdown compiler for premium preview rendering
   const renderMarkdown = (md: string) => {
-    const lines = md.split("\n");
-    let inCodeBlock = false;
-    let codeBlockLines: string[] = [];
+    return (
+      <ReactMarkdown
+        components={{
+          code(props: any) {
+            const { children, className, node, ...rest } = props;
+            const match = /language-(\w+)/.exec(className || '');
+            const codeString = String(children).replace(/\n$/, '');
+            const isBlock = match || String(children).includes('\n');
 
-    return lines.map((line, idx) => {
-      // Handle multi-line code blocks
-      if (line.trim().startsWith("```")) {
-        if (inCodeBlock) {
-          inCodeBlock = false;
-          const codeContent = codeBlockLines.join("\n");
-          codeBlockLines = [];
-          return (
-            <div key={idx} style={{ position: "relative", margin: "8px 0" }}>
-              <pre
-                style={{
-                  background: "rgba(0,0,0,0.3)",
-                  border: "1px solid rgba(255,255,255,0.05)",
-                  borderRadius: "6px",
-                  padding: "10px",
-                  paddingRight: "40px",
-                  overflowX: "auto",
-                  margin: 0,
-                }}
-              >
-                <code
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "11px",
-                    color: "#c084fc",
-                  }}
-                >
-                  {codeContent}
-                </code>
-              </pre>
-              <CopyToClipboardButton
-                textToCopy={codeContent}
-                style={{
-                  position: "absolute",
-                  top: "8px",
-                  right: "8px",
-                  background: "rgba(15, 23, 42, 0.6)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  padding: "4px",
-                }}
-              />
-            </div>
-          );
-        } else {
-          inCodeBlock = true;
-          return null;
-        }
-      }
+            if (match) {
+              return (
+                <div style={{ position: "relative", margin: "8px 0" }}>
+                  <SyntaxHighlighter
+                    {...rest}
+                    style={vscDarkPlus as any}
+                    language={match[1]}
+                    PreTag="div"
+                    customStyle={{
+                      background: "rgba(0,0,0,0.3)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      paddingRight: "40px",
+                      overflowX: "auto",
+                      margin: 0,
+                      fontFamily: "monospace",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {codeString}
+                  </SyntaxHighlighter>
+                  <CopyToClipboardButton
+                    textToCopy={codeString}
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      background: "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      padding: "4px",
+                    }}
+                  />
+                </div>
+              );
+            }
 
-      if (inCodeBlock) {
-        codeBlockLines.push(line);
-        return null;
-      }
+            if (isBlock) {
+              return (
+                <div style={{ position: "relative", margin: "8px 0" }}>
+                  <pre
+                    style={{
+                      background: "rgba(0,0,0,0.3)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      paddingRight: "40px",
+                      overflowX: "auto",
+                      margin: 0,
+                    }}
+                  >
+                    <code
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: "11px",
+                        color: "#c084fc",
+                      }}
+                      {...rest}
+                    >
+                      {children}
+                    </code>
+                  </pre>
+                  <CopyToClipboardButton
+                    textToCopy={codeString}
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      background: "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      padding: "4px",
+                    }}
+                  />
+                </div>
+              );
+            }
 
-      // H1 Header
-      if (line.startsWith("# ")) {
-        return (
-          <h1
-            key={idx}
-            style={{
-              fontSize: "18px",
-              fontWeight: 800,
-              color: "#f3f4f6",
-              margin: "14px 0 8px 0",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-              paddingBottom: "4px",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(2)}
-          </h1>
-        );
-      }
-      // H2 Header
-      if (line.startsWith("## ")) {
-        return (
-          <h2
-            key={idx}
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#e5e7eb",
-              margin: "12px 0 6px 0",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(3)}
-          </h2>
-        );
-      }
-      // H3 Header
-      if (line.startsWith("### ")) {
-        return (
-          <h3
-            key={idx}
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              color: "#d1d5db",
-              margin: "10px 0 4px 0",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(4)}
-          </h3>
-        );
-      }
-
-      // Inline parser helper for bold and code ticks
-      const parseInlineStyles = (text: string) => {
-        const codeParts = text.split("`");
-        return codeParts.map((codePart, cIdx) => {
-          if (cIdx % 2 === 1) {
             return (
               <code
-                key={cIdx}
                 style={{
                   background: "#1e1e1e",
                   padding: "2px 4px",
@@ -496,66 +501,23 @@ export default function Dashboard() {
                   fontSize: "11px",
                   color: "#d8b4fe",
                 }}
+                {...rest}
               >
-                {codePart}
+                {children}
               </code>
             );
-          }
-          const boldParts = codePart.split("**");
-          return boldParts.map((boldPart, bIdx) => {
-            if (bIdx % 2 === 1) {
-              return (
-                <strong key={bIdx} style={{ color: "#fff", fontWeight: 700 }}>
-                  {boldPart}
-                </strong>
-              );
-            }
-            return boldPart;
-          });
-        });
-      };
-
-      // Unordered List Items
-      if (line.trim().startsWith("- ")) {
-        const content = line.trim().slice(2);
-        return (
-          <li
-            key={idx}
-            style={{
-              marginLeft: "16px",
-              marginBottom: "4px",
-              fontSize: "12px",
-              color: "#d1d5db",
-              listStyleType: "disc",
-              fontFamily: "inherit",
-              lineHeight: 1.6,
-            }}
-          >
-            {parseInlineStyles(content)}
-          </li>
-        );
-      }
-      // Empty spacing line
-      if (!line.trim()) {
-        return <div key={idx} style={{ height: "6px" }} />;
-      }
-
-      // Regular Paragraphs
-      return (
-        <p
-          key={idx}
-          style={{
-            margin: "0 0 6px 0",
-            fontSize: "12px",
-            color: "#d1d5db",
-            lineHeight: 1.6,
-            fontFamily: "inherit",
-          }}
-        >
-          {parseInlineStyles(line)}
-        </p>
-      );
-    });
+          },
+          h1: ({ node, ...props }: any) => <h1 style={{ fontSize: "18px", fontWeight: 800, color: "#f3f4f6", margin: "14px 0 8px 0", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "4px" }} {...props} />,
+          h2: ({ node, ...props }: any) => <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#e5e7eb", margin: "12px 0 6px 0" }} {...props} />,
+          h3: ({ node, ...props }: any) => <h3 style={{ fontSize: "12px", fontWeight: 600, color: "#d1d5db", margin: "10px 0 4px 0" }} {...props} />,
+          li: ({ node, ...props }: any) => <li style={{ marginLeft: "16px", marginBottom: "4px", fontSize: "12px", color: "#d1d5db", fontFamily: "inherit", lineHeight: 1.6 }} {...props} />,
+          p: ({ node, ...props }: any) => <p style={{ margin: "0 0 6px 0", fontSize: "12px", color: "#d1d5db", lineHeight: 1.6, fontFamily: "inherit" }} {...props} />,
+          strong: ({ node, ...props }: any) => <strong style={{ color: "#fff", fontWeight: 700 }} {...props} />
+        }}
+      >
+        {md}
+      </ReactMarkdown>
+    );
   };
 
   const handleCreateGitHubIssue = async (
@@ -667,6 +629,8 @@ export default function Dashboard() {
   const [useRag, setUseRag] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatHistoryRef = useRef<ChatMessage[]>(chatHistory);
+  chatHistoryRef.current = chatHistory;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -681,7 +645,7 @@ export default function Dashboard() {
         const history = await response.json();
 
         if (history && !controller.signal.aborted) {
-          setAuditHistory(history);
+          setAuditHistory(history.history || []);
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -700,11 +664,10 @@ export default function Dashboard() {
     const userMessage = chatInput;
     setChatInput("");
 
-    // Build the updated history array locally FIRST so it includes the user's
-    // current message when sent to the API, rather than relying on the stale
-    // chatHistory closure value (which would be one message behind).
+    // Use chatHistoryRef to avoid stale closure — the ref always holds the latest
+    // Zustand state, so rapid successive sends never drop messages.
     const updatedHistory = truncateChatHistory([
-      ...(chatHistory || []),
+      ...(chatHistoryRef.current || []),
       { role: "user" as const, content: userMessage }
     ]);
     setChatHistory(updatedHistory);
@@ -1274,6 +1237,7 @@ export default function Dashboard() {
           {/* 4. The Complete Analysis Dashboard (Split Audit View) */}
           {!isLoading && analysisResult && (
             <div
+              ref={reportRef}
               style={{
                 flexGrow: 1,
                 display: "flex",
@@ -1361,7 +1325,7 @@ export default function Dashboard() {
                 />
               </SectionErrorBoundary>
               {/* Dashboard View Selection Tabs & Export Controls */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "100%" }}>
+              <div data-html2canvas-ignore="true" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "100%" }}>
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button
                     onClick={() => setActiveDashboardView("audit")}
@@ -1491,7 +1455,7 @@ export default function Dashboard() {
                     <FileDown size={14} /> Export Markdown
                   </button>
                   <button
-                    onClick={() => analysisResult && handlePdfExport(analysisResult.repoName, analysisResult.analysis, apiFetch)}
+                    onClick={() => analysisResult && handlePdfExport(analysisResult.repoName, reportRef.current)}
                     style={{
                       background: "rgba(220, 38, 38, 0.1)",
                       border: "1px solid rgba(220, 38, 38, 0.3)",
@@ -1515,6 +1479,7 @@ export default function Dashboard() {
               </div>
 
               <div
+                className="pdf-grid-container"
                 style={{
                   flexGrow: 1,
                   display: "grid",
@@ -1527,7 +1492,7 @@ export default function Dashboard() {
                 }}
               >
                 {/* File Tree List */}
-                <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '72vh' }}>
+                <div data-html2canvas-ignore="true" className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '72vh' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', margin: 0, letterSpacing: '0.5px' }}>File Navigator</h3>
                     <div style={{ display: 'flex', gap: '2px' }}>

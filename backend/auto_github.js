@@ -129,6 +129,35 @@ async function autoAssignAndMerge() {
           continue;
         }
 
+        // Verify PR is mergeable before attempting merge
+        if (pr.mergeable === false) {
+          console.log(`   ⏭️ Skipping PR #${pr.number} — has merge conflicts (mergeable=false)`);
+          continue;
+        }
+
+        // Verify CI status — all required status checks must pass
+        const { data: combinedStatus } = await octokit.rest.repos.getCombinedStatusForRef({
+          owner,
+          repo,
+          ref: pr.head.sha,
+        });
+        if (combinedStatus.state === 'failure' || combinedStatus.state === 'error') {
+          console.log(`   ⏭️ Skipping PR #${pr.number} — CI checks have not passed (state=${combinedStatus.state})`);
+          continue;
+        }
+
+        // Verify at least one approved review exists (skip if PR author)
+        const { data: reviews } = await octokit.rest.pulls.listReviews({
+          owner,
+          repo,
+          pull_number: pr.number,
+        });
+        const hasApprovedReview = reviews.some(r => r.state === 'APPROVED');
+        if (!hasApprovedReview) {
+          console.log(`   ⏭️ Skipping PR #${pr.number} — no approved review found`);
+          continue;
+        }
+
         console.log(`   Merging PR #${pr.number}...`);
         try {
           await octokit.rest.pulls.merge({

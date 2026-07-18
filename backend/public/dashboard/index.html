@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RepoSage ROI Dashboard</title>
+    <!-- Modern Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js for beautiful visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <div class="logo">
+                <span class="logo-icon">🤖</span>
+                <h1>RepoSage <span class="highlight">Analytics</span></h1>
+            </div>
+            <p class="subtitle">Real-time Return on Investment Tracking</p>
+        </header>
+
+        <section class="metrics-grid">
+            <div class="metric-card glass">
+                <div class="metric-icon blue">📦</div>
+                <div class="metric-info">
+                    <h3>Total PRs Reviewed</h3>
+                    <p id="total-prs" class="metric-value">0</p>
+                </div>
+            </div>
+            <div class="metric-card glass">
+                <div class="metric-icon purple">💬</div>
+                <div class="metric-info">
+                    <h3>AI Suggestions Made</h3>
+                    <p id="total-comments" class="metric-value">0</p>
+                </div>
+            </div>
+            <div class="metric-card glass">
+                <div class="metric-icon green">✨</div>
+                <div class="metric-info">
+                    <h3>Acceptance Rate</h3>
+                    <p id="acceptance-rate" class="metric-value">0%</p>
+                </div>
+            </div>
+            <div class="metric-card glass hero-metric">
+                <div class="metric-icon gold">⏱️</div>
+                <div class="metric-info">
+                    <h3>Total Time Saved</h3>
+                    <p id="time-saved" class="metric-value">0 <span class="unit">hours</span></p>
+                </div>
+            </div>
+        </section>
+
+        <section class="charts-section">
+            <div class="chart-container glass">
+                <h2>Repository Activity</h2>
+                <canvas id="roiChart"></canvas>
+            </div>
+        </section>
+        
+        <footer>
+            <p>Built for GSSoC '26 with 💻 and ☕</p>
+        </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

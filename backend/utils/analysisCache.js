@@ -176,34 +176,40 @@ class AnalysisCache {
       this._locks.set(key, lock);
     }
 
-    return lock.acquire(async () => {
-      const recheck = this.get(key);
-      if (recheck) {
-        this.stats.dedupSaves++;
-        return recheck;
-      }
+    try {
+      return await lock.acquire(async () => {
+        const recheck = this.get(key);
+        if (recheck) {
+          this.stats.dedupSaves++;
+          return recheck;
+        }
 
-      const pending = this.pending.get(key);
-      if (pending) {
-        this.stats.dedupSaves++;
-        return pending;
-      }
+        const pending = this.pending.get(key);
+        if (pending) {
+          this.stats.dedupSaves++;
+          return pending;
+        }
 
-      const promise = fetcher().then(result => {
-        const cacheHint = (result && result._cacheHint) || {};
-        const resultData = (result && result._data !== undefined) ? result._data : result;
-        const isMock = cacheHint.isMock === true || result._mock === true;
-        this.set(key, resultData, { repoUrl, isMock });
-        this.pending.delete(key);
-        return resultData;
-      }).catch(err => {
-        this.pending.delete(key);
-        throw err;
+        const promise = fetcher().then(result => {
+          const cacheHint = (result && result._cacheHint) || {};
+          const resultData = (result && result._data !== undefined) ? result._data : result;
+          const isMock = cacheHint.isMock === true || result._mock === true;
+          this.set(key, resultData, { repoUrl, isMock });
+          this.pending.delete(key);
+          return resultData;
+        }).catch(err => {
+          this.pending.delete(key);
+          throw err;
+        });
+
+        this.pending.set(key, promise);
+        return promise;
       });
-
-      this.pending.set(key, promise);
-      return promise;
-    });
+    } finally {
+      if (lock.isFree()) {
+        this._locks.delete(key);
+      }
+    }
   }
 
   /**
@@ -214,6 +220,16 @@ class AnalysisCache {
     for (const [key, entry] of this.cache) {
       if (entry.isMock) {
         this.cache.delete(key);
+        if (entry.repoUrl) {
+          const normalizedUrl = entry.repoUrl.replace(/\/+$/, '').toLowerCase();
+          const index = this._repoUrlIndex.get(normalizedUrl);
+          if (index) {
+            index.delete(key);
+            if (index.size === 0) {
+              this._repoUrlIndex.delete(normalizedUrl);
+            }
+          }
+        }
         cleared++;
       }
     }
@@ -236,26 +252,6 @@ class AnalysisCache {
   }
 
   /**
-   * Invalidate all cache entries whose key contains the given repo URL.
-   * Used by push-event webhook handling to evict stale analysis data.
-   */
-  invalidateByRepoUrl(repoUrl) {
-    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
-    let removed = 0;
-    for (const [key] of this.cache) {
-      const keyStr = key;
-      if (keyStr.includes(normalized)) {
-        this.cache.delete(key);
-        removed++;
-      }
-    }
-    if (removed > 0) {
-      console.log(`🗑️  Invalidated ${removed} cache entries for ${repoUrl}`);
-    }
-    return removed;
-  }
-
-  /**
    * Get cache statistics for monitoring and debugging.
    */
   _startSweeper(intervalMs = 60000) {
@@ -269,7 +265,11 @@ class AnalysisCache {
           this.cache.delete(key);
           this.stats.absoluteExpiries++;
           if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            const set = this._repoUrlIndex.get(entry.repoUrl);
+            set.delete(key);
+            if (set.size === 0) {
+              this._repoUrlIndex.delete(entry.repoUrl);
+            }
           }
           continue;
         }
@@ -277,7 +277,11 @@ class AnalysisCache {
           this.cache.delete(key);
           this.stats.slidingExpiries++;
           if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            const set = this._repoUrlIndex.get(entry.repoUrl);
+            set.delete(key);
+            if (set.size === 0) {
+              this._repoUrlIndex.delete(entry.repoUrl);
+            }
           }
         }
       }

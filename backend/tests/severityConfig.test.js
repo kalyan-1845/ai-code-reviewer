@@ -172,3 +172,10 @@ test('DEFAULT_CONFIG has expected structure', () => {
   assert.ok(Array.isArray(DEFAULT_CONFIG.suppress));
   assert.deepEqual(DEFAULT_CONFIG.suppress, []);
 });
+
+test('categorizeFinding: handles null, undefined, and alternate fields description/rule', () => {
+  assert.equal(categorizeFinding(null), 'other');
+  assert.equal(categorizeFinding(undefined), 'other');
+  assert.equal(categorizeFinding({ description: 'SQL injection vulnerability found' }), 'security');
+  assert.equal(categorizeFinding({ rule: 'security-no-hardcoded-creds' }), 'security');
+});

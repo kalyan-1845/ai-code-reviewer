@@ -81,9 +81,9 @@ const sessionSchema = new mongoose.Schema({
   },
 });
 
-// Pre-findOne hook to block NoSQL injection via sessionId operator injection.
+// Shared validation function to block NoSQL injection via sessionId operator injection.
 // If the filter contains a non-string sessionId (e.g. { $ne: '' }), reject.
-sessionSchema.pre('findOne', function (next) {
+function validateSessionIdFilter(next) {
   const filter = this.getFilter();
   if (filter && typeof filter.sessionId === 'object' && !Array.isArray(filter.sessionId)) {
     return next(new mongoose.Error('Invalid sessionId filter: object/operator injection detected'));
@@ -92,6 +92,11 @@ sessionSchema.pre('findOne', function (next) {
     return next(new mongoose.Error('Invalid sessionId format in query'));
   }
   next();
+}
+
+// Register the validation hook on all query methods that accept sessionId filters
+['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'deleteOne', 'updateOne'].forEach(method => {
+  sessionSchema.pre(method, validateSessionIdFilter);
 });
 
 // Single TTL index on absoluteExpiry. Document is deleted the moment

@@ -43,7 +43,9 @@ def is_go_file(filename: str, content: str) -> bool:
 
 # `go vet` reports one finding per line to stderr:
 #   ./file.go:12:5: message text here
-_GO_VET_LINE_RE = re.compile(r"^(?:\./)?(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s*(?P<message>.+)$")
+# On Windows the temp-file path includes a drive letter (C:\...) so the regex
+# must allow an optional drive-letter prefix before the file path.
+_GO_VET_LINE_RE = re.compile(r"^(?:\./)?(?:[A-Za-z]:)?(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s*(?P<message>.+)$")
 
 
 def parse_go_vet_output(stderr: str, display_filename: Optional[str] = None) -> list[dict]:
@@ -74,7 +76,7 @@ def parse_go_vet_output(stderr: str, display_filename: Optional[str] = None) -> 
 # staticcheck's default text output format:
 #   file.go:12:5: message text (SA1019)
 _STATICCHECK_LINE_RE = re.compile(
-    r"^(?:\./)?(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s*(?P<message>.+?)\s*\((?P<category>[A-Z]+\d+)\)\s*$"
+    r"^(?:\./)?(?:[A-Za-z]:)?(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s*(?P<message>.+?)\s*\((?P<category>[A-Z]+\d+)\)\s*$"
 )
 
 

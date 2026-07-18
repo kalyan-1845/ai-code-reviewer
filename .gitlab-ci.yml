@@ -1,0 +1,20 @@
+# .gitlab-ci.yml template for RepoSage AI Reviewer
+
+stages:
+  - ai-review
+
+repo_sage_review:
+  stage: ai-review
+  image: node:20-alpine
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    # 1. Install dependencies
+    - npm install --prefix ./github-action
+    # 2. Run the core CI script
+    - node ./github-action/dist/index.js
+  variables:
+    # Ensure you set these variables in your GitLab CI/CD Settings!
+    GITLAB_CI: "true"
+    # GITLAB_TOKEN: $GITLAB_API_TOKEN
+    # GROQ_API_KEY: $GROQ_API_KEY

@@ -8,9 +8,8 @@ export function verifyWebhookSignature(rawBody, signature, secret) {
   const hmac = crypto.createHmac('sha256', secret);
   const digest = `sha256=${hmac.update(bodyStr).digest('hex')}`;
   try {
-    const a = Buffer.from(sig);
-    const b = Buffer.from(digest);
-    if (a.length !== b.length) return false;
+    const a = crypto.createHash('sha256').update(Buffer.from(sig)).digest();
+    const b = crypto.createHash('sha256').update(Buffer.from(digest)).digest();
     return crypto.timingSafeEqual(a, b);
   } catch (err) {
     console.error("Webhook signature verification failed:", err);

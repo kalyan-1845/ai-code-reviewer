@@ -145,3 +145,11 @@ test('isIgnored with null/undefined entries in patterns array is skipped', () =>
   assert.equal(isIgnored('/app/file.js', [undefined], '/app'), false);
   assert.equal(isIgnored('/app/file.js', ['*.js', null, '*.tmp'], '/app'), true);
 });
+
+test('isIgnored strips leading slashes from patterns to match relative paths correctly', () => {
+  const patterns = ['/node_modules/', '/dist', '/src/index.js'];
+  assert.equal(isIgnored('/app/node_modules/lodash/index.js', patterns, '/app'), true);
+  assert.equal(isIgnored('/app/dist/bundle.js', patterns, '/app'), true);
+  assert.equal(isIgnored('/app/src/index.js', patterns, '/app'), true);
+  assert.equal(isIgnored('/app/src/other.js', patterns, '/app'), false);
+});

@@ -20,7 +20,7 @@ services:
   ai-engine:
     build:
       context: ./ai-engine
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: reposage-ai-engine
     ports:
       - "8000:8000"
@@ -35,6 +35,8 @@ services:
       - CHROMA_HOST=${CHROMA_HOST:-chromadb}
       - CHROMA_PORT=${CHROMA_PORT:-8000}
       - CHROMA_COLLECTION=${CHROMA_COLLECTION:-reposage_code_chunks}
+    env_file:
+      - .env.docker
     depends_on:
       chromadb:
         condition: service_healthy
@@ -49,7 +51,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: reposage-backend
     ports:
       - "5000:5000"
@@ -65,6 +67,8 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       - GIT_CLONE_TIMEOUT=${GIT_CLONE_TIMEOUT:-120000}
       - MAX_REPO_SIZE_MB=${MAX_REPO_SIZE_MB:-100}
+    env_file:
+      - .env.docker
     depends_on:
       ai-engine:
         condition: service_healthy
@@ -79,15 +83,17 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: reposage-frontend
     ports:
-      - "3000:80"
+      - "3000:3000"
     volumes:
       - ./frontend:/usr/src/app
       - /usr/src/app/node_modules
     environment:
       - VITE_API_URL=http://localhost:5000
+    env_file:
+      - .env.docker
     depends_on:
       backend:
         condition: service_healthy
