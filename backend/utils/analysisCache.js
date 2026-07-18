@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { sanitizeRedisKey } from './redisSafe.js';
 
 /**
  * In-memory cache for code analysis results with TTL support.
@@ -149,7 +150,7 @@ class AnalysisCache {
     const expiresAt = now + ttl;
     const absoluteExpiresAt = now + (ttl * this.absoluteMaxMultiplier);
     const repoUrl = options.repoUrl;
-    const normalizedRepoUrl = repoUrl ? repoUrl.replace(/\/+$/, '').toLowerCase() : undefined;
+    const normalizedRepoUrl = repoUrl ? sanitizeRedisKey(repoUrl.replace(/\/+$/, '').toLowerCase()) : undefined;
     this.cache.set(key, { result, expiresAt, absoluteExpiresAt, repoUrl: normalizedRepoUrl, isMock: !!options.isMock });
     if (normalizedRepoUrl) {
       if (!this._repoUrlIndex.has(normalizedRepoUrl)) {

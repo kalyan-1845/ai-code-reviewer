@@ -88,17 +88,39 @@ export function isIgnored(filePath, patterns, baseDir) {
 const MAX_DEPTH = 5;
 const MAX_FILES = 200;
 const MAX_FILE_SIZE = 100 * 1024;
+const FILE_READ_TIMEOUT_MS = parseInt(process.env.FILE_READ_TIMEOUT, 10) || 10000;
 
-export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePatterns = [], depth = 0, skippedFiles = []) {
+async function readFileContentWithTimeout(safePath) {
+  const ac = new AbortController();
+  const timeoutId = setTimeout(() => ac.abort(), FILE_READ_TIMEOUT_MS);
+  try {
+    const buffer = await fs.promises.readFile(safePath, { encoding: 'utf-8', signal: ac.signal });
+    return buffer;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`File read timed out after ${FILE_READ_TIMEOUT_MS}ms: ${safePath}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePatterns = [], depth = 0, skippedFiles = []) {
   if (depth > MAX_DEPTH) return fileList;
   if (fileList.length >= MAX_FILES) return fileList;
-  const files = fs.readdirSync(dir);
+  let files;
+  try {
+    files = await fs.promises.readdir(dir);
+  } catch {
+    return fileList;
+  }
   for (const file of files) {
     if (fileList.length >= MAX_FILES) return fileList;
     const filePath = path.join(dir, file);
     let stat;
     try {
-      stat = fs.lstatSync(filePath);
+      stat = await fs.promises.lstat(filePath);
     } catch {
       continue;
     }
@@ -118,10 +140,10 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
 
     if (stat.isDirectory()) {
       try {
-        const realPath = fs.realpathSync(filePath);
-        const resolvedBase = fs.realpathSync(baseDir);
+        const realPath = await fs.promises.realpath(filePath);
+        const resolvedBase = await fs.promises.realpath(baseDir);
         if (realPath.startsWith(resolvedBase)) {
-          readFilesRecursively(filePath, fileList, baseDir, ignorePatterns, depth + 1, skippedFiles);
+          await readFilesRecursively(filePath, fileList, baseDir, ignorePatterns, depth + 1, skippedFiles);
         }
       } catch (e) {
         // Skip on error
@@ -138,16 +160,16 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
 
       if (validExtensions.includes(ext) || isExtensionless) {
         try {
-          const stat = fs.statSync(filePath);
-          if (stat.size > MAX_FILE_SIZE) {
+          const fileStat = await fs.promises.stat(filePath);
+          if (fileStat.size > MAX_FILE_SIZE) {
             if (validExtensions.includes(ext)) {
-              skippedFiles.push({ name: path.relative(baseDir, filePath).replace(/\\/g, '/'), reason: 'File exceeds size limit of 100KB', size: stat.size });
+              skippedFiles.push({ name: path.relative(baseDir, filePath).replace(/\\/g, '/'), reason: 'File exceeds size limit of 100KB', size: fileStat.size });
             }
             continue;
           }
           const MAX_FILE_CONTENT_LENGTH = 1024 * 1024;
           const safePath = resolveSafePath(baseDir, filePath);
-          const content = fs.readFileSync(safePath, 'utf-8').slice(0, MAX_FILE_CONTENT_LENGTH);
+          const content = (await readFileContentWithTimeout(safePath)).slice(0, MAX_FILE_CONTENT_LENGTH);
 
           if (isExtensionless) {
             const detectedLanguage = detectShebangLanguage(content);

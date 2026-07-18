@@ -60,10 +60,9 @@ const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
-const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
-const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 const ANALYSIS_CACHE_MOCK_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 120)(parseInt(process.env.ANALYSIS_CACHE_MOCK_TTL_SECONDS || '120', 10)) * 1000;
 const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, ANALYSIS_CACHE_MOCK_TTL_MS);
+const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
@@ -165,6 +164,7 @@ app.use((req, res, next) => {
       totalBytes += chunk.length;
       if (totalBytes > MAX_WEBHOOK_BODY) {
         responseAlreadySent = true;
+        res.setHeader('Access-Control-Allow-Origin', '*');
         res.status(413).json({ error: 'Webhook payload too large' });
         req.removeAllListeners('data');
         req.removeAllListeners('end');
@@ -180,6 +180,7 @@ app.use((req, res, next) => {
         req.body = JSON.parse(req.rawBody.toString('utf-8'));
       } catch {
         responseAlreadySent = true;
+        res.setHeader('Access-Control-Allow-Origin', '*');
         return res.status(400).json({ error: 'Invalid webhook payload' });
       }
       next();
@@ -810,7 +811,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       // 1. Load ignore patterns and read files
       const ignorePatterns = loadIgnorePatterns(clonePath);
       const severityConfig = loadConfigFile(clonePath);
-      let files = readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
+      let files = await readFilesRecursively(clonePath, [], clonePath, ignorePatterns);
       
       let partial_review = false;
       const MAX_PAYLOAD_CHARS = 30000;
@@ -1161,8 +1162,8 @@ if (reviewResult?.fileReviews) {
       // Do NOT set a second CSRF cookie here to avoid token mismatch.
 
       // 8. Return result
-      const responseObject = { ...(sessionPersisted ? { csrfToken } : {}),
-      return res.json({ ...(sessionPersisted ? { csrfToken: res.locals.rotatedCsrfToken || csrfToken } : {}),
+      const responseObject = {
+  ...(sessionPersisted ? { csrfToken: res.locals.rotatedCsrfToken || csrfToken } : {}),
   success: true,
 
   repoName,
@@ -1530,40 +1531,45 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('Γ¥î WEBHOOK_SECRET not configured');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(500).json({ error: 'Webhook secret not configured. Set WEBHOOK_SECRET in environment.' });
   }
 
   const signature = req.headers['x-hub-signature-256'];
   if (!signature) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
   }
 
   if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret, 5000)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(401).json({ error: 'Invalid signature' });
   }
   
   if (Buffer.byteLength(JSON.stringify(req.body), 'utf8') > 1048576) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(413).json({ error: 'Payload too large' });
   }
   
   if (!req.body || !req.body.action) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(400).json({ error: 'Invalid webhook payload' });
-  }
-    console.warn('Γ¥î Webhook signature verification failed');
-    return res.status(401).json({ error: 'Invalid webhook signature' });
   }
 
   const event = req.headers['x-github-event'];
   const payload = req.body;
 
   if (!event || typeof event !== 'string') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(400).json({ error: 'Missing x-github-event header.' });
   }
   if (!payload || typeof payload !== 'object') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(400).json({ error: 'Invalid webhook payload.' });
   }
   const validEvents = ['pull_request', 'push', 'ping', 'issue_comment', 'pull_request_review_comment'];
   if (!validEvents.includes(event)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(400).json({ error: `Unsupported webhook event: ${event}` });
   }
 
@@ -1754,7 +1760,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       }
 
       // Per-repository rate limiting
-      const repoKey = `${owner}/${repo}`;
+      const repoKey = `${sanitizeRedisKey(owner)}/${sanitizeRedisKey(repo)}`;
       let currentCount;
       if (redisClient) {
         const redisKey = `ratelimit:repo:${repoKey}`;
