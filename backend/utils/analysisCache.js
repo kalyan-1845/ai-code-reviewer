@@ -14,26 +14,28 @@ import crypto from 'crypto';
 
 class AsyncLock {
   constructor() {
-    this._promise = null;
-    this._resolve = null;
+    this._queue = [];
+    this._locked = false;
   }
+
   async acquire(fn) {
-    while (this._promise) {
-      await this._promise;
+    if (this._locked) {
+      await new Promise(resolve => { this._queue.push(resolve); });
     }
-    this._promise = new Promise(resolve => { this._resolve = resolve; });
+    this._locked = true;
     try {
       return await fn();
     } finally {
-      const resolve = this._resolve;
-      this._promise = null;
-      this._resolve = null;
-      if (resolve) resolve();
+      this._locked = false;
+      if (this._queue.length > 0) {
+        const nextResolve = this._queue.shift();
+        nextResolve();
+      }
     }
   }
 
   isFree() {
-    return this._promise === null;
+    return !this._locked;
   }
 }
 
@@ -394,4 +396,5 @@ class AnalysisCache {
   }
 }
 
+export { AsyncLock };
 export default AnalysisCache;

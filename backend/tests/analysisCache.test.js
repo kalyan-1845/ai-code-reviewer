@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import AnalysisCache from '../utils/analysisCache.js';
+import AnalysisCache, { AsyncLock } from '../utils/analysisCache.js';
 
 /**
  * Unit tests for the AnalysisCache utility.
@@ -301,4 +301,35 @@ test('AnalysisCache: setMaxEntries does nothing if cache is already below new li
 
   assert.equal(cache.maxEntries, 100);
   assert.equal(cache.cache.size, 1, 'Single entry should remain');
+});
+
+test('AsyncLock: serializes concurrent executions sequentially in FIFO order', async () => {
+  const lock = new AsyncLock();
+  const executionOrder = [];
+
+  const runTask = async (id, delay) => {
+    return lock.acquire(async () => {
+      executionOrder.push(`${id}-start`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      executionOrder.push(`${id}-end`);
+      return id;
+    });
+  };
+
+  // Start task 1 which takes 50ms, then launch tasks 2 and 3 concurrently
+  const p1 = runTask('task1', 50);
+  const p2 = runTask('task2', 10);
+  const p3 = runTask('task3', 10);
+
+  const results = await Promise.all([p1, p2, p3]);
+
+  assert.deepEqual(results, ['task1', 'task2', 'task3']);
+  assert.deepEqual(executionOrder, [
+    'task1-start',
+    'task1-end',
+    'task2-start',
+    'task2-end',
+    'task3-start',
+    'task3-end'
+  ], 'Tasks must execute sequentially in FIFO order without overlapping');
 });
