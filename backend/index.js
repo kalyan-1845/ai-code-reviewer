@@ -16,7 +16,7 @@ import Redis from 'ioredis';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
 import { recordAnalysis as recordFileAnalytics } from './utils/analyticsStore.js';
 import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
-import { isValidRepoUrl, parseRepoUrl, isSafeUrl } from './utils/urlValidator.js';
+import { isValidRepoUrl, isValidAuthor }, parseRepoUrl, isSafeUrl } from './utils/urlValidator.js';
 import { isValidGithubToken } from './utils/tokenValidator.js';
 import simpleGit from 'simple-git';
 import escapeHtml from 'lodash.escape';
