@@ -1544,6 +1544,14 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   const event = req.headers['x-github-event'];
+  const branch = payload?.pull_request?.base?.ref;
+  if (event === 'pull_request' && branch) {
+    const config = loadConfigFile(payload.repository.full_name);
+    if (config?.branches && !config.branches.includes(branch)) {
+      console.log(`[webhook] Skipping PR on non-tracked branch: ${branch}`);
+      return res.json({ message: 'Branch not tracked' });
+    }
+  }
   const payload = req.body;
 
   if (!event || typeof event !== 'string') {
