@@ -1527,7 +1527,8 @@ app.get('/api/roi', async (req, res) => {
 });
 
 // 🚀 Route: GitHub Webhook Receiver for automated Pull Request Reviews
-app.post('/api/webhook', webhookLimiter, async (req, res) => {
+const webhookIpLimiter = rateLimit({ windowMs: 60000, max: 60, keyGenerator: (req) => req.ip || req.connection.remoteAddress });
+app.post('/api/webhook', webhookIpLimiter, webhookLimiter, async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('Γ¥î WEBHOOK_SECRET not configured');
