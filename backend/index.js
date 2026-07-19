@@ -2654,8 +2654,8 @@ app.get("/api/review-history", requireApiKey, async (req, res) => {
 
     try {
         await ensureConnection();
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
         const skip = (page - 1) * limit;
 
         const [history, total] = await Promise.all([
@@ -2692,8 +2692,8 @@ app.get("/api/review-history/:repo", requireApiKey, async (req, res) => {
           return res.status(400).json({ error: 'Invalid repo parameter.' });
         }
 
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
         const skip = (page - 1) * limit;
 
         const [history, total] = await Promise.all([
