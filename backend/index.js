@@ -1568,7 +1568,14 @@ app.post('/api/webhook', webhookIpLimiter, webhookLimiter, async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(400).json({ error: 'Invalid webhook payload.' });
   }
-  const validEvents = ['pull_request', 'push', 'ping', 'issue_comment', 'pull_request_review_comment'];
+  const VALID_EVENTS = new Set([
+  "pull_request", "push", "ping", "issue_comment", "pull_request_review_comment"
+]);
+function validateWebhookEvents(events) {
+  if (!Array.isArray(events)) return false;
+  return events.every(e => VALID_EVENTS.has(e));
+}
+const validEvents = ['pull_request', 'push', 'ping', 'issue_comment', 'pull_request_review_comment'];
   if (!validEvents.includes(event)) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(400).json({ error: `Unsupported webhook event: ${event}` });
