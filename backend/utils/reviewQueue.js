@@ -120,26 +120,24 @@ class ReviewQueue {
   }
 
   // Per-key mutex: ensures only one async operation runs at a time for a given key.
-  // Unlike enqueue(), this does not use a queue — it simply chains onto the previous
-  // operation for the same key. Useful for serializing database read-then-write
-  // operations to prevent lost updates (see issue #746).
+  // Unlike enqueue(), this does not use a queue — it awaits any existing operation
+  // for the same key before starting the new one. This prevents lost updates and
+  // race conditions from concurrent read-modify-write on shared resources.
   async runExclusive(key, fn) {
-    const prev = this._exclusiveLocks.get(key) || Promise.resolve();
-    const next = prev.then(async () => {
+    const existing = this._exclusiveLocks.get(key);
+    if (existing) {
+      // Wait for the existing operation to complete before starting a new one
+      await existing;
+    }
+    const next = (async () => {
       try {
         return await fn();
       } finally {
-        const current = this._exclusiveLocks.get(key);
-        if (current === wrappedPromise) {
-          this._exclusiveLocks.delete(key);
-          this._exclusiveLocksTimestamps.delete(key);
-        }
+        this._exclusiveLocks.delete(key);
+        this._exclusiveLocksTimestamps.delete(key);
       }
-    });
-    const wrappedPromise = next.catch(err => {
-      console.error(`ReviewQueue exclusive processing error for "${key}":`, err);
-    });
-    this._exclusiveLocks.set(key, wrappedPromise);
+    })();
+    this._exclusiveLocks.set(key, next);
     this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });
     return next;
   }
@@ -148,8 +146,9 @@ class ReviewQueue {
     const now = Date.now();
     for (const [key, entry] of this._exclusiveLocksTimestamps) {
       if (now - entry.createdAt > maxAgeMs) {
-        this._exclusiveLocks.delete(key);
-        this._exclusiveLocksTimestamps.delete(key);
+        console.warn(`ReviewQueue: stale lock detected for "${key}", awaiting completion`);
+        // Don't delete — let the operation finish naturally to avoid breaking the
+        // mutex guarantee. The finally block in runExclusive will clean up.
       }
     }
   }
