@@ -94,6 +94,7 @@ export function createFrontendSessionCookie(res) {
   ).toString('base64url');
   const signature = signValue(payload, sessionSecret);
   const secureCookie = process.env.NODE_ENV === 'production';
+  const expiresDate = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toUTCString();
 
   res.cookie(SESSION_COOKIE_NAME, `${payload}.${signature}`, {
     httpOnly: true,
@@ -101,10 +102,11 @@ export function createFrontendSessionCookie(res) {
     sameSite: 'strict',
     path: '/',
     maxAge: SESSION_MAX_AGE_SECONDS * 1000,
+    expires: new Date(expiresDate),
   });
 
   return {
-    cookieHeader: `${SESSION_COOKIE_NAME}=${payload}.${signature}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secureCookie ? '; Secure' : ''}`,
+    cookieHeader: `${SESSION_COOKIE_NAME}=${payload}.${signature}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}; Expires=${expiresDate}${secureCookie ? '; Secure' : ''}`,
     clientId,
   };
 }
