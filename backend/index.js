@@ -2706,9 +2706,9 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
           return res.status(400).json({ error: 'Invalid ID format.' });
         }
 
-        const first = await Analytics.findById(req.params.id1);
+        const first = await Analytics.findOne({ _id: req.params.id1, clientId: req.clientId });
 
-        const second = await Analytics.findById(req.params.id2);
+        const second = await Analytics.findOne({ _id: req.params.id2, clientId: req.clientId });
 
         if (!first || !second) {
 
