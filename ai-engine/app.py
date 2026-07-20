@@ -1090,7 +1090,7 @@ async def delete_vectors(request: VectorDeleteRequest):
 
 # 🟢 Route: Conversational AI Inline Chat
 @app.post("/chat-inline")
-async def chat_inline(request: ChatInlineRequest):
+async def chat_inline(request: ChatInlineRequest, api_key: str = Depends(verify_api_key)):
     if not groq_client:
         raise HTTPException(status_code=500, detail="Groq API client is not configured on this engine.")
     
