@@ -367,7 +367,7 @@ async function csrfProtection(req, res, next) {
 // Apply CSRF protection to all state-changing routes
 app.use(csrfProtection);
 
-app.post('/api/session', requireApiKey, (req, res) => {
+app.post('/api/session', requireApiKey, async (req, res) => {
   const result = createFrontendSessionCookie(res);
   if (!result) return;
 
@@ -376,7 +376,7 @@ app.post('/api/session', requireApiKey, (req, res) => {
   // identifier for ownership binding.
   req.clientId = result.clientId;
 
-  const csrfToken = generateCsrfToken();
+  const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: true,
     sameSite: 'strict',
@@ -399,8 +399,8 @@ app.post('/api/logout', requireApiKey, (req, res) => {
 });
 
 // CSRF token retrieval for clients that need a fresh token
-app.get('/api/csrf-token', (req, res) => {
-  const csrfToken = generateCsrfToken();
+app.get('/api/csrf-token', async (req, res) => {
+  const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: true,
     sameSite: 'strict',
@@ -949,7 +949,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, analyzeLimiter, 
       if (estimatedSize <= MAX_SESSION_DOC_SIZE) {
         sessionId = crypto.randomUUID();
         sessionOwnerToken = crypto.randomUUID();
-        csrfToken = generateCsrfToken();
+        csrfToken = await generateCsrfToken();
         try {
           await Session.create({
             sessionId,
