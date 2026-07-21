@@ -1523,6 +1523,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   }
 
   const event = req.headers['x-github-event'];
+  const payload = req.body;
   const branch = payload?.pull_request?.base?.ref;
   if (event === 'pull_request' && branch) {
     const config = loadConfigFile(payload.repository.full_name);
@@ -1531,7 +1532,6 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       return res.json({ message: 'Branch not tracked' });
     }
   }
-  const payload = req.body;
 
   if (!event || typeof event !== 'string') {
     return res.status(400).json({ error: 'Missing x-github-event header.' });
