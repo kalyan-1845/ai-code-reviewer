@@ -1075,6 +1075,7 @@ class ChatInlineRequest(BaseModel):
     file_path: str
     diff_hunk: str
     message: str
+    model: Optional[str] = "llama-3.3-70b-versatile"
 
 class SummarizeRequest(BaseModel):
     diff: str
