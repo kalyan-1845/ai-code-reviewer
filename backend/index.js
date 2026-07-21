@@ -930,6 +930,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
       let sessionId = null;
       let sessionOwnerToken = null;
       let sessionPersisted = false;
+      let csrfToken = null;
       if (!cacheHit && estimatedSize <= MAX_SESSION_DOC_SIZE) {
         sessionId = crypto.randomUUID();
         sessionOwnerToken = crypto.randomUUID();
