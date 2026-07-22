@@ -368,7 +368,7 @@ app.post('/api/session', requireApiKey, async (req, res) => {
 
   const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
-    httpOnly: true,
+    httpOnly: false,
     sameSite: 'strict',
     path: '/',
     secure: process.env.NODE_ENV === 'production',
@@ -377,11 +377,11 @@ app.post('/api/session', requireApiKey, async (req, res) => {
 });
 
 // Logout endpoint ΓÇö clears session and CSRF token
-app.post('/api/logout', requireApiKey, (req, res) => {
+app.post('/api/logout', requireApiKey, async (req, res) => {
   const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
   if (cookieToken) {
-    csrfTokenStore.delete(cookieToken);
-    csrfGraceTokenStore.delete(cookieToken);
+    await csrfTokenStore.delete(cookieToken);
+    await csrfGraceTokenStore.delete(cookieToken);
   }
   res.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
   res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
@@ -392,7 +392,7 @@ app.post('/api/logout', requireApiKey, (req, res) => {
 app.get('/api/csrf-token', async (req, res) => {
   const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
-    httpOnly: true,
+    httpOnly: false,
     sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
@@ -424,7 +424,7 @@ function cleanupTempRepos() {
 async function onShutdown() {
   cleanupTempRepos();
   cleanupTimers();
-  if (redisClient) redisClient.quit();
+  if (redisClient) await redisClient.quit();
   await closeDatabase();
   process.exit(0);
 }
@@ -440,7 +440,7 @@ process.on('uncaughtException', (err) => {
   }
   cleanupTempRepos();
   cleanupTimers();
-  if (redisClient) redisClient.quit();
+  if (redisClient) redisClient.quit().catch(() => {});
   closeDatabase();
   process.exit(1);
 });

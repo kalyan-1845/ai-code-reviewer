@@ -1,7 +1,7 @@
-import util from 'util';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
-const execAsync = util.promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Validates branch names to prevent shell injection.
@@ -30,8 +30,7 @@ export async function getPullRequestDiff(repoAbsolutePath, baseBranch, headBranc
   }
 
   try {
-    const command = `git diff --unified=3 origin/${baseBranch}...origin/${headBranch}`;
-    const { stdout } = await execAsync(command, { cwd: repoAbsolutePath });
+    const { stdout } = await execFileAsync('git', ['diff', '--unified=3', `origin/${baseBranch}...origin/${headBranch}`], { cwd: repoAbsolutePath });
     return stdout;
   } catch (error) {
     throw new Error(`Failed to execute git diff: ${error.message}`);
