@@ -270,20 +270,27 @@ async function generateCsrfToken() {
 
 async function validateCsrfToken(token) {
   if (!token) return false;
-  const expiry = await csrfTokenStore.get(token);
-  const graceExpiry = await csrfGraceTokenStore.get(token);
   const now = Date.now();
-  if (!expiry && !graceExpiry) return false;
+
+  const expiry = await csrfTokenStore.get(token);
+  if (expiry && now <= expiry) {
+    await csrfTokenStore.delete(token);
+    return true;
+  }
   if (expiry && now > expiry) {
     await csrfTokenStore.delete(token);
-  } else if (expiry) {
+  }
+
+  const graceExpiry = await csrfGraceTokenStore.get(token);
+  if (graceExpiry && now <= graceExpiry) {
+    await csrfGraceTokenStore.delete(token);
     return true;
   }
   if (graceExpiry && now > graceExpiry) {
     await csrfGraceTokenStore.delete(token);
-    return false;
   }
-  return Boolean(graceExpiry);
+
+  return false;
 }
 
 // CSRF validation middleware for state-changing methods
@@ -331,16 +338,14 @@ async function csrfProtection(req, res, next) {
       }
       return res.status(403).json({ error: 'CSRF validation failed.' });
     }
-    // Validate token expiry from store
+    // Validate token expiry from store — consumes the token atomically
     if (!await validateCsrfToken(headerToken)) {
       return res.status(403).json({ error: 'CSRF token expired. Refresh and try again.' });
     }
-    // Remove old token and rotate. Keep the previous token briefly so
-    // legitimate in-flight concurrent requests do not fail after one request
+    // Keep the previous token briefly as a grace token so legitimate
+    // in-flight concurrent requests do not fail after one request
     // rotates the CSRF cookie.
-    if (await csrfTokenStore.delete(headerToken)) {
-      await csrfGraceTokenStore.set(headerToken, Date.now() + CSRF_ROTATION_GRACE_MS);
-    }
+    await csrfGraceTokenStore.set(headerToken, Date.now() + CSRF_ROTATION_GRACE_MS);
     const newToken = await generateCsrfToken();
     res.cookie(CSRF_COOKIE_NAME, newToken, {
       httpOnly: false,
