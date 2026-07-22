@@ -267,23 +267,10 @@ If no issues are found, reply with: { "reviews": [] }`;
               break;
             }
           }
-          let parsed = cleanAndParseJSON(content);
-          successfulReviewsCount++;
-          reviewedFilesCount++;
+        }
+        reviewedFilesCount++;
 
-          let issues = [];
-          if (Array.isArray(parsed)) {
-            issues = parsed;
-          } else if (parsed && typeof parsed === 'object') {
-            for (const key of Object.keys(parsed)) {
-              if (Array.isArray(parsed[key])) {
-                issues = parsed[key];
-                break;
-              }
-            }
-          }
-
-          if (issues.length > 0) {
+        if (issues.length > 0) {
             console.log(`✅ AI review returned ${issues.length} comments for ${file.path}`);
             for (const issue of issues) {
               const issueLine = normalizeReviewLineNumber(issue.line);
