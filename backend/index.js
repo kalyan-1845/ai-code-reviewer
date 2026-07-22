@@ -63,7 +63,7 @@ const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
 const ANALYSIS_CACHE_MOCK_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 120)(parseInt(process.env.ANALYSIS_CACHE_MOCK_TTL_SECONDS || '120', 10)) * 1000;
-const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, ANALYSIS_CACHE_MOCK_TTL_MS);
+const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, 2, ANALYSIS_CACHE_MOCK_TTL_MS);
 const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
@@ -1415,10 +1415,13 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
 });
 
 // ≡ƒƒó Route: Proxy for RAG query ΓÇö forwards to the AI engine
-app.post('/api/rag/query', requireApiKey, async (req, res) => {
+app.post('/api/rag/query', requireApiKey, requireJsonContentType, async (req, res) => {
   const { question, repoUrl } = req.body;
   if (!question) {
     return res.status(400).json({ error: 'question is required.' });
+  }
+  if (!repoUrl) {
+    return res.status(400).json({ error: 'repoUrl is required.' });
   }
 
   const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
@@ -1526,7 +1529,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   const event = req.headers['x-github-event'];
   const payload = req.body;
   const branch = payload?.pull_request?.base?.ref;
-  if (event === 'pull_request' && branch) {
+  if (event === 'pull_request' && branch && payload?.repository) {
     const config = loadConfigFile(payload.repository.full_name);
     if (config?.branches && !config.branches.includes(branch)) {
       console.log(`[webhook] Skipping PR on non-tracked branch: ${branch}`);
