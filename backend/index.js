@@ -1527,7 +1527,21 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   const payload = req.body;
   const branch = payload?.pull_request?.base?.ref;
   if (event === 'pull_request' && branch) {
-    const config = loadConfigFile(payload.repository.full_name);
+    let config = null;
+    try {
+      const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
+      const { data: configFile } = await octokit.rest.repos.getContent({
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+        path: '.codereview.yml',
+        ref: payload.pull_request.head.sha,
+      });
+      const yamlContent = Buffer.from(configFile.content, 'base64').toString('utf8');
+      const { load: yamlLoad } = await import('js-yaml');
+      config = yamlLoad(yamlContent) || null;
+    } catch {
+      // No .codereview.yml found — proceed with all branches
+    }
     if (config?.branches && !config.branches.includes(branch)) {
       console.log(`[webhook] Skipping PR on non-tracked branch: ${branch}`);
       return res.json({ message: 'Branch not tracked' });
