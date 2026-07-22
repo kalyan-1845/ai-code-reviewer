@@ -1690,14 +1690,17 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
 
       const shaKey = `${sanitizeRedisKey(owner)}/${sanitizeRedisKey(repo)}/#${sanitizeRedisKey(String(pullNumber))}`;
       const shaDedupKey = `webhook:sha:${shaKey}`;
+      const processingKey = `webhook:processing:${shaKey}`;
       let shaAlreadyReviewed;
       if (redisClient) {
-        const added = await redisClient.sadd(shaDedupKey, headSha);
-        if (!added) {
+        const isMember = await redisClient.sismember(shaDedupKey, headSha);
+        if (isMember) {
           shaAlreadyReviewed = 1;
         } else {
-          shaAlreadyReviewed = 0;
-          await redisClient.expire(shaDedupKey, DELIVERY_REDIS_TTL);
+          const lockAcquired = await redisClient.set(
+            processingKey, headSha, 'NX', 'EX', DELIVERY_REDIS_TTL
+          );
+          shaAlreadyReviewed = lockAcquired ? 0 : 1;
         }
       } else {
         const mapKey = `${shaDedupKey}:${headSha}`;
@@ -1766,6 +1769,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           if (redisClient) {
             await redisClient.sadd(shaDedupKey, headSha);
             await redisClient.expire(shaDedupKey, DELIVERY_REDIS_TTL);
+            await redisClient.del(processingKey);
           } else {
             const mapKey = `${shaDedupKey}:${headSha}`;
             if (shaDedupMemoryMap.size >= SHA_DEDUP_MAX_SIZE) {
@@ -1778,6 +1782,11 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
           }
         } catch (error) {
           console.error(`❌ Webhook review failed for ${headSha}:`, error.message);
+          if (redisClient) {
+            await redisClient.del(processingKey);
+          } else {
+            shaDedupMemoryMap.delete(`${shaDedupKey}:${headSha}`);
+          }
         }
       });
       if (enqueueResult === false) {
