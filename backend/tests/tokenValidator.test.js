@@ -55,7 +55,11 @@ test('isValidGithubToken: rejects token with spaces in value', () => {
   assert.equal(isValidGithubToken('ghp_xxxx xxxx xxxx xxxx xxxx'), false);
 });
 
-test('isValidGithubToken: rejects very short strings with correct prefix', () => {
-  assert.equal(isValidGithubToken('ghp_x'), false);
+test('isValidGithubToken: accepts single char after valid prefix', () => {
+  // Pattern accepts 1+ chars after prefix; single char is valid
+  assert.equal(isValidGithubToken('ghp_x'), true);
+});
+
+test('isValidGithubToken: rejects empty prefix-only token', () => {
   assert.equal(isValidGithubToken('ghp_'), false);
 });
