@@ -83,6 +83,12 @@ async function run() {
       return;
     }
 
+    const isDraft = github.context.payload?.pull_request?.draft;
+    if (isDraft) {
+      console.log('Skipping draft pull request. The review will run when the PR is marked as ready for review.');
+      return;
+    }
+
     console.log(`🚀 Starting RepoSage AI PR Review for PR #${pullNumber} in ${owner}/${repo}`);
 
     const headSha = github.context.payload.pull_request?.head?.sha;
