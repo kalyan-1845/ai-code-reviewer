@@ -14,7 +14,7 @@ import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
-import { llmAnalysisLimiter } from './middleware/rateLimiter.js';
+import { llmAnalysisLimiter, webhookRateLimiter } from './middleware/rateLimiter.js';
 import { scrubRepositoryPayload } from './utils/secretScrubber.js';
 import { recordAnalysis as recordFileAnalytics } from './utils/analyticsStore.js';
 import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
@@ -1509,7 +1509,7 @@ app.get('/api/roi', async (req, res) => {
 });
 
 // 🚀 Route: GitHub Webhook Receiver for automated Pull Request Reviews
-app.post('/api/webhook', webhookLimiter, async (req, res) => {
+app.post('/api/webhook', webhookLimiter, webhookRateLimiter, async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('Γ¥î WEBHOOK_SECRET not configured');
