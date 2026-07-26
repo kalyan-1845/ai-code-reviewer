@@ -61,7 +61,7 @@ async function run() {
       .map(e => e.trim().toLowerCase().replace(/^\./, ''))
       .filter(e => e.length > 0);
 
-    const defaultExtensions = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'go', 'rs', 'cpp', 'h', 'cs', 'css', 'html', 'php', 'rb', 'sql'];
+    const defaultExtensions = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'go', 'rs', 'cpp', 'h', 'cs', 'css', 'html', 'php', 'rb', 'sql', 'vue', 'svelte'];
     const validExtensions = includeExtensions.length > 0 ? includeExtensions : defaultExtensions;
 
     // 2. Initialize Clients
