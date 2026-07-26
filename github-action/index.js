@@ -257,17 +257,33 @@ Format your JSON precisely as:
 If no issues are found, reply with: { "reviews": [] }`;
 
         try {
-          const completion = await groq.chat.completions.create({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              { role: 'system', content: 'You are a code reviewer. Always output valid JSON matching the schema { "reviews": [{"line": int, "type": "bug|security|optimization|style", "comment": "string"}] }.' },
-              { role: 'user', content: reviewPrompt }
-            ],
-            temperature: 0.2,
-            max_tokens: maxTokens,
-            response_format: { type: 'json_object' },
-          });
-
+          const MAX_RETRIES = 5;
+          let completion;
+          for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+              completion = await groq.chat.completions.create({
+                model: 'llama-3.3-70b-versatile',
+                messages: [
+                  { role: 'system', content: 'You are a code reviewer. Always output valid JSON matching the schema { "reviews": [{"line": int, "type": "bug|security|optimization|style", "comment": "string"}] }.' },
+                  { role: 'user', content: reviewPrompt }
+                ],
+                temperature: 0.2,
+                max_tokens: maxTokens,
+                response_format: { type: 'json_object' },
+              });
+              break;
+            } catch (innerErr) {
+              const isRateLimit = innerErr?.status === 429 || (innerErr?.message && String(innerErr.message).includes('429'));
+              if (isRateLimit && attempt < MAX_RETRIES - 1) {
+                const retryAfter = parseInt(innerErr?.response?.headers?.['retry-after'] || '0', 10) * 1000;
+                const backoffMs = retryAfter || Math.min(1000 * Math.pow(2, attempt), 30000);
+                console.warn(`Rate limit hit (attempt ${attempt + 1}/${MAX_RETRIES}). Retrying in ${backoffMs}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+                continue;
+              }
+              throw innerErr;
+            }
+          }
         const content = completion.choices[0].message.content;
         let parsed = cleanAndParseJSON(content);
         successfulReviewsCount++;
