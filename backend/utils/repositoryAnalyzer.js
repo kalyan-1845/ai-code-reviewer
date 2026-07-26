@@ -47,7 +47,7 @@ export function buildRepositoryContext(files) {
     } else if (lowerName.endsWith('requirements.txt')) {
       const lines = content.split('\n');
       lines.forEach(line => {
-        const dep = line.split('==')[0].strip();
+        const dep = line.split('==')[0].trim();
         if (dep) {
           context.dependencies[dep] = 'latest';
           detectFrameworksFromDeps({ [dep]: 'latest' }, context);
