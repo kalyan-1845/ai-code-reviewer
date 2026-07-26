@@ -372,7 +372,7 @@ def verify_rag_ingest_key(x_rag_ingest_key: str = Header(None)):
         if "pytest" in sys.modules:
             return
         raise HTTPException(status_code=500, detail="RAG ingest key is not configured.")
-    if x_rag_ingest_key != expected_key:
+    if not hmac.compare_digest(x_rag_ingest_key or "", expected_key):
         raise HTTPException(status_code=401, detail="Invalid RAG ingest key")
 
 # Restrict CORS to configured origins so the AI engine is not accessible from
@@ -622,8 +622,6 @@ async def analyze_repository(request: AnalyzeRequest):
     max_tokens = request.maxTokens or 2048
     batch_size = request.batchSize or 5
     repository_context = request.repositoryContext
-    custom_system_prompt = validate_system_prompt(request.systemPrompt or "")
-    
     # 1. Prepare global repository structure
     custom_system_prompt = await asyncio.to_thread(validate_system_prompt, request.systemPrompt or "")
 

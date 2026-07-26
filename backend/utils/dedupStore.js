@@ -48,8 +48,10 @@ class DedupStore {
   async addToSet(key, member, ttlMs = 3600000) {
     if (this.redisClient) {
       try {
-        await this.redisClient.sadd(key, member);
-        await this.redisClient.pexpire(key, ttlMs);
+        const pipeline = this.redisClient.pipeline();
+        pipeline.sadd(key, member);
+        pipeline.pexpire(key, ttlMs);
+        await pipeline.exec();
         return;
       } catch (err) {
         console.warn(`⚠️ Redis sadd failed for ${key}, falling back to memory:`, err.message);
