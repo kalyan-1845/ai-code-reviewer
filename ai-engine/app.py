@@ -622,8 +622,6 @@ async def analyze_repository(request: AnalyzeRequest):
     max_tokens = request.maxTokens or 2048
     batch_size = request.batchSize or 5
     repository_context = request.repositoryContext
-    custom_system_prompt = validate_system_prompt(request.systemPrompt or "")
-    
     # 1. Prepare global repository structure
     custom_system_prompt = await asyncio.to_thread(validate_system_prompt, request.systemPrompt or "")
 
