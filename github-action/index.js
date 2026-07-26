@@ -30,6 +30,16 @@ function sanitizeDiffContent(content) {
   return sanitized;
 }
 
+function sanitizeMarkdownCodeBlocks(comment) {
+  if (typeof comment !== 'string') return comment;
+  const fence = '```';
+  const count = (comment.match(/```/g) || []).length;
+  if (count % 2 !== 0) {
+    return comment + '\n' + fence;
+  }
+  return comment;
+}
+
 async function run() {
   try {
     // 1. Read Action Inputs
