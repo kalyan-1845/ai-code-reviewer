@@ -17,6 +17,7 @@ This document describes the HTTP endpoints exposed by the two services in this p
   - [POST /review-diff](#post-review-diff)
   - [POST /api/rag/split](#post-apiragsplit)
   - [POST /api/rag/query](#post-apiragquery)
+  - [POST /api/rag/cleanup](#post-apiragcleanup)
 - [Error Responses](#error-responses)
 
 ---
@@ -543,6 +544,63 @@ Queries the RAG (ChromaDB) vector store for semantically relevant code chunks gi
 curl -X POST http://localhost:8000/api/rag/query \
   -H "Content-Type: application/json" \
   -d '{"question": "How is authentication handled in this codebase?"}'
+```
+
+---
+
+### POST /api/rag/cleanup
+
+Removes stale vector embeddings from ChromaDB for files that no longer exist in the repository. This is called during repository re-analysis to prevent old code from polluting new review results.
+
+#### Request
+
+**Headers**
+
+| Header         | Value              | Required |
+| -------------- | ------------------ | -------- |
+| `Content-Type` | `application/json` | Yes      |
+
+**Body**
+
+| Field         | Type     | Required | Description                                              |
+| ------------ | -------- | -------- | -------------------------------------------------------- |
+| `current_files` | array\<string> | Yes | List of file paths currently present in the repository. |
+| `repo_url`   | string   | No       | Repository URL used to scope cleanup to a specific repo. |
+
+**Example request body**
+
+```json
+{
+  "current_files": ["src/app.py", "src/utils.py", "README.md"],
+  "repo_url": "https://github.com/user/my-repo"
+}
+```
+
+#### Response
+
+**Status `200 OK`**
+
+| Field          | Type   | Description                                   |
+| -------------- | ------ | --------------------------------------------- |
+| `deleted_count` | number | Number of stale chunks removed from ChromaDB. |
+
+**Example response body**
+
+```json
+{
+  "deleted_count": 7
+}
+```
+
+#### curl Example
+
+```bash
+curl -X POST http://localhost:8000/api/rag/cleanup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_files": ["src/app.py", "src/utils.py"],
+    "repo_url": "https://github.com/user/my-repo"
+  }'
 ```
 
 ---
