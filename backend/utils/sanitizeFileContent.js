@@ -18,6 +18,7 @@ export function scanFileContentForWarnings(content) {
   const warnings = [];
   for (const pattern of DANGEROUS_PHRASES) {
     const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    regex.lastIndex = 0;
     if (regex.test(content)) {
       warnings.push(`File contains potentially malicious content matching: "${pattern}"`);
     }

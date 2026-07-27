@@ -77,7 +77,7 @@ export default function ChatPanel({
                   {msg.sources.map((source, sIdx) => (
                     <span key={sIdx} style={{ display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "10px", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "4px", padding: "2px 6px", color: "#60a5fa" }}>
                       <FileCode size={10} />
-                      {source.file}{source.line > 0 ? `:${source.line}` : ""}
+                      {source.source || source.file || "unknown"}{(source.line ?? 0) > 0 ? `:${source.line}` : ""}
                     </span>
                   ))}
                 </div>

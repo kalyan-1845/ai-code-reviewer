@@ -18,16 +18,19 @@ const IPYTHON_MAGIC_PATTERNS = [
 ];
 
 function stripMagicCommands(code) {
-  let cleanedCode = code;
-
-  for (const pattern of IPYTHON_MAGIC_PATTERNS) {
-    cleanedCode = cleanedCode.replace(pattern, '');
-  }
-
-  cleanedCode = cleanedCode.replace(MAGIC_COMMAND_REGEX, '');
-  cleanedCode = cleanedCode.replace(/^\s*\n/gm, '');
-
-  return cleanedCode.trim();
+  if (typeof code !== 'string') return '';
+  const lines = code.split('\n');
+  const cleanedLines = lines.map(line => {
+    const trimmed = line.trim();
+    // Exclude single-char formats like %s by requiring at least 2 chars after % for magics
+    const isMagic = /^(?:%{1,2}[a-zA-Z_][a-zA-Z0-9_]+|!).*$/.test(trimmed);
+    if (isMagic) {
+      // Preserve indentation but comment it out to keep line numbers intact
+      return line.replace(/^([ \t]*)/, '$1# ');
+    }
+    return line;
+  });
+  return cleanedLines.join('\n');
 }
 
 function extractCodeCells(notebookPath) {
@@ -63,6 +66,14 @@ function extractCodeCells(notebookPath) {
   }
 }
 
+function hasCodeContent(cleanedCode) {
+  const lines = cleanedCode.split('\n');
+  return lines.some(line => {
+    const trimmed = line.trim();
+    return trimmed.length > 0 && !trimmed.startsWith('#');
+  });
+}
+
 function parseCellsWithMetadata(notebookPath) {
   try {
     const content = fs.readFileSync(notebookPath, 'utf-8');
@@ -87,7 +98,7 @@ function parseCellsWithMetadata(notebookPath) {
         if (sourceCode.trim().length > 0) {
           const cleanedCode = stripMagicCommands(sourceCode);
 
-          if (cleanedCode.length > 0) {
+          if (hasCodeContent(cleanedCode)) {
             cellsWithMetadata.push({
               cellIndex,
               originalSource: sourceCode,
