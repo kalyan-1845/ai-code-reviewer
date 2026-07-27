@@ -29,19 +29,21 @@ class TestChatInlineEndpoint:
         original = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            app_module.groq_client.chat.completions.create.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={
-                    "file_path": "src/main.py",
-                    "diff_hunk": "+def hello():\n    print('world')",
-                    "message": "Is this function correct?"
-                }
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert "reply" in data
-            assert data["reply"] == "Looks good to me!"
+            async def fake_call(**kwargs):
+                return mock_completion
+            with patch.object(app_module, '_call_groq_with_timeout', fake_call):
+                response = client.post(
+                    "/chat-inline",
+                    json={
+                        "file_path": "src/main.py",
+                        "diff_hunk": "+def hello():\n    print('world')",
+                        "message": "Is this function correct?"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert "reply" in data
+                assert data["reply"] == "Looks good to me!"
         finally:
             app_module.groq_client = original
 
@@ -79,12 +81,14 @@ class TestChatInlineEndpoint:
         original = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            app_module.groq_client.chat.completions.create.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={"file_path": "src/main.py", "diff_hunk": "+x = 1", "message": "Hello"}
-            )
-            assert response.status_code == 502
+            async def fake_call(**kwargs):
+                return mock_completion
+            with patch.object(app_module, '_call_groq_with_timeout', fake_call):
+                response = client.post(
+                    "/chat-inline",
+                    json={"file_path": "src/main.py", "diff_hunk": "+x = 1", "message": "Hello"}
+                )
+                assert response.status_code == 502
         finally:
             app_module.groq_client = original
 
@@ -94,19 +98,21 @@ class TestChatInlineEndpoint:
         original = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            app_module.groq_client.chat.completions.create.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={
-                    "file_path": "src/main.py",
-                    "diff_hunk": "+x = 1",
-                    "message": "Hello",
-                    "context": "Previous discussion"
-                }
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert "reply" in data
+            async def fake_call(**kwargs):
+                return mock_completion
+            with patch.object(app_module, '_call_groq_with_timeout', fake_call):
+                response = client.post(
+                    "/chat-inline",
+                    json={
+                        "file_path": "src/main.py",
+                        "diff_hunk": "+x = 1",
+                        "message": "Hello",
+                        "context": "Previous discussion"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert "reply" in data
         finally:
             app_module.groq_client = original
 
@@ -116,14 +122,16 @@ class TestChatInlineEndpoint:
         original = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            app_module.groq_client.chat.completions.create.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={"file_path": "src/main.py", "diff_hunk": "+x = 1", "message": "Is this correct?"}
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert "reply" in data
+            async def fake_call(**kwargs):
+                return mock_completion
+            with patch.object(app_module, '_call_groq_with_timeout', fake_call):
+                response = client.post(
+                    "/chat-inline",
+                    json={"file_path": "src/main.py", "diff_hunk": "+x = 1", "message": "Is this correct?"}
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert "reply" in data
         finally:
             app_module.groq_client = original
 
@@ -134,12 +142,14 @@ class TestChatInlineEndpoint:
         original = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            app_module.groq_client.chat.completions.create.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={"file_path": "src/main.py", "diff_hunk": "+x = 1", "message": "Hello"}
-            )
-            # json.loads failure -> caught by except Exception -> 500
-            assert response.status_code == 500
+            async def fake_call(**kwargs):
+                return mock_completion
+            with patch.object(app_module, '_call_groq_with_timeout', fake_call):
+                response = client.post(
+                    "/chat-inline",
+                    json={"file_path": "src/main.py", "diff_hunk": "+x = 1", "message": "Hello"}
+                )
+                # json.loads failure -> caught by except Exception -> 500
+                assert response.status_code == 500
         finally:
             app_module.groq_client = original
