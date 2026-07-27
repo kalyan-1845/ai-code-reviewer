@@ -1644,9 +1644,6 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   if (!req.body || !req.body.action) {
     return res.status(400).json({ error: 'Invalid webhook payload' });
   }
-    console.warn('Γ¥î Webhook signature verification failed');
-    return res.status(401).json({ error: 'Invalid webhook signature' });
-  }
 
   const event = req.headers['x-github-event'];
   const payload = req.body;
