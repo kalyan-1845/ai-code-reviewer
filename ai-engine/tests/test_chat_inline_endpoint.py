@@ -7,8 +7,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import pytest
 from fastapi.testclient import TestClient
-from app import app
+from app import app, verify_api_key
 
+
+# Override auth dependency so tests work without real API key
+app.dependency_overrides[verify_api_key] = lambda: "test-user"
 
 client = TestClient(app)
 
@@ -26,7 +29,7 @@ class TestChatInlineEndpoint:
                 "/chat-inline",
                 json={
                     "file_path": "src/main.py",
-                    "diff_hunk": "+def hello():\\n    print('world')",
+                    "diff_hunk": "+def hello():\n    print('world')",
                     "message": "Is this function correct?"
                 }
             )
@@ -67,7 +70,7 @@ class TestChatInlineEndpoint:
             )
             assert response.status_code == 500
 
-    def test_returns_500_when_llm_returns_empty_response(self):
+    def test_returns_502_when_llm_returns_empty_response(self):
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock(message=MagicMock(content=None))]
 
