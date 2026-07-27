@@ -10,17 +10,11 @@ from fastapi.testclient import TestClient
 from app import app, verify_rag_ingest_key
 
 
-def _make_client():
-    """Create a fresh TestClient with auth dependency overridden."""
-    from fastapi.testclient import TestClient as TC
-    return TC(app)
-
-
 class TestRagIngestEndpoint:
     def test_returns_200_with_valid_request(self):
         with patch("rag.upsert_chunks") as mock_upsert:
             mock_upsert.return_value = 5
-            c = _make_client()
+            c = TestClient(app)
             app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
             try:
                 response = c.post(
@@ -39,12 +33,16 @@ class TestRagIngestEndpoint:
                 data = response.json()
                 assert data["ingested_count"] == 5
             finally:
-                del app.dependency_overrides[verify_rag_ingest_key]
+                if verify_rag_ingest_key in app.dependency_overrides:
+                    del app.dependency_overrides[verify_rag_ingest_key]
 
     def test_returns_401_when_ingest_key_missing(self):
-        """Without override the endpoint should return 401."""
+        """Without override the endpoint should return 401 when key is required."""
         with patch("rag.upsert_chunks"):
-            c = _make_client()
+            # Ensure no override is active
+            if verify_rag_ingest_key in app.dependency_overrides:
+                del app.dependency_overrides[verify_rag_ingest_key]
+            c = TestClient(app)
             response = c.post(
                 "/api/rag/ingest",
                 json={
@@ -56,7 +54,9 @@ class TestRagIngestEndpoint:
 
     def test_returns_401_when_ingest_key_invalid(self):
         with patch("rag.upsert_chunks"):
-            c = _make_client()
+            if verify_rag_ingest_key in app.dependency_overrides:
+                del app.dependency_overrides[verify_rag_ingest_key]
+            c = TestClient(app)
             response = c.post(
                 "/api/rag/ingest",
                 headers={"x-rag-ingest-key": "wrong-key"},
@@ -70,7 +70,7 @@ class TestRagIngestEndpoint:
     def test_returns_422_when_repo_url_missing(self):
         """repo_url is a required field - missing it should return 422."""
         with patch("rag.upsert_chunks"):
-            c = _make_client()
+            c = TestClient(app)
             app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
             try:
                 response = c.post(
@@ -79,11 +79,12 @@ class TestRagIngestEndpoint:
                 )
                 assert response.status_code == 422
             finally:
-                del app.dependency_overrides[verify_rag_ingest_key]
+                if verify_rag_ingest_key in app.dependency_overrides:
+                    del app.dependency_overrides[verify_rag_ingest_key]
 
     def test_returns_422_when_chunks_missing(self):
         with patch("rag.upsert_chunks"):
-            c = _make_client()
+            c = TestClient(app)
             app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
             try:
                 response = c.post(
@@ -92,12 +93,13 @@ class TestRagIngestEndpoint:
                 )
                 assert response.status_code == 422
             finally:
-                del app.dependency_overrides[verify_rag_ingest_key]
+                if verify_rag_ingest_key in app.dependency_overrides:
+                    del app.dependency_overrides[verify_rag_ingest_key]
 
     def test_extracts_correct_chunk_fields(self):
         with patch("rag.upsert_chunks") as mock_upsert:
             mock_upsert.return_value = 1
-            c = _make_client()
+            c = TestClient(app)
             app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
             try:
                 response = c.post(
@@ -117,4 +119,5 @@ class TestRagIngestEndpoint:
                 assert ids == ["id1"]
                 assert call_args[1]["repo_url"] == "https://github.com/owner/repo"
             finally:
-                del app.dependency_overrides[verify_rag_ingest_key]
+                if verify_rag_ingest_key in app.dependency_overrides:
+                    del app.dependency_overrides[verify_rag_ingest_key]
