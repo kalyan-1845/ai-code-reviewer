@@ -16,10 +16,13 @@ client = TestClient(app)
 class TestSummarizePrEndpoint:
     def test_returns_summary_when_groq_returns_valid_response(self):
         mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock(message=MagicMock(content='{"summary": "- Added feature X\\n- Refactored Y"}'))]
+        mock_completion.choices = [
+            MagicMock(message=MagicMock(content='{"summary": "- Added feature X\\n- Refactored Y"}'))
+        ]
+        mock_groq = MagicMock()
+        mock_groq.chat.completions.create = MagicMock(return_value=mock_completion)
 
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
+        with patch("app.groq_client", mock_groq):
             response = client.post(
                 "/summarize-pr",
                 json={"diff": "diff --git a/x.py b/x.py\n+print('hello')"}
@@ -40,26 +43,29 @@ class TestSummarizePrEndpoint:
     def test_returns_502_when_groq_returns_empty_response(self):
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock(message=MagicMock(content=None))]
+        mock_groq = MagicMock()
+        mock_groq.chat.completions.create = MagicMock(return_value=mock_completion)
 
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
+        with patch("app.groq_client", mock_groq):
             response = client.post(
                 "/summarize-pr",
                 json={"diff": "diff --git a/x.py b/x.py\n+print('hello')"}
             )
             assert response.status_code == 502
 
-    def test_returns_500_when_summary_key_missing(self):
+    def test_returns_200_when_summary_key_missing(self):
         mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock(message=MagicMock(content='{"other": "value"}'))]
+        mock_completion.choices = [
+            MagicMock(message=MagicMock(content='{"other": "value"}'))
+        ]
+        mock_groq = MagicMock()
+        mock_groq.chat.completions.create = MagicMock(return_value=mock_completion)
 
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
+        with patch("app.groq_client", mock_groq):
             response = client.post(
                 "/summarize-pr",
                 json={"diff": "diff --git a/x.py b/x.py\n+print('hello')"}
             )
-            # Returns 200 with empty summary since key is missing
             assert response.status_code == 200
             assert response.json()["summary"] == ""
 
@@ -69,9 +75,12 @@ class TestSummarizePrEndpoint:
 
     def test_accepts_empty_diff_string(self):
         mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock(message=MagicMock(content='{"summary": ""}'))]
+        mock_completion.choices = [
+            MagicMock(message=MagicMock(content='{"summary": ""}'))
+        ]
+        mock_groq = MagicMock()
+        mock_groq.chat.completions.create = MagicMock(return_value=mock_completion)
 
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
+        with patch("app.groq_client", mock_groq):
             response = client.post("/summarize-pr", json={"diff": ""})
             assert response.status_code == 200
