@@ -28,27 +28,25 @@ def _mock_groq_response(content='{"reply": "Looks good to me!"}'):
 class TestChatInlineEndpoint:
     def test_returns_200_with_valid_request(self):
         mock_completion = _mock_groq_response()
-        mock_groq = MagicMock()
-        mock_groq.chat.completions.create.return_value = mock_completion
-
         import app as app_module
         original_client = getattr(app_module, 'groq_client', None)
         try:
-            app_module.groq_client = mock_groq
+            app_module.groq_client = MagicMock()
             with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
-                response = client.post(
-                    "/chat-inline",
-                    json={
-                        "file_path": "src/main.py",
-                        "diff_hunk": "+def hello():\n    print('world')",
-                        "message": "Is this function correct?"
-                    }
-                )
-                assert response.status_code == 200
-                data = response.json()
-                assert "reply" in data
-                assert data["reply"] == "Looks good to me!"
+                with patch("app.get_groq_model", return_value="llama-3.3-70b-versatile"):
+                    mock_call.return_value = mock_completion
+                    response = client.post(
+                        "/chat-inline",
+                        json={
+                            "file_path": "src/main.py",
+                            "diff_hunk": "+def hello():\n    print('world')",
+                            "message": "Is this function correct?"
+                        }
+                    )
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert "reply" in data
+                    assert data["reply"] == "Looks good to me!"
         finally:
             app_module.groq_client = original_client
 
@@ -97,16 +95,17 @@ class TestChatInlineEndpoint:
         try:
             app_module.groq_client = MagicMock()
             with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
-                response = client.post(
-                    "/chat-inline",
-                    json={
-                        "file_path": "src/main.py",
-                        "diff_hunk": "+x = 1",
-                        "message": "Hello"
-                    }
-                )
-                assert response.status_code == 502
+                with patch("app.get_groq_model", return_value="llama-3.3-70b-versatile"):
+                    mock_call.return_value = mock_completion
+                    response = client.post(
+                        "/chat-inline",
+                        json={
+                            "file_path": "src/main.py",
+                            "diff_hunk": "+x = 1",
+                            "message": "Hello"
+                        }
+                    )
+                    assert response.status_code == 502
         finally:
             app_module.groq_client = original_client
 
@@ -117,19 +116,20 @@ class TestChatInlineEndpoint:
         try:
             app_module.groq_client = MagicMock()
             with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
-                response = client.post(
-                    "/chat-inline",
-                    json={
-                        "file_path": "src/main.py",
-                        "diff_hunk": "+x = 1",
-                        "message": "Hello",
-                        "context": "Previous discussion thread"
-                    }
-                )
-                assert response.status_code == 200
-                data = response.json()
-                assert "reply" in data
+                with patch("app.get_groq_model", return_value="llama-3.3-70b-versatile"):
+                    mock_call.return_value = mock_completion
+                    response = client.post(
+                        "/chat-inline",
+                        json={
+                            "file_path": "src/main.py",
+                            "diff_hunk": "+x = 1",
+                            "message": "Hello",
+                            "context": "Previous discussion thread"
+                        }
+                    )
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert "reply" in data
         finally:
             app_module.groq_client = original_client
 
@@ -140,18 +140,19 @@ class TestChatInlineEndpoint:
         try:
             app_module.groq_client = MagicMock()
             with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
-                response = client.post(
-                    "/chat-inline",
-                    json={
-                        "file_path": "src/main.py",
-                        "diff_hunk": "+x = 1",
-                        "message": "Is this correct?"
-                    }
-                )
-                assert response.status_code == 200
-                data = response.json()
-                assert "reply" in data
+                with patch("app.get_groq_model", return_value="llama-3.3-70b-versatile"):
+                    mock_call.return_value = mock_completion
+                    response = client.post(
+                        "/chat-inline",
+                        json={
+                            "file_path": "src/main.py",
+                            "diff_hunk": "+x = 1",
+                            "message": "Is this correct?"
+                        }
+                    )
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert "reply" in data
         finally:
             app_module.groq_client = original_client
 
@@ -163,17 +164,17 @@ class TestChatInlineEndpoint:
         try:
             app_module.groq_client = MagicMock()
             with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
-                response = client.post(
-                    "/chat-inline",
-                    json={
-                        "file_path": "src/main.py",
-                        "diff_hunk": "+x = 1",
-                        "message": "Hello"
-                    }
-                )
-                # json.loads("not json") raises JSONDecodeError -> caught by except Exception -> 500
-                assert response.status_code == 500
+                with patch("app.get_groq_model", return_value="llama-3.3-70b-versatile"):
+                    mock_call.return_value = mock_completion
+                    response = client.post(
+                        "/chat-inline",
+                        json={
+                            "file_path": "src/main.py",
+                            "diff_hunk": "+x = 1",
+                            "message": "Hello"
+                        }
+                    )
+                    assert response.status_code == 500
         finally:
             app_module.groq_client = original_client
 
@@ -184,15 +185,16 @@ class TestChatInlineEndpoint:
         try:
             app_module.groq_client = MagicMock()
             with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
-                response = client.post(
-                    "/chat-inline",
-                    json={
-                        "file_path": "src/main.py",
-                        "diff_hunk": "+x = 1",
-                        "message": "Hello"
-                    }
-                )
-                assert response.status_code == 200
+                with patch("app.get_groq_model", return_value="llama-3.3-70b-versatile"):
+                    mock_call.return_value = mock_completion
+                    response = client.post(
+                        "/chat-inline",
+                        json={
+                            "file_path": "src/main.py",
+                            "diff_hunk": "+x = 1",
+                            "message": "Hello"
+                        }
+                    )
+                    assert response.status_code == 200
         finally:
             app_module.groq_client = original_client
