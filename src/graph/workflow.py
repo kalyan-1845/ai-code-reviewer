@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from src.graph.state import AgentState
-from src.graph.nodes import chunker_node, reviewer_node, synthesizer_node
+from src.graph.nodes import chunker_node, ast_resolver_node, reviewer_node, synthesizer_node
 
 
 def route_reviewer(state: AgentState) -> str:
@@ -13,11 +13,13 @@ def build_graph():
     builder = StateGraph(AgentState)
 
     builder.add_node("chunker", chunker_node)
+    builder.add_node("ast_resolver", ast_resolver_node)
     builder.add_node("reviewer", reviewer_node)
     builder.add_node("synthesizer", synthesizer_node)
 
     builder.add_edge(START, "chunker")
-    builder.add_edge("chunker", "reviewer")
+    builder.add_edge("chunker", "ast_resolver")
+    builder.add_edge("ast_resolver", "reviewer")
 
     builder.add_conditional_edges(
         "reviewer",
@@ -31,3 +33,4 @@ def build_graph():
     builder.add_edge("synthesizer", END)
 
     return builder.compile()
+
