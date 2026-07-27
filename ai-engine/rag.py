@@ -107,11 +107,12 @@ def query_chunks(
     distances = results.get("distances", [[]])[0] if results.get("distances") else []
     ids = results.get("ids", [[]])[0] if results.get("ids") else []
     for i in range(len(documents)):
+        dist = distances[i] if i < len(distances) else None
         chunks.append({
             "chunk_id": ids[i] if i < len(ids) else None,
             "content": documents[i],
             "metadata": metadatas[i] if i < len(metadatas) else {},
-            "similarity_score": 1.0 - distances[i] if i < len(distances) else None,
+            "similarity_score": 1.0 - dist if dist is not None else None,
         })
     return chunks
 
