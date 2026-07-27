@@ -17,21 +17,11 @@ const LOCK_MAX_DELAY_MS = 1000;
 let storeLock = Promise.resolve();
 
 async function acquireLock() {
-  for (let attempt = 0; attempt < LOCK_MAX_RETRIES; attempt++) {
-    const prev = storeLock;
-    let release;
-    const next = new Promise(resolve => { release = resolve; });
-    if (storeLock === prev) {
-      storeLock = next;
-      return release;
-    }
-    const delay = Math.min(
-      LOCK_BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 50,
-      LOCK_MAX_DELAY_MS
-    );
-    await new Promise(resolve => setTimeout(resolve, delay));
-  }
-  throw new Error(`Could not acquire analytics store lock after ${LOCK_MAX_RETRIES} attempts`);
+  const prev = storeLock;
+  let release;
+  storeLock = new Promise(resolve => { release = resolve; });
+  await prev;
+  return release;
 }
 
 function readStore() {
