@@ -1530,7 +1530,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
 });
 
 // ≡ƒƒó Route: Proxy for RAG query ΓÇö forwards to the AI engine
-app.post('/api/rag/query', requireApiKey, async (req, res) => {
+app.post('/api/rag/query', requireApiKey, requireJsonContentType, async (req, res) => {
   const { question, repoUrl } = req.body;
   if (!question) {
     return res.status(400).json({ error: 'question is required.' });
