@@ -168,8 +168,13 @@ def cleanup_stale_chunks(current_files: set, repo_url: Optional[str] = None) -> 
         offset += len(metadatas)
     stale_paths = stored_paths - current_files
     removed_count = 0
-    for stale_path in stale_paths:
-        removed_count += delete_chunks_for_file(stale_path, repo_url=repo_url)
+    if stale_paths:
+        # Delete all stale chunks in a single query instead of per-file
+        results = collection.get(where={"source_file": {"$in": list(stale_paths)}}, include=["ids"])
+        ids_to_delete = results.get("ids") or []
+        if ids_to_delete:
+            collection.delete(ids=ids_to_delete)
+            removed_count = len(ids_to_delete)
     return {
         "stale_paths": list(stale_paths),
         "removed_count": removed_count,
