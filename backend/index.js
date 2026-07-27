@@ -1633,7 +1633,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Missing X-Hub-Signature-256 header.' });
   }
 
-  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret, 5000)) {
+  if (!verifyWebhookSignature(req.rawBody, signature, webhookSecret)) {
     return res.status(401).json({ error: 'Invalid signature' });
   }
   
