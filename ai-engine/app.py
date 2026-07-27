@@ -1179,6 +1179,8 @@ Please respond directly to the developer's message, keeping your tone helpful, c
         
         data = json.loads(content)
         return {"reply": data.get("reply", "I couldn't process that request.")}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1220,6 +1222,8 @@ Format your JSON precisely as:
         
         data = json.loads(content)
         return {"summary": data.get("summary", "")}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
