@@ -193,6 +193,12 @@ class TestAnalyzeGoSource:
 
         assert not os.path.exists(created_path["path"])
 
+    def test_analyze_go_source_handles_utf8_characters(self):
+        source_with_utf8 = 'package main\n// Comment with non-ASCII UTF-8: 🚀 \nfunc main() {}'
+        with patch("go_analyzer.run_go_analysis", return_value={}) as mock_run:
+            analyze_go_source("main.go", source_with_utf8)
+            assert mock_run.called
+
 
 class TestGoFindingsToFileReview:
     def test_maps_error_severity_to_bugs(self):
