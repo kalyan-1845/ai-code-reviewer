@@ -10,16 +10,19 @@ from fastapi.testclient import TestClient
 from app import app, verify_rag_ingest_key
 
 
-# Override auth dependency so tests work without real RAG ingest key
-app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
-
-client = TestClient(app)
+def _make_overridden_client():
+    """Create a TestClient with auth dependency overridden."""
+    overridden = TestClient(app)
+    overridden.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
+    return overridden
 
 
 class TestRagIngestEndpoint:
     def test_returns_200_with_valid_request(self):
+        """Successful ingestion when all required fields are present."""
         with patch("rag.upsert_chunks") as mock_upsert:
             mock_upsert.return_value = 5
+            client = _make_overridden_client()
             response = client.post(
                 "/api/rag/ingest",
                 json={
@@ -43,9 +46,9 @@ class TestRagIngestEndpoint:
             assert data["ingested_count"] == 5
 
     def test_returns_401_when_ingest_key_missing(self):
-        # Remove the dependency override temporarily for this test
-        del app.dependency_overrides[verify_rag_ingest_key]
-        try:
+        """Endpoint returns 401 when no auth key is provided."""
+        with patch("rag.upsert_chunks"):
+            client = TestClient(app)  # no override - real auth check
             response = client.post(
                 "/api/rag/ingest",
                 json={
@@ -56,12 +59,11 @@ class TestRagIngestEndpoint:
                 }
             )
             assert response.status_code == 401
-        finally:
-            app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
 
     def test_returns_401_when_ingest_key_invalid(self):
-        del app.dependency_overrides[verify_rag_ingest_key]
-        try:
+        """Endpoint returns 401 when an invalid auth key is provided."""
+        with patch("rag.upsert_chunks"):
+            client = TestClient(app)  # no override - real auth check
             response = client.post(
                 "/api/rag/ingest",
                 headers={"x-rag-ingest-key": "wrong-key"},
@@ -73,12 +75,11 @@ class TestRagIngestEndpoint:
                 }
             )
             assert response.status_code == 401
-        finally:
-            app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
 
-    def test_returns_200_without_repo_url(self):
-        with patch("rag.upsert_chunks") as mock_upsert:
-            mock_upsert.return_value = 1
+    def test_returns_422_when_repo_url_missing(self):
+        """Endpoint returns 422 when repo_url is not provided (required field)."""
+        with patch("rag.upsert_chunks"):
+            client = _make_overridden_client()
             response = client.post(
                 "/api/rag/ingest",
                 json={
@@ -87,12 +88,23 @@ class TestRagIngestEndpoint:
                     ]
                 }
             )
-            assert response.status_code == 200
-            mock_upsert.assert_called_once()
+            assert response.status_code == 422
+
+    def test_returns_422_when_chunks_missing(self):
+        """Endpoint returns 422 when chunks field is not provided (required field)."""
+        with patch("rag.upsert_chunks"):
+            client = _make_overridden_client()
+            response = client.post(
+                "/api/rag/ingest",
+                json={"repo_url": "https://github.com/owner/repo"}
+            )
+            assert response.status_code == 422
 
     def test_extracts_correct_chunk_fields(self):
+        """Endpoint correctly extracts content, metadata, chunk_id, and repo_url from request."""
         with patch("rag.upsert_chunks") as mock_upsert:
             mock_upsert.return_value = 1
+            client = _make_overridden_client()
             response = client.post(
                 "/api/rag/ingest",
                 json={
@@ -108,8 +120,10 @@ class TestRagIngestEndpoint:
             )
             assert response.status_code == 200
             mock_upsert.assert_called_once()
-            texts, metadatas, ids, repo_url = mock_upsert.call_args[0]
+            call_args = mock_upsert.call_args
+            # upsert_chunks(texts, metadatas, ids, repo_url=repo_url)
+            texts, metadatas, ids = call_args[0]
             assert texts == ["content1"]
             assert metadatas == [{"fileName": "a.py", "start_line": 1}]
             assert ids == ["id1"]
-            assert repo_url == "https://github.com/owner/repo"
+            assert call_args[1]["repo_url"] == "https://github.com/owner/repo"
