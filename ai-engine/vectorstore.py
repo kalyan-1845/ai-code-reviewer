@@ -26,12 +26,19 @@ def _load():
 
 
 def _save():
-    tmp = VECTORS_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(_vectors, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, VECTORS_FILE)
+    tmp = f"{VECTORS_FILE}.{os.getpid()}_{threading.get_ident()}.tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(_vectors, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, VECTORS_FILE)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
 
 def _compute_content_hash(content: str) -> str:

@@ -65,6 +65,12 @@ class TestAddVector:
         assert len(data) == 1
         assert data[0]['file_path'] == 'persist.py'
 
+    def test_add_vector_uses_unique_temp_file(self, fresh_vectorstore):
+        import vectorstore as vs
+        vs.add_vector('unique.py', 'content', [0.1])
+        # Ensure no residual static .tmp files were left behind
+        assert not os.path.exists(fresh_vectorstore + '.tmp')
+
 
 class TestDeleteVectorsForFile:
     def test_delete_vectors_for_file_removes_all_entries(self, fresh_vectorstore):
