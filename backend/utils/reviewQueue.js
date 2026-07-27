@@ -147,10 +147,8 @@ class ReviewQueue {
   // for the same key before starting the new one. This prevents lost updates and
   // race conditions from concurrent read-modify-write on shared resources.
   async runExclusive(key, fn) {
-    const existing = this._exclusiveLocks.get(key);
-    if (existing) {
-      // Wait for the existing operation to complete before starting a new one
-      await existing;
+    while (this._exclusiveLocks.has(key)) {
+      await this._exclusiveLocks.get(key);
     }
     const next = (async () => {
       try {
