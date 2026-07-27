@@ -3,31 +3,34 @@
 
 import fs from 'fs';
 
-const MAGIC_COMMAND_REGEX = /^(%|!).*$/gm;
+const MAGIC_COMMAND_REGEX = /^[ \t]*(%[a-zA-Z_][a-zA-Z0-9_]+|!).*$/gm;
 const IPYTHON_MAGIC_PATTERNS = [
-  /^%matplotlib.*$/gm,
-  /^%pylab.*$/gm,
-  /^%config.*$/gm,
-  /^%%time$/gm,
-  /^%%timeit$/gm,
-  /^%%capture.*$/gm,
-  /^%%writefile.*$/gm,
-  /^%%sh$/gm,
-  /^%%bash$/gm,
-  /^!.*$/gm,
+  /^[ \t]*%matplotlib.*$/gm,
+  /^[ \t]*%pylab.*$/gm,
+  /^[ \t]*%config.*$/gm,
+  /^[ \t]*%%time$/gm,
+  /^[ \t]*%%timeit$/gm,
+  /^[ \t]*%%capture.*$/gm,
+  /^[ \t]*%%writefile.*$/gm,
+  /^[ \t]*%%sh$/gm,
+  /^[ \t]*%%bash$/gm,
+  /^[ \t]*!.*$/gm,
 ];
 
 function stripMagicCommands(code) {
-  let cleanedCode = code;
-
-  for (const pattern of IPYTHON_MAGIC_PATTERNS) {
-    cleanedCode = cleanedCode.replace(pattern, '');
-  }
-
-  cleanedCode = cleanedCode.replace(MAGIC_COMMAND_REGEX, '');
-  cleanedCode = cleanedCode.replace(/^\s*\n/gm, '');
-
-  return cleanedCode.trim();
+  if (typeof code !== 'string') return '';
+  const lines = code.split('\n');
+  const cleanedLines = lines.map(line => {
+    const trimmed = line.trim();
+    // Exclude single-char formats like %s by requiring at least 2 chars after % for magics
+    const isMagic = /^(?:%{1,2}[a-zA-Z_][a-zA-Z0-9_]+|!).*$/.test(trimmed);
+    if (isMagic) {
+      // Preserve indentation but comment it out to keep line numbers intact
+      return line.replace(/^([ \t]*)/, '$1# ');
+    }
+    return line;
+  });
+  return cleanedLines.join('\n');
 }
 
 function extractCodeCells(notebookPath) {
@@ -63,6 +66,14 @@ function extractCodeCells(notebookPath) {
   }
 }
 
+function hasCodeContent(cleanedCode) {
+  const lines = cleanedCode.split('\n');
+  return lines.some(line => {
+    const trimmed = line.trim();
+    return trimmed.length > 0 && !trimmed.startsWith('#');
+  });
+}
+
 function parseCellsWithMetadata(notebookPath) {
   try {
     const content = fs.readFileSync(notebookPath, 'utf-8');
@@ -87,7 +98,7 @@ function parseCellsWithMetadata(notebookPath) {
         if (sourceCode.trim().length > 0) {
           const cleanedCode = stripMagicCommands(sourceCode);
 
-          if (cleanedCode.length > 0) {
+          if (hasCodeContent(cleanedCode)) {
             cellsWithMetadata.push({
               cellIndex,
               originalSource: sourceCode,
@@ -108,7 +119,8 @@ function parseCellsWithMetadata(notebookPath) {
 }
 
 function isNotebookFile(filePath) {
-  return filePath.endsWith('.ipynb');
+  if (!filePath || typeof filePath !== 'string') return false;
+  return filePath.toLowerCase().endsWith('.ipynb');
 }
 
 function formatNotebookFindings(findings, cellIndex) {

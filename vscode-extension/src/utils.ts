@@ -56,6 +56,7 @@ export function formatNetworkError(apiUrl: string, message: string): string {
 }
 
 export function clampLine(line: number): number {
+  if (typeof line !== "number" || !Number.isFinite(line)) return 0;
   return Math.max(0, line - 1);
 }
 
@@ -79,6 +80,29 @@ export function formatDiagnosticMessage(category: string, description: string, s
     msg += `\nSuggestion: ${suggestion}`;
   }
   return msg;
+}
+
+export function formatReviewToMarkdown(data: BackendResponse): string {
+  if (!data?.analysis?.fileReviews) return "No review data available.";
+  const reviews = data.analysis.fileReviews;
+  const files = Object.keys(reviews);
+  let md = `# RepoSage Review\n\nFound issues in **${files.length} file(s)**.\n\n`;
+  for (const file of files) {
+    const review = reviews[file];
+    const total = countIssues(review);
+    if (total === 0) continue;
+    md += `## ${file}\n\n`;
+    for (const [category, items] of Object.entries({ security: review.security, bugs: review.bugs, optimization: review.optimization, styling: review.styling })) {
+      if (!items || items.length === 0) continue;
+      md += `### ${category.charAt(0).toUpperCase() + category.slice(1)}\n\n`;
+      for (const item of items) {
+        md += `- **Line ${item.line}** - ${item.type}: ${item.description}\n`;
+        if (item.suggestion) md += `  - *Suggestion:* ${item.suggestion}\n`;
+        md += `\n`;
+      }
+    }
+  }
+  return md || "No issues found.";
 }
 
 export function countIssues(fileReview: FileReview): number {

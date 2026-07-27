@@ -10,7 +10,9 @@ import simpleGit from 'simple-git';
 import { isValidRepoUrl } from './urlValidator.js';
 import { loadIgnorePatterns, isIgnored } from './ignoreHelper.js';
 import { HARD_SKIP_DIRS } from './skipConstants.js';
-import { deleteFolderRecursive } from './fileHelper.js';
+import { deleteFolderRecursive, resolveSafePath } from './fileHelper.js';
+import { getPullRequestDiff } from '../services/gitDeltaService.js';
+import { buildDeltaReviewPrompt } from '../prompts/deltaReviewPrompt.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,7 +109,8 @@ function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxD
 
       let content;
       try {
-        content = fs.readFileSync(full, 'utf-8');
+        const safePath = resolveSafePath(rootDir, full);
+        content = fs.readFileSync(safePath, 'utf-8');
       } catch {
         continue;
       }
@@ -170,6 +173,7 @@ export function readCodeFilesFromLocalDir(localDir, options = {}) {
  * @param {number}   [options.maxDepth=10]
  * @param {number}   [options.maxBytes=1048576]   Skip files larger than this
  * @param {number}   [options.cloneTimeoutMs=120000]
+ * @param {object}   [options.webhookPr] Optional. { baseBranch, headBranch }. Triggers Delta Review mode.
  * @returns {Promise<Array<{path: string, content: string, sizeBytes: number, language: string}>>}
  */
 export async function readCodeFilesFromRepo(repoUrl, options = {}) {
@@ -183,6 +187,7 @@ export async function readCodeFilesFromRepo(repoUrl, options = {}) {
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const cloneTimeoutMs = options.cloneTimeoutMs ?? DEFAULT_CLONE_TIMEOUT_MS;
   const extensionSet = new Set(extensions);
+  const isPrWebhook = !!options.webhookPr;
 
   // Stage the clone in the same temp dir the analyze flow uses, with a unique subdir
   // so concurrent callers don't collide. Always clean up via try/finally.
@@ -195,23 +200,49 @@ export async function readCodeFilesFromRepo(repoUrl, options = {}) {
   const clonePath = path.join(tempReposDir, `rag_${uniqueId}`);
 
   try {
-    const git = simpleGit({ timeout: { block: cloneTimeoutMs } });
-    await git.clone(repoUrl, clonePath, [
-      '--depth', '1',
-      '--single-branch',
-      '--no-checkout'
-    ]);
-    await git.cwd(clonePath).checkout(['HEAD']);
+    const git = simpleGit({
+      timeout: { block: cloneTimeoutMs },
+      unsafe: {
+        allowUnsafeHooksPath: true
+      }
+    });
 
-    const ignorePatterns = loadIgnorePatterns(clonePath);
-    return walkForExtensions(
-      clonePath,
-      extensionSet,
-      ignorePatterns,
-      maxFiles,
-      maxDepth,
-      maxBytes
-    );
+    if (isPrWebhook) {
+      await git.clone(repoUrl, clonePath, [
+        '--config', 'core.hooksPath=/dev/null',
+        '--no-checkout'
+      ]);
+      await git.cwd(clonePath).fetch(['origin', options.webhookPr.baseBranch]);
+      await git.cwd(clonePath).fetch(['origin', options.webhookPr.headBranch]);
+      
+      const diffString = await getPullRequestDiff(clonePath, options.webhookPr.baseBranch, options.webhookPr.headBranch);
+      const prompt = buildDeltaReviewPrompt(diffString);
+      
+      return [{
+        path: 'pr_delta.patch',
+        content: prompt,
+        sizeBytes: Buffer.byteLength(prompt, 'utf8'),
+        language: 'diff'
+      }];
+    } else {
+      await git.clone(repoUrl, clonePath, [
+        '--config', 'core.hooksPath=/dev/null',
+        '--depth', '1',
+        '--single-branch',
+        '--no-checkout'
+      ]);
+      await git.cwd(clonePath).checkout(['HEAD']);
+
+      const ignorePatterns = loadIgnorePatterns(clonePath);
+      return walkForExtensions(
+        clonePath,
+        extensionSet,
+        ignorePatterns,
+        maxFiles,
+        maxDepth,
+        maxBytes
+      );
+    }
   } finally {
     deleteFolderRecursive(clonePath);
   }

@@ -14,6 +14,9 @@ import MentorshipPortal from "../components/MentorshipPortal";
 import HealthScoreSection from "../components/HealthScoreSection";
 import ChatPanel from "../components/ChatPanel";
 import MermaidDiagramViewer from "../components/MermaidDiagramViewer";
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   Terminal,
   ShieldAlert,
@@ -42,6 +45,8 @@ import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../util
 import { sanitizeAuditEntry } from "../utils/sanitize";
 // Path resolves correctly: pages/ -> ../utils/api -> frontend/src/utils/api
 import { apiFetch } from "../utils/api";
+import { usePersistentReport } from '../hooks/usePersistentReport';
+import { useStreamingReview } from "../hooks/useStreamingReview";
 
 const LazyMetricsChart = React.lazy(() =>
   import('../components/MetricsChart').then((module) => ({ default: module.MetricsChart }))
@@ -112,6 +117,7 @@ export interface BackendResponse {
   filesReviewedCount: number;
   analysis: AnalysisData;
   sessionId?: string;
+  sessionOwnerToken?: string;
   sessionPersisted?: boolean;
   _mock?: boolean;
   partial_review?: boolean;
@@ -130,9 +136,12 @@ export interface AuditHistoryEntry {
   response: BackendResponse;
 }
 
+
 export default function Dashboard() {
+  const { reviewText, isStreaming, error: streamError } = useStreamingReview();
   const [showSettings, setShowSettings] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   // Input State
@@ -143,7 +152,7 @@ export default function Dashboard() {
 
   // Loading & Flow State
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState("");
+  const [loadingStep, _setLoadingStep] = useState("");
 
   // Response & View State
   const { analysisResult, setAnalysisResult, selectedFile, setSelectedFile, chatHistory, setChatHistory } = useStore();
@@ -304,29 +313,61 @@ export default function Dashboard() {
           searchInputRef.current?.blur();
         }
       }
-      
+
       // Ctrl+K to search files
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
 
-      // J/K for navigating views (mocked logic - just toggling tabs)
-      if (e.target === document.body || document.activeElement === document.body) {
-        if (e.key.toLowerCase() === "j" || e.key.toLowerCase() === "k") {
-          // Simply show help or focus first clickable as a demo
-          setShowShortcutsHelp(true);
-        }
-        
-        // ? to show shortcuts
-        if (e.key === "?") {
-          setShowShortcutsHelp(true);
-        }
+      // / to focus search input
+      if (e.key === "/" && e.target !== searchInputRef.current &&
+          document.activeElement?.tagName !== "INPUT" &&
+          document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+
+      // Ctrl+N to start a new analysis
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault();
+        const repoInput = document.querySelector<HTMLInputElement>("input[placeholder*='github.com']");
+        repoInput?.focus();
+      }
+
+      // Ctrl+L to clear chat history
+      if ((e.metaKey || e.ctrlKey) && e.key === "l") {
+        e.preventDefault();
+        setChatHistory([]);
+      }
+
+      // Ctrl+B to toggle sidebar (focus file list)
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        const fileTree = document.querySelector<HTMLElement>("[class*='file-tree'], [class*='FileTree']");
+        fileTree?.focus();
+      }
+
+      // Ctrl+E to export HTML report
+      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+        e.preventDefault();
+        downloadReadme();
+      }
+
+      // Ctrl+, to open settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setShowSettings(true);
+      }
+
+      // ? to show shortcuts
+      if (e.key === "?" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        setShowShortcutsHelp(true);
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [apiError]);
+  }, [apiError, setChatHistory, downloadReadme, setShowSettings, setShowShortcutsHelp]);
 
   const isValidAuditEntry = (entry: unknown): entry is AuditHistoryEntry => {
     if (!entry || typeof entry !== 'object') return false;
@@ -368,126 +409,94 @@ export default function Dashboard() {
 
   // Simple markdown compiler for premium preview rendering
   const renderMarkdown = (md: string) => {
-    const lines = md.split("\n");
-    let inCodeBlock = false;
-    let codeBlockLines: string[] = [];
+    return (
+      <ReactMarkdown
+        components={{
+          code(props: any) {
+            const { children, className, node, ...rest } = props;
+            const match = /language-(\w+)/.exec(className || '');
+            const codeString = String(children).replace(/\n$/, '');
+            const isBlock = match || String(children).includes('\n');
 
-    return lines.map((line, idx) => {
-      // Handle multi-line code blocks
-      if (line.trim().startsWith("```")) {
-        if (inCodeBlock) {
-          inCodeBlock = false;
-          const codeContent = codeBlockLines.join("\n");
-          codeBlockLines = [];
-          return (
-            <div key={idx} style={{ position: "relative", margin: "8px 0" }}>
-              <pre
-                style={{
-                  background: "rgba(0,0,0,0.3)",
-                  border: "1px solid rgba(255,255,255,0.05)",
-                  borderRadius: "6px",
-                  padding: "10px",
-                  paddingRight: "40px",
-                  overflowX: "auto",
-                  margin: 0,
-                }}
-              >
-                <code
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "11px",
-                    color: "#c084fc",
-                  }}
-                >
-                  {codeContent}
-                </code>
-              </pre>
-              <CopyToClipboardButton
-                textToCopy={codeContent}
-                style={{
-                  position: "absolute",
-                  top: "8px",
-                  right: "8px",
-                  background: "rgba(15, 23, 42, 0.6)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  padding: "4px",
-                }}
-              />
-            </div>
-          );
-        } else {
-          inCodeBlock = true;
-          return null;
-        }
-      }
+            if (match) {
+              return (
+                <div style={{ position: "relative", margin: "8px 0" }}>
+                  <SyntaxHighlighter
+                    {...rest}
+                    style={vscDarkPlus as any}
+                    language={match[1]}
+                    PreTag="div"
+                    customStyle={{
+                      background: "rgba(0,0,0,0.3)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      paddingRight: "40px",
+                      overflowX: "auto",
+                      margin: 0,
+                      fontFamily: "monospace",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {codeString}
+                  </SyntaxHighlighter>
+                  <CopyToClipboardButton
+                    textToCopy={codeString}
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      background: "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      padding: "4px",
+                    }}
+                  />
+                </div>
+              );
+            }
 
-      if (inCodeBlock) {
-        codeBlockLines.push(line);
-        return null;
-      }
+            if (isBlock) {
+              return (
+                <div style={{ position: "relative", margin: "8px 0" }}>
+                  <pre
+                    style={{
+                      background: "rgba(0,0,0,0.3)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      paddingRight: "40px",
+                      overflowX: "auto",
+                      margin: 0,
+                    }}
+                  >
+                    <code
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: "11px",
+                        color: "#c084fc",
+                      }}
+                      {...rest}
+                    >
+                      {children}
+                    </code>
+                  </pre>
+                  <CopyToClipboardButton
+                    textToCopy={codeString}
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      background: "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      padding: "4px",
+                    }}
+                  />
+                </div>
+              );
+            }
 
-      // H1 Header
-      if (line.startsWith("# ")) {
-        return (
-          <h1
-            key={idx}
-            style={{
-              fontSize: "18px",
-              fontWeight: 800,
-              color: "#f3f4f6",
-              margin: "14px 0 8px 0",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-              paddingBottom: "4px",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(2)}
-          </h1>
-        );
-      }
-      // H2 Header
-      if (line.startsWith("## ")) {
-        return (
-          <h2
-            key={idx}
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#e5e7eb",
-              margin: "12px 0 6px 0",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(3)}
-          </h2>
-        );
-      }
-      // H3 Header
-      if (line.startsWith("### ")) {
-        return (
-          <h3
-            key={idx}
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              color: "#d1d5db",
-              margin: "10px 0 4px 0",
-              fontFamily: "inherit",
-            }}
-          >
-            {line.slice(4)}
-          </h3>
-        );
-      }
-
-      // Inline parser helper for bold and code ticks
-      const parseInlineStyles = (text: string) => {
-        const codeParts = text.split("`");
-        return codeParts.map((codePart, cIdx) => {
-          if (cIdx % 2 === 1) {
             return (
               <code
-                key={cIdx}
                 style={{
                   background: "#1e1e1e",
                   padding: "2px 4px",
@@ -496,66 +505,23 @@ export default function Dashboard() {
                   fontSize: "11px",
                   color: "#d8b4fe",
                 }}
+                {...rest}
               >
-                {codePart}
+                {children}
               </code>
             );
-          }
-          const boldParts = codePart.split("**");
-          return boldParts.map((boldPart, bIdx) => {
-            if (bIdx % 2 === 1) {
-              return (
-                <strong key={bIdx} style={{ color: "#fff", fontWeight: 700 }}>
-                  {boldPart}
-                </strong>
-              );
-            }
-            return boldPart;
-          });
-        });
-      };
-
-      // Unordered List Items
-      if (line.trim().startsWith("- ")) {
-        const content = line.trim().slice(2);
-        return (
-          <li
-            key={idx}
-            style={{
-              marginLeft: "16px",
-              marginBottom: "4px",
-              fontSize: "12px",
-              color: "#d1d5db",
-              listStyleType: "disc",
-              fontFamily: "inherit",
-              lineHeight: 1.6,
-            }}
-          >
-            {parseInlineStyles(content)}
-          </li>
-        );
-      }
-      // Empty spacing line
-      if (!line.trim()) {
-        return <div key={idx} style={{ height: "6px" }} />;
-      }
-
-      // Regular Paragraphs
-      return (
-        <p
-          key={idx}
-          style={{
-            margin: "0 0 6px 0",
-            fontSize: "12px",
-            color: "#d1d5db",
-            lineHeight: 1.6,
-            fontFamily: "inherit",
-          }}
-        >
-          {parseInlineStyles(line)}
-        </p>
-      );
-    });
+          },
+          h1: ({ node, ...props }: any) => <h1 style={{ fontSize: "18px", fontWeight: 800, color: "#f3f4f6", margin: "14px 0 8px 0", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "4px" }} {...props} />,
+          h2: ({ node, ...props }: any) => <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#e5e7eb", margin: "12px 0 6px 0" }} {...props} />,
+          h3: ({ node, ...props }: any) => <h3 style={{ fontSize: "12px", fontWeight: 600, color: "#d1d5db", margin: "10px 0 4px 0" }} {...props} />,
+          li: ({ node, ...props }: any) => <li style={{ marginLeft: "16px", marginBottom: "4px", fontSize: "12px", color: "#d1d5db", fontFamily: "inherit", lineHeight: 1.6 }} {...props} />,
+          p: ({ node, ...props }: any) => <p style={{ margin: "0 0 6px 0", fontSize: "12px", color: "#d1d5db", lineHeight: 1.6, fontFamily: "inherit" }} {...props} />,
+          strong: ({ node, ...props }: any) => <strong style={{ color: "#fff", fontWeight: 700 }} {...props} />
+        }}
+      >
+        {md}
+      </ReactMarkdown>
+    );
   };
 
   const handleCreateGitHubIssue = async (
@@ -638,7 +604,7 @@ export default function Dashboard() {
               if (!raw) continue;
               const data = JSON.parse(raw);
               if (Array.isArray(data) && data.length > 0) {
-                const evicted = data.slice(data.length <= 1 ? 0 : 1);
+                const evicted = data.slice(Math.max(1, Math.ceil(data.length * 0.5)));
                 localStorage.setItem(storageKey, JSON.stringify(evicted));
               }
             } catch { /* ignore corrupt entries */ }
@@ -666,11 +632,15 @@ export default function Dashboard() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [useRag, setUseRag] = useState(false);
 
+  const { isHydrating, saveReport } = usePersistentReport(setRepoUrl, setSessionId);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isChatLoading]);
+  const chatHistoryRef = useRef<ChatMessage[]>(chatHistory);
+  chatHistoryRef.current = chatHistory;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -681,7 +651,7 @@ export default function Dashboard() {
         const history = await response.json();
 
         if (history && !controller.signal.aborted) {
-          setAuditHistory(history);
+          setAuditHistory(history.history || []);
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -700,11 +670,10 @@ export default function Dashboard() {
     const userMessage = chatInput;
     setChatInput("");
 
-    // Build the updated history array locally FIRST so it includes the user's
-    // current message when sent to the API, rather than relying on the stale
-    // chatHistory closure value (which would be one message behind).
+    // Use chatHistoryRef to avoid stale closure — the ref always holds the latest
+    // Zustand state, so rapid successive sends never drop messages.
     const updatedHistory = truncateChatHistory([
-      ...(chatHistory || []),
+      ...(chatHistoryRef.current || []),
       { role: "user" as const, content: userMessage }
     ]);
     setChatHistory(updatedHistory);
@@ -739,7 +708,7 @@ export default function Dashboard() {
       setChatHistory((prev) => {
         const updated = truncateChatHistory([
           ...prev,
-          { role: "assistant" as const, content: data.response, sources: sources.length > 0 ? sources : undefined },
+          { role: "assistant" as const, content: data.response ?? data.message ?? "", sources: sources.length > 0 ? sources : undefined },
         ]);
         if (!safeSetItem(CHAT_HISTORY_KEY, JSON.stringify(updated))) setStorageWarning(true);
         return updated;
@@ -872,6 +841,12 @@ export default function Dashboard() {
     });
   };
 
+  useEffect(() => {
+    if (analysisResult) {
+      persistAuditHistory(analysisResult);
+    }
+  }, [analysisResult]);
+
   const loadAuditFromHistory = (entry: AuditHistoryEntry) => {
     setRepoUrl(entry.repoUrl);
     setAnalysisResult(entry.response);
@@ -896,31 +871,14 @@ export default function Dashboard() {
     e.preventDefault();
     if (!repoUrl.trim()) return;
 
-    setIsLoading(true);
     setApiError(null);
     setAnalysisResult(null);
     setSelectedFile(null);
     setChatHistory([]);
     try { localStorage.removeItem('reposage_chat_history'); } catch {};
 
-    // Simulate structured loading steps for GSSoC wow factor
-    const steps = [
-      "🔍 Authenticating connection...",
-      "📥 Cloning GitHub repository locally...",
-      "📁 Traversing directory tree & parsing modules...",
-      "🧠 Running LLM analysis using selected AI Model...",
-      "📜 Generating custom repository README.md...",
-      "🎉 Formatting reports...",
-    ];
+    setIsLoading(true);
 
-    let currentStep = 0;
-    setLoadingStep(steps[0]);
-    const stepInterval = setInterval(() => {
-      currentStep++;
-      if (currentStep < steps.length) {
-        setLoadingStep(steps[currentStep]);
-      }
-    }, 1200);
     try {
       const aiSettings = getSavedAiSettings();
       const response = await apiFetch("/api/analyze", {
@@ -937,8 +895,6 @@ export default function Dashboard() {
         }),
       });
 
-      clearInterval(stepInterval);
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
@@ -947,10 +903,13 @@ export default function Dashboard() {
       }
 
       const data: BackendResponse = await response.json();
+      const currentSessionId = data.sessionPersisted === true ? data.sessionId ?? null : null;
+      setSessionId(currentSessionId);
+      await saveReport(data, repoUrl, currentSessionId);
       setAnalysisResult(data);
-      setSessionId(
-        data.sessionPersisted === true ? data.sessionId ?? null : null
-      );
+      if (data.sessionPersisted === true && data.sessionOwnerToken) {
+        localStorage.setItem("sessionOwnerToken", data.sessionOwnerToken);
+      }
       persistAuditHistory(data);
       setChatHistory([]);
 
@@ -970,27 +929,43 @@ export default function Dashboard() {
       }
       setApiError(errMsg);
     } finally {
-      clearInterval(stepInterval);
       setIsLoading(false);
     }
   };
 
   // Helper to trigger README download
-  const downloadReadme = () => {
+  function downloadReadme() {
     if (!analysisResult) return;
     const element = document.createElement("a");
     const file = new Blob([analysisResult.analysis?.generatedReadme || ''], {
       type: "text/plain",
     });
-    element.href = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    element.href = url;
     element.download = "GENERATED_README.md";
-    document.body.appendChild(element);
+    let appended = false;
+    try {
+      document.body.appendChild(element);
+      appended = true;
       element.click();
-      document.body.removeChild(element);
-      URL.revokeObjectURL(element.href);
-    };
+    } finally {
+      if (appended) {
+        document.body.removeChild(element);
+      }
+      URL.revokeObjectURL(url);
+    }
+  };
 
   const chatInputEmpty = !chatInput.trim();
+
+  if (isHydrating) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', background: 'var(--bg-color)' }}>
+         <div className="spin-slow" style={{ width: "40px", height: "40px", border: "3px solid rgba(168,85,247,0.2)", borderTopColor: "#a855f7", borderRadius: "50%", marginBottom: "16px" }}></div>
+         <p style={{ color: '#9ca3af', fontSize: '14px', fontWeight: 500 }}>Restoring previous analysis...</p>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1271,9 +1246,92 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* 4. The Complete Analysis Dashboard (Split Audit View) */}
-          {!isLoading && analysisResult && (
+          {streamError && (
             <div
+              style={{
+                background: "rgba(239, 68, 68, 0.1)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                borderRadius: "8px",
+                padding: "14px 20px",
+                color: "#fca5a5",
+                fontSize: "13px",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                marginBottom: "20px",
+              }}
+            >
+              <AlertOctagon size={20} style={{ color: "#ef4444" }} />
+              <div>
+                <strong style={{ display: "block" }}>Streaming Error</strong>
+                <span>{streamError}</span>
+              </div>
+            </div>
+          )}
+
+          {(isStreaming || reviewText) && (
+            <div
+              ref={reportRef}
+              className="glass-panel"
+              style={{
+                flexGrow: 1,
+                display: "flex",
+                flexDirection: "column",
+                padding: "24px",
+                boxSizing: "border-box",
+                overflowY: "auto",
+                maxHeight: "80vh",
+              }}
+            >
+              <h2 style={{ color: "#f3f4f6", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "12px" }}>
+                {isStreaming ? "Streaming AI Review..." : "AI Code Review Complete"}
+              </h2>
+              {isStreaming && <div className="spin-slow" style={{ width: "24px", height: "24px", border: "2px solid rgba(168,85,247,0.1)", borderTopColor: "#a855f7", borderRadius: "50%", margin: "12px 0" }}></div>}
+              <ReactMarkdown
+                components={{
+                  code({ node, inline, className, children, ...props }: any) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    return !inline && match ? (
+                      <SyntaxHighlighter
+                        style={vscDarkPlus as any}
+                        language={match[1]}
+                        PreTag="div"
+                        customStyle={{
+                          margin: 0,
+                          borderRadius: "6px",
+                          background: "#1e1e1e",
+                          fontSize: "12px",
+                        }}
+                        {...props}
+                      >
+                        {String(children).replace(/\n$/, "")}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code
+                        style={{
+                          background: "rgba(255,255,255,0.1)",
+                          padding: "2px 4px",
+                          borderRadius: "4px",
+                          fontSize: "12px",
+                          color: "#d8b4fe",
+                        }}
+                        {...props}
+                      >
+                        {children}
+                      </code>
+                    );
+                  },
+                }}
+              >
+                {reviewText}
+              </ReactMarkdown>
+            </div>
+          )}
+
+          {/* 4. The Complete Analysis Dashboard (Split Audit View) */}
+          {!isLoading && analysisResult && !isStreaming && !reviewText && (
+            <div
+              ref={reportRef}
               style={{
                 flexGrow: 1,
                 display: "flex",
@@ -1361,7 +1419,7 @@ export default function Dashboard() {
                 />
               </SectionErrorBoundary>
               {/* Dashboard View Selection Tabs & Export Controls */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "100%" }}>
+              <div data-html2canvas-ignore="true" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "100%" }}>
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button
                     onClick={() => setActiveDashboardView("audit")}
@@ -1491,7 +1549,7 @@ export default function Dashboard() {
                     <FileDown size={14} /> Export Markdown
                   </button>
                   <button
-                    onClick={() => analysisResult && handlePdfExport(analysisResult.repoName, analysisResult.analysis, apiFetch)}
+                    onClick={() => analysisResult && handlePdfExport(analysisResult.repoName, reportRef.current)}
                     style={{
                       background: "rgba(220, 38, 38, 0.1)",
                       border: "1px solid rgba(220, 38, 38, 0.3)",
@@ -1515,6 +1573,7 @@ export default function Dashboard() {
               </div>
 
               <div
+                className="pdf-grid-container"
                 style={{
                   flexGrow: 1,
                   display: "grid",
@@ -1527,7 +1586,7 @@ export default function Dashboard() {
                 }}
               >
                 {/* File Tree List */}
-                <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '72vh' }}>
+                <div data-html2canvas-ignore="true" className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '72vh' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', margin: 0, letterSpacing: '0.5px' }}>File Navigator</h3>
                     <div style={{ display: 'flex', gap: '2px' }}>

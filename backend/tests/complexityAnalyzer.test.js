@@ -38,3 +38,25 @@ def add(a, b):
   assert.equal(result.commentLines, 2);
   assert.equal(result.functionCount, 1);
 });
+
+test('analyzeComplexity should not count commented-out functions in single-line comments', () => {
+  const codeJS = `
+  // function commentedOutJS() { }
+  // const fakeArrow = () => {};
+  `;
+  const resultJS = analyzeComplexity(codeJS, 'index.js');
+  assert.equal(resultJS.functionCount, 0);
+
+  const codePy = `
+  # def commented_out_py():
+  #     pass
+  `;
+  const resultPy = analyzeComplexity(codePy, 'app.py');
+  assert.equal(resultPy.functionCount, 0);
+
+  const codeSql = `
+  -- function commented_out_sql()
+  `;
+  const resultSql = analyzeComplexity(codeSql, 'query.sql');
+  assert.equal(resultSql.functionCount, 0);
+});

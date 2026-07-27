@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { reviewFileContent } from "./api";
 import { RepoSageDiagnostics } from "./diagnostics";
 import { RepoSageWebviewProvider } from "./webviewProvider";
+import { formatReviewToMarkdown } from "./utils";
 
 const SECRET_KEY = "reposage.apiKey";
 
@@ -118,7 +119,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
         if (result.success) {
           console.log("RepoSage review result:", result.response);
-          provider.setContent(result.response || "");
+          const markdown = result.data ? formatReviewToMarkdown(result.data) : (result.response || "");
+          provider.setContent(markdown);
           if (result.data) {
             diagnostics.updateFromResponse(result.data, fileName);
           }

@@ -105,7 +105,7 @@ test('AnalysisCache: expires entries after TTL', async () => {
 
   cache.set(key, result);
   const retrieved1 = cache.get(key);
-  assert.equal(retrieved1, result, 'Should retrieve result immediately after storage');
+  assert.deepEqual(retrieved1, result, 'Should retrieve result immediately after storage');
 
   // Wait for expiration (longer than TTL)
   await new Promise((resolve) => setTimeout(resolve, shortTtl + 50));
@@ -301,4 +301,48 @@ test('AnalysisCache: setMaxEntries does nothing if cache is already below new li
 
   assert.equal(cache.maxEntries, 100);
   assert.equal(cache.cache.size, 1, 'Single entry should remain');
+});
+
+test('AnalysisCache: sliding TTL for mock entries uses mockTtlMs', () => {
+  const cache = new AnalysisCache(3600000, 2, 5000); // ttlMs = 1 hour, mockTtlMs = 5 seconds
+  const key = 'mock-key';
+  
+  cache.set(key, { data: 'mock' }, { isMock: true });
+  
+  const entryBefore = cache.cache.get(key);
+  const originalExpiresAt = entryBefore.expiresAt;
+  
+  // Trigger cache hit
+  cache.get(key);
+  
+  const entryAfter = cache.cache.get(key);
+  const diff = entryAfter.expiresAt - originalExpiresAt;
+  
+  // Since we did cache get immediately, the new expiresAt should be approximately
+  // now + mockTtlMs. The difference from originalExpiresAt should be minimal (close to 0)
+  // rather than ~3600000ms (which would happen if it used ttlMs).
+  assert.ok(diff < 1000, `Sliding window extended mock TTL by too much: ${diff}ms`);
+});
+
+test('AnalysisCache: sweeper evicts expired keys from _repoUrlIndex and cleans empty Sets', async () => {
+  const cache = new AnalysisCache(20); // 20ms TTL
+  const repo = 'https://github.com/owner/repo-sweeper';
+  const key = cache.generateKey(repo, [{ name: 'file.js', content: 'content' }]);
+  
+  // Set entry
+  cache.set(key, { data: 123 }, { repoUrl: repo });
+  assert.equal(cache._repoUrlIndex.has(repo), true);
+  assert.equal(cache._repoUrlIndex.get(repo).has(key), true);
+
+  // Stop default sweeper and start a fast one
+  cache._stopSweeper();
+  cache._startSweeper(10);
+
+  // Wait for eviction
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  assert.equal(cache.cache.has(key), false, 'Cache key should be deleted');
+  assert.equal(cache._repoUrlIndex.has(repo), false, 'Empty Set should be deleted from index map');
+  
+  cache._stopSweeper();
 });
