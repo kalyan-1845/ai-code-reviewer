@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { HARD_SKIP_DIRS } from './skipConstants.js';
+import { resolveSafePath } from './fileHelper.js';
 
 // 🟢 Shebang → language map for extensionless scripts (e.g. a file named
 // `deploy` starting with `#!/usr/bin/env python3`). Extension-based detection
@@ -44,41 +45,40 @@ export function loadIgnorePatterns(dir) {
   return patterns;
 }
 
+import picomatch from 'picomatch';
+
 // 🟢 Helper to check if a path matches any ignore pattern
 export function isIgnored(filePath, patterns, baseDir) {
-  if (!patterns || !Array.isArray(patterns)) return false;
-  const relative = path.relative(baseDir, filePath).replace(/\\/g, '/');
-  for (const pattern of patterns) {
-    if (typeof pattern !== 'string') continue;
-    if (pattern.endsWith('/')) {
-      if (relative === pattern.slice(0, -1) || relative.startsWith(pattern)) {
-        return true;
+  if (!patterns || !Array.isArray(patterns) || patterns.length === 0) return false;
+  const normalizedFilePath = filePath.replace(/\\/g, '/');
+  const normalizedBaseDir = baseDir.replace(/\\/g, '/');
+  const relative = path.posix.relative(normalizedBaseDir, normalizedFilePath);
+  if (relative.startsWith('../') || relative === '..') return false;
+
+  const pmPatterns = patterns.flatMap(p => {
+    if (typeof p !== 'string') return [];
+    let pat = p.startsWith('/') ? p.slice(1) : p;
+    if (!pat) return [];
+    
+    const isDir = pat.endsWith('/');
+    const patClean = isDir ? pat.slice(0, -1) : pat;
+    if (!patClean) return [];
+
+    const hasSlash = patClean.includes('/');
+
+    if (hasSlash) {
+      if (isDir) {
+        return [patClean, patClean + '/**'];
       }
-    } else if (pattern.startsWith('*.')) {
-      if (relative.endsWith(pattern.slice(1))) {
-        return true;
-      }
-    } else if (pattern.includes('*')) {
-      // Convert glob to regex. Handle `**` (matches across any number of
-      // directories, including `/`) correctly: split on `**` first, replace
-      // any single `*` within the segments with `[^/]*`, then join the
-      // segments with `.*` so globstar crosses directory boundaries.
-      const escaped = pattern
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-        .split('**')
-        .map(part => part.split('*').join('[^/]*'))
-        .join('.*')
-        .replace(/^\.\*\//, '(?:.*/)?');
-      try {
-        if (new RegExp(`^${escaped}$`).test(relative)) return true;
-      } catch { /* skip invalid pattern */ }
+      return [patClean];
     } else {
-      if (relative === pattern || relative.startsWith(pattern + '/')) {
-        return true;
-      }
+      return [patClean, '**/' + patClean, patClean + '/**', '**/' + patClean + '/**'];
     }
-  }
-  return false;
+  });
+
+  if (pmPatterns.length === 0) return false;
+
+  return picomatch.isMatch(relative, pmPatterns, { dot: true });
 }
 
 // 🟢 Helper to recursively read files
@@ -135,7 +135,6 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
 
       if (validExtensions.includes(ext) || isExtensionless) {
         try {
-          const stat = fs.statSync(filePath);
           if (stat.size > MAX_FILE_SIZE) {
             if (validExtensions.includes(ext)) {
               skippedFiles.push({ name: path.relative(baseDir, filePath).replace(/\\/g, '/'), reason: 'File exceeds size limit of 100KB', size: stat.size });
@@ -143,7 +142,8 @@ export function readFilesRecursively(dir, fileList = [], baseDir = dir, ignorePa
             continue;
           }
           const MAX_FILE_CONTENT_LENGTH = 1024 * 1024;
-          const content = fs.readFileSync(filePath, 'utf-8').slice(0, MAX_FILE_CONTENT_LENGTH);
+          const safePath = resolveSafePath(baseDir, filePath);
+          const content = fs.readFileSync(safePath, 'utf-8').slice(0, MAX_FILE_CONTENT_LENGTH);
 
           if (isExtensionless) {
             const detectedLanguage = detectShebangLanguage(content);

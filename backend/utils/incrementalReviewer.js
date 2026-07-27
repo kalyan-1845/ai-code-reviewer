@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import simpleGit from 'simple-git';
+import { resolveSafePath } from './fileHelper.js';
 
 const CACHE_FILENAME = '.codereview-cache.json';
 
@@ -64,8 +65,14 @@ async function getChangedFiles(repoPath, baseRef = 'main') {
     const changedFiles = diffResult
       .split('\n')
       .filter(line => line.trim().length > 0)
-      .map(line => path.join(repoPath, line))
-      .filter(filePath => fs.existsSync(filePath));
+      .map(line => {
+        try {
+          return resolveSafePath(repoPath, line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(filePath => filePath !== null && fs.existsSync(filePath));
 
     return changedFiles;
   } catch (err) {

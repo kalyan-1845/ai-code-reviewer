@@ -12,7 +12,7 @@ export { ReviewItem, FileReview, AnalysisData, BackendResponse, ReviewResponse }
 
 function getConfig() {
   const config = vscode.workspace.getConfiguration("reposage");
-  const apiUrl = config.get<string>("apiUrl", "https://localhost:5000");
+  const apiUrl = config.get<string>("apiUrl", "http://localhost:5000");
   return { apiUrl };
 }
 

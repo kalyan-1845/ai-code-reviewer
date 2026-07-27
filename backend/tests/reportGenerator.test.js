@@ -68,9 +68,15 @@ test('reportGenerator: generateJSONReport writes valid JSON with correct schema'
 });
 
 test('reportGenerator: generateJSONReport returns success:false when write fails', () => {
-  const result = generateJSONReport('repo', [], null, '/nonexistent-dir/fail.json');
-  assert.equal(result.success, false);
-  assert.ok(result.error, 'should include error message');
+  const filePath = path.join(TMPDIR, `test-file-dir-json-${Date.now()}.txt`);
+  fs.writeFileSync(filePath, 'not a directory');
+  try {
+    const result = generateJSONReport('repo', [], null, path.join(filePath, 'fail.json'));
+    assert.equal(result.success, false);
+    assert.ok(result.error, 'should include error message');
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
 });
 
 test('reportGenerator: generateJSONReport handles null reviewResult gracefully', () => {
@@ -126,9 +132,40 @@ test('reportGenerator: generateHTMLReport writes valid HTML with finding rows', 
   }
 });
 
+test('reportGenerator: generateHTMLReport handles custom or unknown severities in sorting without throwing', () => {
+  const outputPath = path.join(TMPDIR, `test-custom-severity-${Date.now()}.html`);
+  try {
+    const repoName = 'custom-severity-repo';
+    const files = [{ name: 'src/app.js' }];
+    const result = generateHTMLReport(repoName, files, {
+      fileReviews: {
+        'src/app.js': {
+          bugs: [
+            { line: 5, description: 'Normal bug', rule: 'bug-rule' },
+            { line: 6, description: 'Unknown severity bug', rule: 'custom-rule', severity: 'critical' }
+          ],
+          security: [],
+          optimization: [],
+          styling: [],
+        }
+      }
+    }, outputPath);
+    assert.equal(result.success, true);
+    assert.equal(result.findingCount, 2);
+  } finally {
+    if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+  }
+});
+
 test('reportGenerator: generateHTMLReport returns success:false when write fails', () => {
-  const result = generateHTMLReport('repo', [], null, '/nonexistent-dir/fail.html');
-  assert.equal(result.success, false);
+  const filePath = path.join(TMPDIR, `test-file-dir-html-${Date.now()}.txt`);
+  fs.writeFileSync(filePath, 'not a directory');
+  try {
+    const result = generateHTMLReport('repo', [], null, path.join(filePath, 'fail.html'));
+    assert.equal(result.success, false);
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
 });
 
 test('reportGenerator: generateHTMLReport handles empty reviewResult with no findings', () => {
@@ -141,5 +178,37 @@ test('reportGenerator: generateHTMLReport handles empty reviewResult with no fin
     assert.ok(html.includes('0'), 'empty count should appear in stats');
   } finally {
     if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+  }
+});
+
+test('reportGenerator: supports both rule and rule_id properties in input findings', () => {
+  const outputPathJson = path.join(TMPDIR, `test-rules-json-${Date.now()}.json`);
+  const outputPathHtml = path.join(TMPDIR, `test-rules-html-${Date.now()}.html`);
+  const reviewResult = {
+    fileReviews: {
+      'src/file.js': {
+        bugs: [
+          { line: 5, rule_id: 'my-custom-bug-rule', description: 'Some bug' },
+          { line: 10, rule: 'legacy-bug-rule', message: 'Legacy bug' }
+        ]
+      }
+    }
+  };
+
+  try {
+    const jsonRes = generateJSONReport('repo', ['src/file.js'], reviewResult, outputPathJson);
+    assert.equal(jsonRes.success, true);
+    const data = JSON.parse(fs.readFileSync(outputPathJson, 'utf-8'));
+    assert.equal(data.findings[0].rule_id, 'my-custom-bug-rule');
+    assert.equal(data.findings[1].rule_id, 'legacy-bug-rule');
+
+    const htmlRes = generateHTMLReport('repo', ['src/file.js'], reviewResult, outputPathHtml);
+    assert.equal(htmlRes.success, true);
+    const html = fs.readFileSync(outputPathHtml, 'utf-8');
+    assert.ok(html.includes('my-custom-bug-rule'));
+    assert.ok(html.includes('legacy-bug-rule'));
+  } finally {
+    if (fs.existsSync(outputPathJson)) fs.unlinkSync(outputPathJson);
+    if (fs.existsSync(outputPathHtml)) fs.unlinkSync(outputPathHtml);
   }
 });

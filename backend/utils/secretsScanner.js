@@ -1,22 +1,22 @@
 export const rules = [
   {
     type: "AWS Access Key Check",
-    regex: /AKIA[0-9A-Z]{16}/g,
+    regex: /\bAKIA[0-9A-Z]{16}\b/g,
     description: "Potential AWS Access Key ID detected. If pushed to a public repository, malicious parties can hijack your AWS cloud infrastructure."
   },
   {
     type: "GitHub Personal Access Token",
-    regex: /ghp_[a-zA-Z0-9]{36}/g,
+    regex: /\bghp_[a-zA-Z0-9]{36}\b/g,
     description: "Hardcoded GitHub Personal Access Token detected. Unauthorized users can gain complete read/write access to your repositories."
   },
   {
     type: "Stripe Secret API Key",
-    regex: /sk_live_[0-9a-zA-Z]{24}/g,
+    regex: /\bsk_live_[0-9a-zA-Z]{24}\b/g,
     description: "Hardcoded live Stripe Secret Key detected. This can expose customer transaction history or result in financial exploitation."
   },
   {
     type: "Google Cloud API Key",
-    regex: /AIzaSy[a-zA-Z0-9-_]{33}/g,
+    regex: /\bAIzaSy[a-zA-Z0-9-_]{33,40}\b/g,
     description: "Hardcoded Google Cloud API Key detected. Allows unauthorized usage of GCP billing services and resources."
   },
   {
@@ -26,7 +26,7 @@ export const rules = [
   },
   {
     type: "Slack Incoming Webhook",
-    regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
+    regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8,11}\/B[A-Z0-9]{8,11}\/[A-Za-z0-9]{24,32}/g,
     description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
   },
   {
@@ -76,12 +76,12 @@ export const rules = [
   },
   {
     type: "Slack Token Check",
-    regex: /xox[baprs]-[0-9a-zA-Z]{10,48}/g,
+    regex: /\bxox[baprs]-[0-9a-zA-Z]{10,48}\b/g,
     description: "Potential hardcoded Slack token (User, Bot, App, or Workspace) detected. Unauthorized users can interact with your Slack workspace APIs."
   },
   {
     type: "Discord Bot Token",
-    regex: /[a-zA-Z0-9_-]{24}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}/g,
+    regex: /\b[a-zA-Z0-9_-]{24}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}\b/g,
     description: "Potential hardcoded Discord Bot Token detected. This allows attackers to fully control your Discord bot and access guilds/channels."
   }
 ];
@@ -102,10 +102,17 @@ export function scanSecrets(fileContent) {
   const startTime = Date.now();
   const maxLineLength = getMaxLineLength();
   const scanTimeoutMs = getScanTimeoutMs();
+  let truncationWarningLogged = false;
   for (let idx = 0; idx < lines.length; idx++) {
     if (Date.now() - startTime > scanTimeoutMs) break;
     const line = lines[idx];
-    if (line.length > maxLineLength) continue;
+    if (line.length > maxLineLength) {
+      if (!truncationWarningLogged) {
+        console.warn(`Secret scan truncated: line ${idx + 1} exceeds max length of ${maxLineLength} chars. Subsequent long lines also skipped.`);
+        truncationWarningLogged = true;
+      }
+      continue;
+    }
     for (const rule of rules) {
       if (Date.now() - startTime > scanTimeoutMs) break;
       rule.regex.lastIndex = 0;
@@ -166,7 +173,11 @@ export function scanSecretsInChanges(changes) {
         break;
       }
       const lineContent = lines[lineIdx];
-      if (lineContent.length > maxLineLen) continue;
+      if (lineContent.length > maxLineLen) {
+        stoppedEarly = true;
+        if (!reason) reason = `Line exceeds max length of ${maxLineLen} chars; scan truncated.`;
+        continue;
+      }
       for (const rule of rules) {
         if (Date.now() - startTime > timeoutMs) {
           stoppedEarly = true;

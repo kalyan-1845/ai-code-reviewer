@@ -202,3 +202,34 @@ test('parseDiff handles diff with no trailing newline', () => {
   assert.equal(result[0].path, 'test.js');
   assert.equal(result[0].changes.length, 1);
 });
+
+test('parseDiff handles file paths containing "b/" folder name and quoted file paths', () => {
+  const diff = `
+diff --git a/sub/dir/b/file.js b/sub/dir/b/file.js
+--- a/sub/dir/b/file.js
++++ b/sub/dir/b/file.js
+@@ -1 +1 @@
++hello
+diff --git "a/space b/quoted.js" "b/space b/quoted.js"
+--- "a/space b/quoted.js"
++++ "b/space b/quoted.js"
+@@ -1 +1 @@
++world
+  `;
+  const { files: result } = parseDiff(diff);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].path, 'sub/dir/b/file.js');
+  assert.equal(result[1].path, 'space b/quoted.js');
+});
+
+test('parseDiff handles quoted filenames and paths containing b/', () => {
+  const diffQuoted = 'diff --git "a/my file.js" "b/my file.js"\n--- "a/my file.js"\n+++ "b/my file.js"\n@@ -1 +1 @@\n+x';
+  const resQuoted = parseDiff(diffQuoted).files;
+  assert.equal(resQuoted.length, 1);
+  assert.equal(resQuoted[0].path, 'my file.js');
+
+  const diffContainingB = 'diff --git a/src/b/index.js b/src/b/index.js\n--- a/src/b/index.js\n+++ b/src/b/index.js\n@@ -1 +1 @@\n+y';
+  const resContainingB = parseDiff(diffContainingB).files;
+  assert.equal(resContainingB.length, 1);
+  assert.equal(resContainingB[0].path, 'src/b/index.js');
+});

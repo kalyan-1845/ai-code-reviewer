@@ -63,11 +63,10 @@ test('verifyPort accepts port 0 at lower boundary', () => {
   assert.equal(verifyPort('0'), 0)
 })
 
-test('verifyPort rejects whitespace-padded string ports', () => {
-  // Whitespace-padded strings fail the regex /^\d+$/
-  assert.throws(() => verifyPort(' 8080'), /non-numeric/)
-  assert.throws(() => verifyPort('8080 '), /non-numeric/)
-  assert.throws(() => verifyPort(' 8080 '), /non-numeric/)
+test('verifyPort accepts whitespace-padded string ports by trimming them', () => {
+  assert.equal(verifyPort(' 8080'), 8080)
+  assert.equal(verifyPort('8080 '), 8080)
+  assert.equal(verifyPort(' 8080 '), 8080)
 })
 
 test('verifyPort rejects very large integer strings', () => {

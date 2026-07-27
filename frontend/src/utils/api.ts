@@ -126,6 +126,7 @@ const ensureApiSession = async () => {
 export const clearApiKey = () => {
   sessionStorage.removeItem(API_KEY_STORAGE_KEY);
   sessionRequest = null;
+  csrfToken = null;
 };
 
 const getCsrfToken = (): string | null => {
@@ -181,7 +182,18 @@ export const apiFetch = async (
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const callerSignal = options.signal;
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -209,12 +221,13 @@ export const apiFetch = async (
     }
     return response;
   } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (timedOut && error && typeof error === "object" && "name" in error && error.name === "AbortError") {
       throw new Error(`Request timed out after ${timeoutMs / 1000} seconds. Backend might be hanging.`);
     }
     throw error;
   } finally {
     clearTimeout(timeoutId);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
   }
 };
 export const getReviewHistory = async () => {

@@ -80,12 +80,29 @@ export async function getFolderSize(dirPath) {
       if (file.isDirectory() && !file.isSymbolicLink()) {
         size += await getFolderSize(filePath);
       } else if (!file.isSymbolicLink()) {
-        const stats = await fs.promises.stat(filePath);
-        size += stats.size;
+        try {
+          const stats = await fs.promises.stat(filePath);
+          size += stats.size;
+        } catch (e) {
+          console.warn(`getFolderSize: could not stat file ${filePath}: ${e.message}`);
+        }
       }
     }
   } catch (err) {
     console.warn(`getFolderSize: could not read path ${dirPath}: ${err.message}`);
   }
   return size;
+}
+
+// Helper to resolve and validate paths to prevent directory traversal
+export function resolveSafePath(baseDir, targetPath) {
+  const resolvedBase = path.resolve(baseDir);
+  const absolutePath = path.resolve(resolvedBase, targetPath);
+
+  // Allow the base directory itself, otherwise require it to be strictly inside
+  if (!absolutePath.startsWith(resolvedBase + path.sep) && absolutePath !== resolvedBase) {
+    throw new Error('Path traversal blocked');
+  }
+
+  return absolutePath;
 }

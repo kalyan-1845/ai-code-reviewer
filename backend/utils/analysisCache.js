@@ -47,7 +47,7 @@ class AnalysisCache {
     this.pending = new Map();
     this._locks = new Map();
     this._repoUrlIndex = new Map();
-    this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0 };
+    this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0, evictions: 0 };
     this._startSweeper();
   }
 
@@ -114,12 +114,12 @@ class AnalysisCache {
 
     // Cache hit — promote to MRU position and extend TTL
     this.cache.delete(key);
-    entry.expiresAt = now + this.ttlMs;
+    entry.expiresAt = now + (entry.isMock ? this.mockTtlMs : this.ttlMs);
     this.cache.set(key, entry);
     this.stats.hits++;
     const qualityLabel = entry.isMock ? '⚠️ MOCK' : '✅';
     console.log(`${qualityLabel} Analysis cache hit for key ${key.slice(0, 8)}... (${this.cache.size} entries, ${this.stats.hits} hits, ${this.stats.misses} misses)`);
-    return entry.result;
+    return JSON.parse(JSON.stringify(entry.result));
   }
 
   /**
@@ -174,34 +174,40 @@ class AnalysisCache {
       this._locks.set(key, lock);
     }
 
-    return lock.acquire(async () => {
-      const recheck = this.get(key);
-      if (recheck) {
-        this.stats.dedupSaves++;
-        return recheck;
-      }
+    try {
+      return await lock.acquire(async () => {
+        const recheck = this.get(key);
+        if (recheck) {
+          this.stats.dedupSaves++;
+          return recheck;
+        }
 
-      const pending = this.pending.get(key);
-      if (pending) {
-        this.stats.dedupSaves++;
-        return pending;
-      }
+        const pending = this.pending.get(key);
+        if (pending) {
+          this.stats.dedupSaves++;
+          return pending;
+        }
 
-      const promise = fetcher().then(result => {
-        const cacheHint = (result && result._cacheHint) || {};
-        const resultData = (result && result._data !== undefined) ? result._data : result;
-        const isMock = cacheHint.isMock === true || result._mock === true;
-        this.set(key, resultData, { repoUrl, isMock });
-        this.pending.delete(key);
-        return resultData;
-      }).catch(err => {
-        this.pending.delete(key);
-        throw err;
+        const promise = fetcher().then(result => {
+          const cacheHint = (result && result._cacheHint) || {};
+          const resultData = (result && result._data !== undefined) ? result._data : result;
+          const isMock = cacheHint.isMock === true || result._mock === true;
+          this.set(key, resultData, { repoUrl, isMock });
+          this.pending.delete(key);
+          return resultData;
+        }).catch(err => {
+          this.pending.delete(key);
+          throw err;
+        });
+
+        this.pending.set(key, promise);
+        return promise;
       });
-
-      this.pending.set(key, promise);
-      return promise;
-    });
+    } finally {
+      if (lock.isFree()) {
+        this._locks.delete(key);
+      }
+    }
   }
 
   /**
@@ -212,6 +218,16 @@ class AnalysisCache {
     for (const [key, entry] of this.cache) {
       if (entry.isMock) {
         this.cache.delete(key);
+        if (entry.repoUrl) {
+          const normalizedUrl = entry.repoUrl.replace(/\/+$/, '').toLowerCase();
+          const index = this._repoUrlIndex.get(normalizedUrl);
+          if (index) {
+            index.delete(key);
+            if (index.size === 0) {
+              this._repoUrlIndex.delete(normalizedUrl);
+            }
+          }
+        }
         cleared++;
       }
     }
@@ -234,26 +250,6 @@ class AnalysisCache {
   }
 
   /**
-   * Invalidate all cache entries whose key contains the given repo URL.
-   * Used by push-event webhook handling to evict stale analysis data.
-   */
-  invalidateByRepoUrl(repoUrl) {
-    const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
-    let removed = 0;
-    for (const [key] of this.cache) {
-      const keyStr = key;
-      if (keyStr.includes(normalized)) {
-        this.cache.delete(key);
-        removed++;
-      }
-    }
-    if (removed > 0) {
-      console.log(`🗑️  Invalidated ${removed} cache entries for ${repoUrl}`);
-    }
-    return removed;
-  }
-
-  /**
    * Get cache statistics for monitoring and debugging.
    */
   _startSweeper(intervalMs = 60000) {
@@ -267,7 +263,11 @@ class AnalysisCache {
           this.cache.delete(key);
           this.stats.absoluteExpiries++;
           if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            const set = this._repoUrlIndex.get(entry.repoUrl);
+            set.delete(key);
+            if (set.size === 0) {
+              this._repoUrlIndex.delete(entry.repoUrl);
+            }
           }
           continue;
         }
@@ -275,7 +275,11 @@ class AnalysisCache {
           this.cache.delete(key);
           this.stats.slidingExpiries++;
           if (entry.repoUrl && this._repoUrlIndex.has(entry.repoUrl)) {
-            this._repoUrlIndex.get(entry.repoUrl).delete(key);
+            const set = this._repoUrlIndex.get(entry.repoUrl);
+            set.delete(key);
+            if (set.size === 0) {
+              this._repoUrlIndex.delete(entry.repoUrl);
+            }
           }
         }
       }
@@ -320,7 +324,7 @@ class AnalysisCache {
       misses: this.stats.misses,
       mockCount,
       avgAgeMs: this.cache.size > 0 ? Math.round(totalAge / this.cache.size) : 0,
-      evictions: this.stats.evictions,
+      evictions: Number.isFinite(this.stats.evictions) ? this.stats.evictions : 0,
       absoluteExpiries: this.stats.absoluteExpiries,
       slidingExpiries: this.stats.slidingExpiries,
       hitRate: `${hitRate}%`,

@@ -4,17 +4,16 @@ export function parseDiff(diffStr) {
   if (!diffStr || typeof diffStr !== 'string') {
     return { files, binaryFiles };
   }
-  const lines = diffStr.split('\n');
+  const lines = diffStr.replace(/\r\n/g, '\n').split('\n');
   let currentFile = null;
   let currentLineInNewFile = 0;
   let currentLineInOldFile = 0;
 
   for (const line of lines) {
     if (line.startsWith('diff --git')) {
-      const match = line.match(/b\/(.+)$/);
+      const match = line.match(/^diff --git (?:".*?"|\S+) "?b\/(.+?)"?$/);
       if (match) {
-        const rawPath = match[1];
-        const cleanPath = rawPath.replace(/^"(.*)"$/, '$1');
+        const cleanPath = match[1];
         currentFile = {
           path: cleanPath,
           changes: [],

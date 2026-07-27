@@ -56,7 +56,9 @@ function getCookie(req, name) {
 function safeEqual(left, right) {
   const leftBuffer = Buffer.from(String(left));
   const rightBuffer = Buffer.from(String(right));
-  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+  const a = crypto.createHash('sha256').update(leftBuffer).digest();
+  const b = crypto.createHash('sha256').update(rightBuffer).digest();
+  return crypto.timingSafeEqual(a, b);
 }
 
 function decodeSessionCookie(req) {

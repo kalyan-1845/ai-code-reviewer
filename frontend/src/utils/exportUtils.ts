@@ -12,6 +12,9 @@ interface FileReview {
   styling: ReviewItem[];
 }
 
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
+
 interface AnalysisData {
   fileReviews: Record<string, FileReview>;
   generatedReadme: string;
@@ -115,39 +118,48 @@ export const handleMarkdownExport = (repoName: string, analysis: AnalysisData) =
 
 export const handlePdfExport = async (
   repoName: string,
-  analysis: AnalysisData,
-  apiFetch: (path: string, options?: RequestInit) => Promise<Response>
+  element: HTMLElement | null
 ) => {
+  if (!element) {
+    alert('Report container not found.');
+    return;
+  }
+
   try {
-    const response = await apiFetch('/api/reports/pdf', {
-      method: 'POST',
-      body: JSON.stringify({
-        repoName,
-        analysis: {
-          fileReviews: analysis.fileReviews,
-          metrics: analysis.metrics,
-          generatedReadme: analysis.generatedReadme,
-          mermaidDiagram: analysis.mermaidDiagram,
+    // Temporarily force light theme for better PDF readability
+    const originalTheme = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', 'light');
+
+    const opt = {
+      margin:       10,
+      filename:     `${repoName || 'RepoSage'}-Audit-Report.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { 
+        scale: 2, 
+        useCORS: true, 
+        logging: false,
+        onclone: (doc: Document) => {
+          const grid = doc.querySelector('.pdf-grid-container') as HTMLElement;
+          if (grid) {
+            // Since the first column (240px sidebar) is ignored by data-html2canvas-ignore,
+            // remove it from the grid template layout in the PDF
+            grid.style.gridTemplateColumns = grid.style.gridTemplateColumns.replace('240px ', '');
+          }
         }
-      })
-    });
+      },
+      pagebreak:    { mode: ['css', 'legacy'], avoid: ['.glass-panel', 'table', 'pre', 'h2', 'h3'] },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
 
-    if (!response.ok) {
-      let errMsg = 'Failed to export PDF report.';
-      try { const errData = await response.json(); errMsg = errData.error || errMsg; }
-      catch { try { errMsg = (await response.text()) || errMsg; } catch {} }
-      throw new Error(errMsg);
+    // The html2pdf.js library handles elements with data-html2canvas-ignore="true" natively via html2canvas
+    await html2pdf().set(opt).from(element).save();
+
+    // Restore original theme
+    if (originalTheme) {
+      document.documentElement.setAttribute('data-theme', originalTheme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
     }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const element = document.createElement('a');
-    element.href = url;
-    element.download = `${repoName || 'RepoSage'}-Audit-Report.pdf`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-    URL.revokeObjectURL(url);
   } catch (err: any) {
     console.error(err);
     alert(err.message || 'Failed to export PDF report.');
