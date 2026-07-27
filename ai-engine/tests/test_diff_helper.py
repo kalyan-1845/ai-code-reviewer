@@ -53,6 +53,17 @@ class TestFilterFilesByChanges:
         names = {f.name for f in filtered}
         assert names == {"src/index.js", "src/style.css"}
 
+    def test_cross_platform_slash_and_relative_prefix_normalization(self):
+        """Backslashes and leading ./ should be normalized for cross-platform matching."""
+        files = [
+            type("FileItem", (), {"name": r"src\index.js"})(),
+            type("FileItem", (), {"name": "./src/utils.js"})(),
+        ]
+        changed_files = {"src/index.js", "src/utils.js"}
+        filtered, skipped = filter_files_by_changes(files, changed_files)
+        assert len(filtered) == 2
+        assert skipped == 0
+
     def test_no_overlap_returns_all_skipped(self):
         """No files match changed set: all should be skipped."""
         files = [
