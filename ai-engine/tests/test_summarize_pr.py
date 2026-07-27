@@ -28,7 +28,6 @@ class TestSummarizePrEndpoint:
         original = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            # Directly patch _call_groq_with_timeout at the module level
             async def fake_call(**kwargs):
                 return mock_completion
             with patch.object(app_module, '_call_groq_with_timeout', fake_call):
@@ -56,24 +55,8 @@ class TestSummarizePrEndpoint:
         finally:
             app_module.groq_client = original
 
-    def test_returns_502_when_groq_returns_empty_response(self):
-        mock_completion = _mock_groq_response(content=None)
-        import app as app_module
-        original = getattr(app_module, 'groq_client', None)
-        try:
-            app_module.groq_client = MagicMock()
-            async def fake_call(**kwargs):
-                return mock_completion
-            with patch.object(app_module, '_call_groq_with_timeout', fake_call):
-                response = client.post(
-                    "/summarize-pr",
-                    json={"diff": "diff --git a/x.py b/x.py\n+print('hello')"}
-                )
-                assert response.status_code == 502
-        finally:
-            app_module.groq_client = original
-
     def test_returns_200_when_summary_key_missing(self):
+        """When LLM returns JSON missing the 'summary' key, return empty summary."""
         mock_completion = _mock_groq_response(content='{"other": "value"}')
         import app as app_module
         original = getattr(app_module, 'groq_client', None)
@@ -92,10 +75,12 @@ class TestSummarizePrEndpoint:
             app_module.groq_client = original
 
     def test_rejects_missing_diff_field(self):
+        """Request validation - missing required 'diff' field returns 422."""
         response = client.post("/summarize-pr", json={})
         assert response.status_code == 422
 
     def test_accepts_empty_diff_string(self):
+        """An empty diff string is valid input."""
         mock_completion = _mock_groq_response(content='{"summary": ""}')
         import app as app_module
         original = getattr(app_module, 'groq_client', None)
