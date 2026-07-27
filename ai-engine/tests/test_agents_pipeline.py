@@ -32,7 +32,7 @@ class TestRunBatchPipeline:
             call_log.append(system)
             return {"fileReviews": {}}
 
-        result = asyncio.run(
+        asyncio.run(
             run_batch_pipeline(
                 company="Acme Corp",
                 language="English",
@@ -43,7 +43,7 @@ class TestRunBatchPipeline:
                 llm_caller=mock_caller,
             )
         )
-        # Security, Performance, Style, and Synthesizer all get called
+        # Security, Performance, Style, and Synthesizer all get called (4 calls)
         assert len(call_log) == 4
 
     def test_raises_runtime_error_when_synthesizer_fails(self):
@@ -70,11 +70,11 @@ class TestRunBatchPipeline:
             )
 
     def test_omits_readme_mermaid_when_not_first_batch(self):
-        call_log = []
+        received_user_prompts = []
 
         async def mock_caller(system, user):
-            call_log.append(system)
-            if call_log.count(system) == 4:
+            received_user_prompts.append(user)
+            if len(received_user_prompts) == 4:
                 return {"fileReviews": {}}
             return {"fileReviews": {}}
 
@@ -89,16 +89,17 @@ class TestRunBatchPipeline:
                 llm_caller=mock_caller,
             )
         )
-        synthesizer_prompt = call_log[3]
+        # The 4th call is to the synthesizer
+        synthesizer_prompt = received_user_prompts[3]
         assert "README.md" not in synthesizer_prompt
         assert "Mermaid" not in synthesizer_prompt
 
     def test_includes_readme_mermaid_when_first_batch(self):
-        call_log = []
+        received_user_prompts = []
 
         async def mock_caller(system, user):
-            call_log.append(system)
-            if call_log.count(system) == 4:
+            received_user_prompts.append(user)
+            if len(received_user_prompts) == 4:
                 return {"fileReviews": {}}
             return {"fileReviews": {}}
 
@@ -113,22 +114,18 @@ class TestRunBatchPipeline:
                 llm_caller=mock_caller,
             )
         )
-        synthesizer_prompt = call_log[3]
+        synthesizer_prompt = received_user_prompts[3]
         assert "README.md" in synthesizer_prompt
         assert "Mermaid" in synthesizer_prompt
 
     def test_combined_findings_passed_to_synthesizer(self):
-        received_findings = {}
+        received_user_prompts = []
 
         async def mock_caller(system, user):
-            if "Synthesizer" in system:
-                # Extract agent_findings from the prompt
-                import json, re
-                match = re.search(r'"agent_findings":\s*(\{.*?\})\s*,?\s*$', user, re.DOTALL)
-                if match:
-                    received_findings["data"] = json.loads(match.group(1))
+            received_user_prompts.append(user)
+            if len(received_user_prompts) == 4:
                 return {"fileReviews": {}}
-            return {"fileReviews": {f"file_{system[:6]}": {}}}
+            return {"fileReviews": {"file_" + system[:6]: {}}}
 
         asyncio.run(
             run_batch_pipeline(
@@ -141,6 +138,7 @@ class TestRunBatchPipeline:
                 llm_caller=mock_caller,
             )
         )
-        assert "security_findings" in received_findings.get("data", {})
-        assert "performance_findings" in received_findings.get("data", {})
-        assert "style_findings" in received_findings.get("data", {})
+        synthesizer_prompt = received_user_prompts[3]
+        assert "security_findings" in synthesizer_prompt
+        assert "performance_findings" in synthesizer_prompt
+        assert "style_findings" in synthesizer_prompt
