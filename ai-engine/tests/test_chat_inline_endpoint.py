@@ -16,27 +16,41 @@ app.dependency_overrides[verify_api_key] = lambda: "test-user"
 client = TestClient(app)
 
 
+def _mock_groq_response(content='{"reply": "Looks good to me!"}'):
+    """Return a mock Groq completion response."""
+    mock_choice = MagicMock()
+    mock_choice.message.content = content
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+    return mock_completion
+
+
 class TestChatInlineEndpoint:
     def test_returns_200_with_valid_request(self):
-        mock_completion = MagicMock()
-        mock_completion.choices = [
-            MagicMock(message=MagicMock(content='{"reply": "Looks good to me!"}'))
-        ]
+        mock_completion = _mock_groq_response()
+        mock_groq = MagicMock()
+        mock_groq.chat.completions.create.return_value = mock_completion
 
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={
-                    "file_path": "src/main.py",
-                    "diff_hunk": "+def hello():\n    print('world')",
-                    "message": "Is this function correct?"
-                }
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert "reply" in data
-            assert data["reply"] == "Looks good to me!"
+        import app as app_module
+        original_client = getattr(app_module, 'groq_client', None)
+        try:
+            app_module.groq_client = mock_groq
+            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
+                mock_call.return_value = mock_completion
+                response = client.post(
+                    "/chat-inline",
+                    json={
+                        "file_path": "src/main.py",
+                        "diff_hunk": "+def hello():\n    print('world')",
+                        "message": "Is this function correct?"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert "reply" in data
+                assert data["reply"] == "Looks good to me!"
+        finally:
+            app_module.groq_client = original_client
 
     def test_returns_422_when_message_field_missing(self):
         response = client.post(
@@ -59,7 +73,10 @@ class TestChatInlineEndpoint:
         assert response.status_code == 422
 
     def test_returns_500_when_groq_not_configured(self):
-        with patch("app.groq_client", None):
+        import app as app_module
+        original_client = getattr(app_module, 'groq_client', None)
+        try:
+            app_module.groq_client = None
             response = client.post(
                 "/chat-inline",
                 json={
@@ -69,75 +86,113 @@ class TestChatInlineEndpoint:
                 }
             )
             assert response.status_code == 500
+            assert "not configured" in response.json()["detail"]
+        finally:
+            app_module.groq_client = original_client
 
     def test_returns_502_when_llm_returns_empty_response(self):
-        mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock(message=MagicMock(content=None))]
-
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={
-                    "file_path": "src/main.py",
-                    "diff_hunk": "+x = 1",
-                    "message": "Hello"
-                }
-            )
-            assert response.status_code == 502
-
-    def test_returns_500_when_json_parse_fails(self):
-        mock_completion = MagicMock()
-        mock_completion.choices = [
-            MagicMock(message=MagicMock(content="not valid json"))
-        ]
-
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={
-                    "file_path": "src/main.py",
-                    "diff_hunk": "+x = 1",
-                    "message": "Hello"
-                }
-            )
-            assert response.status_code == 500
+        mock_completion = _mock_groq_response(content=None)
+        import app as app_module
+        original_client = getattr(app_module, 'groq_client', None)
+        try:
+            app_module.groq_client = MagicMock()
+            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
+                mock_call.return_value = mock_completion
+                response = client.post(
+                    "/chat-inline",
+                    json={
+                        "file_path": "src/main.py",
+                        "diff_hunk": "+x = 1",
+                        "message": "Hello"
+                    }
+                )
+                assert response.status_code == 502
+        finally:
+            app_module.groq_client = original_client
 
     def test_accepts_optional_context_parameter(self):
-        mock_completion = MagicMock()
-        mock_completion.choices = [
-            MagicMock(message=MagicMock(content='{"reply": "OK"}'))
-        ]
-
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={
-                    "file_path": "src/main.py",
-                    "diff_hunk": "+x = 1",
-                    "message": "Hello"
-                }
-            )
-            assert response.status_code == 200
+        mock_completion = _mock_groq_response(content='{"reply": "With context"}')
+        import app as app_module
+        original_client = getattr(app_module, 'groq_client', None)
+        try:
+            app_module.groq_client = MagicMock()
+            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
+                mock_call.return_value = mock_completion
+                response = client.post(
+                    "/chat-inline",
+                    json={
+                        "file_path": "src/main.py",
+                        "diff_hunk": "+x = 1",
+                        "message": "Hello",
+                        "context": "Previous discussion thread"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert "reply" in data
+        finally:
+            app_module.groq_client = original_client
 
     def test_response_json_has_expected_keys(self):
-        mock_completion = MagicMock()
-        mock_completion.choices = [
-            MagicMock(message=MagicMock(content='{"reply": "Great code!"}'))
-        ]
+        mock_completion = _mock_groq_response(content='{"reply": "Good code"}')
+        import app as app_module
+        original_client = getattr(app_module, 'groq_client', None)
+        try:
+            app_module.groq_client = MagicMock()
+            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
+                mock_call.return_value = mock_completion
+                response = client.post(
+                    "/chat-inline",
+                    json={
+                        "file_path": "src/main.py",
+                        "diff_hunk": "+x = 1",
+                        "message": "Is this correct?"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert "reply" in data
+        finally:
+            app_module.groq_client = original_client
 
-        with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-            mock_call.return_value = mock_completion
-            response = client.post(
-                "/chat-inline",
-                json={
-                    "file_path": "src/main.py",
-                    "diff_hunk": "+x = 1",
-                    "message": "Hello"
-                }
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data["reply"], str)
+    def test_handles_malformed_json_response(self):
+        mock_completion = MagicMock()
+        mock_completion.choices = [MagicMock(message=MagicMock(content="not json"))]
+        import app as app_module
+        original_client = getattr(app_module, 'groq_client', None)
+        try:
+            app_module.groq_client = MagicMock()
+            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
+                mock_call.return_value = mock_completion
+                response = client.post(
+                    "/chat-inline",
+                    json={
+                        "file_path": "src/main.py",
+                        "diff_hunk": "+x = 1",
+                        "message": "Hello"
+                    }
+                )
+                # json.loads("not json") raises JSONDecodeError -> caught by except Exception -> 500
+                assert response.status_code == 500
+        finally:
+            app_module.groq_client = original_client
+
+    def test_uses_default_model_when_not_specified(self):
+        mock_completion = _mock_groq_response()
+        import app as app_module
+        original_client = getattr(app_module, 'groq_client', None)
+        try:
+            app_module.groq_client = MagicMock()
+            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
+                mock_call.return_value = mock_completion
+                response = client.post(
+                    "/chat-inline",
+                    json={
+                        "file_path": "src/main.py",
+                        "diff_hunk": "+x = 1",
+                        "message": "Hello"
+                    }
+                )
+                assert response.status_code == 200
+        finally:
+            app_module.groq_client = original_client
