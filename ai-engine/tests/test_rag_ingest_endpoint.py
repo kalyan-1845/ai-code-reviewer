@@ -91,6 +91,10 @@ class TestRagIngestEndpoint:
 
     @patch('rag.upsert_chunks')
     def test_requires_rag_ingest_key_when_configured(self, mock_upsert, monkeypatch):
+        # Clear dependency overrides (set by test_rag_ingest_route.py) so real auth runs.
+        # Restore immediately so subsequent tests in this file are unaffected.
+        saved_overrides = dict(app.dependency_overrides)
+        app.dependency_overrides.clear()
         monkeypatch.setenv("RAG_INGEST_KEY", "ingest-secret")
         mock_upsert.return_value = 1
         payload = {
@@ -113,3 +117,6 @@ class TestRagIngestEndpoint:
             headers={"x-rag-ingest-key": "ingest-secret"},
         )
         assert response.status_code == 200
+
+        # Restore overrides for other tests
+        app.dependency_overrides.update(saved_overrides)

@@ -43,7 +43,9 @@ class TestRagIngestEndpoint:
             assert data["ingested_count"] == 5
 
     def test_returns_401_when_ingest_key_missing(self):
-        # Remove the dependency override temporarily for this test
+        # Set RAG_INGEST_KEY so the auth check runs
+        original_key = os.environ.get("RAG_INGEST_KEY")
+        os.environ["RAG_INGEST_KEY"] = "test-key"
         del app.dependency_overrides[verify_rag_ingest_key]
         try:
             response = client.post(
@@ -57,9 +59,15 @@ class TestRagIngestEndpoint:
             )
             assert response.status_code == 401
         finally:
+            if original_key is None:
+                os.environ.pop("RAG_INGEST_KEY", None)
+            else:
+                os.environ["RAG_INGEST_KEY"] = original_key
             app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
 
     def test_returns_401_when_ingest_key_invalid(self):
+        original_key = os.environ.get("RAG_INGEST_KEY")
+        os.environ["RAG_INGEST_KEY"] = "test-key"
         del app.dependency_overrides[verify_rag_ingest_key]
         try:
             response = client.post(
@@ -74,6 +82,10 @@ class TestRagIngestEndpoint:
             )
             assert response.status_code == 401
         finally:
+            if original_key is None:
+                os.environ.pop("RAG_INGEST_KEY", None)
+            else:
+                os.environ["RAG_INGEST_KEY"] = original_key
             app.dependency_overrides[verify_rag_ingest_key] = lambda: "test-user"
 
     def test_returns_200_without_repo_url(self):
@@ -82,6 +94,7 @@ class TestRagIngestEndpoint:
             response = client.post(
                 "/api/rag/ingest",
                 json={
+                    "repo_url": "https://github.com/owner/repo",
                     "chunks": [
                         {"chunk_id": "abc", "content": "x", "metadata": {}}
                     ]
