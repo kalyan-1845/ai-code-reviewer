@@ -25,15 +25,14 @@ def _mock_groq_response(content='{"summary": "- Added feature X\\n- Refactored Y
 class TestSummarizePrEndpoint:
     def test_returns_summary_when_groq_returns_valid_response(self):
         mock_completion = _mock_groq_response()
-        mock_groq = MagicMock()
-        mock_groq.chat.completions.create.return_value = mock_completion
 
         import app as app_module
         original_client = getattr(app_module, 'groq_client', None)
         try:
-            app_module.groq_client = mock_groq
-            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
+            app_module.groq_client = MagicMock()
+            async def fake_call(*args, **kwargs):
+                return mock_completion
+            with patch("app._call_groq_with_timeout", side_effect=fake_call):
                 response = client.post(
                     "/summarize-pr",
                     json={"diff": "diff --git a/x.py b/x.py\n+print('hello')"}
@@ -64,8 +63,9 @@ class TestSummarizePrEndpoint:
         original_client = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
+            async def fake_call(*args, **kwargs):
+                return mock_completion
+            with patch("app._call_groq_with_timeout", side_effect=fake_call):
                 response = client.post(
                     "/summarize-pr",
                     json={"diff": "diff --git a/x.py b/x.py\n+print('hello')"}
@@ -80,8 +80,9 @@ class TestSummarizePrEndpoint:
         original_client = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
+            async def fake_call(*args, **kwargs):
+                return mock_completion
+            with patch("app._call_groq_with_timeout", side_effect=fake_call):
                 response = client.post(
                     "/summarize-pr",
                     json={"diff": "diff --git a/x.py b/x.py\n+print('hello')"}
@@ -101,8 +102,9 @@ class TestSummarizePrEndpoint:
         original_client = getattr(app_module, 'groq_client', None)
         try:
             app_module.groq_client = MagicMock()
-            with patch("app._call_groq_with_timeout", new_callable=AsyncMock) as mock_call:
-                mock_call.return_value = mock_completion
+            async def fake_call(*args, **kwargs):
+                return mock_completion
+            with patch("app._call_groq_with_timeout", side_effect=fake_call):
                 response = client.post("/summarize-pr", json={"diff": ""})
                 assert response.status_code == 200
         finally:
