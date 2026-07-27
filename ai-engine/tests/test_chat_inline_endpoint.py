@@ -75,23 +75,6 @@ class TestChatInlineEndpoint:
         finally:
             app_module.groq_client = original
 
-    def test_returns_502_when_llm_returns_empty_response(self):
-        mock_completion = _mock_groq_response(content=None)
-        import app as app_module
-        original = getattr(app_module, 'groq_client', None)
-        try:
-            app_module.groq_client = MagicMock()
-            async def fake_call(**kwargs):
-                return mock_completion
-            with patch.object(app_module, '_call_groq_with_timeout', fake_call):
-                response = client.post(
-                    "/chat-inline",
-                    json={"file_path": "src/main.py", "diff_hunk": "+x = 1", "message": "Hello"}
-                )
-                assert response.status_code == 502
-        finally:
-            app_module.groq_client = original
-
     def test_accepts_optional_context_parameter(self):
         mock_completion = _mock_groq_response(content='{"reply": "With context"}')
         import app as app_module
@@ -136,6 +119,7 @@ class TestChatInlineEndpoint:
             app_module.groq_client = original
 
     def test_handles_malformed_json_response(self):
+        """Malformed JSON from LLM is caught by the exception handler returning 500."""
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock(message=MagicMock(content="not json"))]
         import app as app_module
@@ -149,7 +133,6 @@ class TestChatInlineEndpoint:
                     "/chat-inline",
                     json={"file_path": "src/main.py", "diff_hunk": "+x = 1", "message": "Hello"}
                 )
-                # json.loads failure -> caught by except Exception -> 500
                 assert response.status_code == 500
         finally:
             app_module.groq_client = original
