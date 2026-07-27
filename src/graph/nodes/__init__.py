@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 from src.graph.state import AgentState
 from src.graph.nodes.ast_resolver import ast_resolver_node
+from src.graph.nodes.sanitizer import sanitizer_node
 
 
 def chunker_node(state: AgentState) -> dict:
@@ -52,4 +53,5 @@ def synthesizer_node(state: AgentState) -> dict:
     }
 
 
-__all__ = ["ast_resolver_node", "chunker_node", "reviewer_node", "synthesizer_node"]
+__all__ = ["sanitizer_node", "ast_resolver_node", "chunker_node", "reviewer_node", "synthesizer_node"]
+
