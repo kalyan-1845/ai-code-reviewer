@@ -1455,7 +1455,7 @@ async def ingest_chunks_route(request: IngestRequest):
     texts = [c.content for c in request.chunks]
     metadatas = [c.metadata for c in request.chunks]
     ids = [c.chunk_id for c in request.chunks]
-    count = upsert_chunks(texts, metadatas, ids, request.repo_url)
+    count = upsert_chunks(texts, metadatas, ids, repo_url=request.repo_url)
     return IngestionResponse(ingested_count=count)
 
 
