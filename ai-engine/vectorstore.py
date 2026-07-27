@@ -67,19 +67,25 @@ def delete_vectors_for_file(file_path: str) -> int:
 
 
 def cleanup_stale_vectors(current_files: set[str]) -> dict:
+    global _vectors
     with _vectors_lock:
         _load()
         stored_paths = {v["file_path"] for v in _vectors}
         stale_paths = stored_paths - current_files
-        removed_count = 0
-        for stale_path in stale_paths:
-            removed_count += delete_vectors_for_file(stale_path)
+        if not stale_paths:
+            return {
+                "stale_paths": [],
+                "removed_count": 0,
+                "remaining_count": len(_vectors),
+            }
+        removed_count = len([v for v in _vectors if v["file_path"] in stale_paths])
+        _vectors = [v for v in _vectors if v["file_path"] not in stale_paths]
+        _save()
     return {
         "stale_paths": list(stale_paths),
         "removed_count": removed_count,
         "remaining_count": len(_vectors),
     }
-
 
 def get_all_vectors() -> list[dict]:
     with _vectors_lock:
