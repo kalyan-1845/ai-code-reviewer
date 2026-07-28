@@ -34,7 +34,7 @@ const token = GITHUB_TOKEN || cliArgs.token;
 const owner = GITHUB_OWNER || cliArgs.owner;
 const repo = GITHUB_REPO || cliArgs.repo;
 
-if (!token || token.includes('your_github_personal_access_token_here') || token.includes('your-github-token')) {
+if (!token || token === 'your_github_personal_access_token_here' || token === 'your-github-token') {
   console.error('❌ Error: Please set a valid GITHUB_PAT environment variable');
   process.exit(1);
 }

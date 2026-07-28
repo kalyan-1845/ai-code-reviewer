@@ -120,15 +120,14 @@ def split_file_content(
     line_numbers = _calculate_line_numbers(content, chunks, start_indices)
 
     results = []
-    capped_chunks = min(len(chunks), _MAX_CHUNKS_PER_FILE)
     for i, chunk in enumerate(chunks):
-        if i >= capped_chunks:
+        if i >= _MAX_CHUNKS_PER_FILE:
             break
         metadata = {
             "source_file": file_name,
             "fileName": file_name,
             "chunk_index": i,
-            "total_chunks": capped_chunks,
+            "total_chunks": min(len(chunks), _MAX_CHUNKS_PER_FILE),
             "language": _detect_language(file_name, content),
             "start_line": line_numbers[i][0],
             "end_line": line_numbers[i][1],

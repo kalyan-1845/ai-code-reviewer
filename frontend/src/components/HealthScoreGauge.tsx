@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 interface ReviewItem {
   type: string;
   line: number;
@@ -43,7 +45,7 @@ function GaugeSvg({ score, size = 140, theme = 'dark' }: { score: number; size?:
   const offset = circumference - (score / 100) * circumference;
   const center = size / 2;
 
-  const gradientId = `health-gauge-${Math.random().toString(36).slice(2, 8)}`;
+  const gradientId = `health-gauge-${useId().replace(/:/g, '')}`;
   const trackStroke = theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.08)';
 
   return (

@@ -20,6 +20,7 @@ function sanitizeHtml(html: string): string {
     .replace(/<\/embed>/gi, "")
     .replace(/<object\b[^>]*>/gi, "")
     .replace(/<\/object>/gi, "");
+}
 
 function escapeHtmlPreserveBackticks(text: string): string {
   return text

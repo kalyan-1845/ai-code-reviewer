@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app import app
 
-SERVICE_HEADERS = {"x-ai-engine-key": "test-ai-engine-key"}
+SERVICE_HEADERS = {"x-api-key": "test-ai-engine-key"}
 client = TestClient(app, headers=SERVICE_HEADERS)
 
 
