@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app import app
 
-client = TestClient(app, headers={"x-ai-engine-key": "test-ai-engine-key"})
+client = TestClient(app, headers={"x-api-key": "test-ai-engine-key"})
 
 def test_batch_size_at_minimum_boundary():
     payload = {

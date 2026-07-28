@@ -68,6 +68,8 @@ def ingest_chunks(
         return 0
     if not (len(chunks) == len(metadatas) == len(ids)):
         raise ValueError("chunks, metadatas, and ids must have the same length")
+    if len(chunks) > _MAX_INGEST_CHUNKS:
+        print(f"WARNING: Truncating {len(chunks) - _MAX_INGEST_CHUNKS} chunks (max {_MAX_INGEST_CHUNKS})")
     chunks = chunks[:_MAX_INGEST_CHUNKS]
     metadatas = metadatas[:_MAX_INGEST_CHUNKS]
     ids = ids[:_MAX_INGEST_CHUNKS]
@@ -185,6 +187,8 @@ def upsert_chunks(
         return 0
     if not (len(chunks) == len(metadatas) == len(ids)):
         raise ValueError("chunks, metadatas, and ids must have the same length")
+    if len(chunks) > _MAX_INGEST_CHUNKS:
+        print(f"WARNING: Truncating {len(chunks) - _MAX_INGEST_CHUNKS} chunks (max {_MAX_INGEST_CHUNKS})")
     chunks = chunks[:_MAX_INGEST_CHUNKS]
     metadatas = metadatas[:_MAX_INGEST_CHUNKS]
     ids = ids[:_MAX_INGEST_CHUNKS]

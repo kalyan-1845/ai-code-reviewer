@@ -19,6 +19,11 @@ export function analyzeComplexity(fileContent, filePath) {
   let emptyLines = 0;
   let commentLines = 0;
   let functionCount = 0;
+  let cyclomaticComplexity = 1;
+  let operatorsCount = 0;
+  let operandsCount = 0;
+  const uniqueOperators = new Set();
+  const uniqueOperands = new Set();
 
   const ext = path.extname(filePath || '').toLowerCase();
 
@@ -113,9 +118,19 @@ export function analyzeComplexity(fileContent, filePath) {
         return;
       }
     } else if (usesHtmlBlocks) {
+      if (inBlockComment) {
+        commentLines++;
+        if (trimmed.includes('-->')) {
+          inBlockComment = false;
+        }
+        return;
+      }
       if (trimmed.startsWith('<!--')) {
         commentLines++;
-        return;
+        if (trimmed.includes('-->')) {
+          return;
+        }
+        inBlockComment = true;
       }
     }
 
@@ -143,15 +158,44 @@ export function analyzeComplexity(fileContent, filePath) {
         functionCount++;
       }
     }
+
+    // --- Complexity Calculation ---
+    const decisionRegex = /\b(if|else if|for|while|case|catch)\b|\?|&&|\|\|/g;
+    const matchDecisions = codeWithoutStrings.match(decisionRegex);
+    if (matchDecisions) cyclomaticComplexity += matchDecisions.length;
+
+    const operatorRegex = /([+\-*/%=!><&|^~?:]+)/g;
+    const matchOperators = codeWithoutStrings.match(operatorRegex);
+    if (matchOperators) {
+      operatorsCount += matchOperators.length;
+      for (const op of matchOperators) uniqueOperators.add(op);
+    }
+
+    const operandRegex = /\b([a-zA-Z0-9_]+)\b/g;
+    const matchOperands = codeWithoutStrings.match(operandRegex);
+    const keywords = new Set(['if', 'else', 'for', 'while', 'case', 'catch', 'switch', 'return', 'function', 'class', 'const', 'let', 'var', 'import', 'export', 'default', 'true', 'false', 'null', 'undefined', 'new']);
+    if (matchOperands) {
+      for (const op of matchOperands) {
+        if (!keywords.has(op)) {
+          operandsCount++;
+          uniqueOperands.add(op);
+        }
+      }
+    }
   });
 
   const codeLines = totalLines - emptyLines - commentLines;
   const complexityScore = Math.round((totalLines / 25) + (functionCount * 3));
+  
+  const N = operatorsCount + operandsCount;
+  const n = (uniqueOperators.size || 1) + (uniqueOperands.size || 1);
+  const halsteadComplexity = Math.round(N * Math.log2(n) * 0.1) || 0; // scaled down to fit standard score ranges
+
   let grade = 'A';
-  if (complexityScore > 40) grade = 'F';
-  else if (complexityScore > 25) grade = 'D';
-  else if (complexityScore > 15) grade = 'C';
-  else if (complexityScore > 8) grade = 'B';
+  if (cyclomaticComplexity > 100 || complexityScore > 40) grade = 'F';
+  else if (cyclomaticComplexity > 50 || complexityScore > 25) grade = 'D';
+  else if (cyclomaticComplexity > 20 || complexityScore > 15) grade = 'C';
+  else if (cyclomaticComplexity > 10 || complexityScore > 8) grade = 'B';
 
   return {
     totalLines,
@@ -160,6 +204,8 @@ export function analyzeComplexity(fileContent, filePath) {
     codeLines,
     functionCount,
     complexityScore,
+    cyclomaticComplexity,
+    halsteadComplexity,
     grade
   };
 }

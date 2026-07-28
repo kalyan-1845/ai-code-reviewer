@@ -31,79 +31,79 @@ import {
   formatNotebookFindings,
 } from '../utils/notebookParser.js';
 
-test('notebookParser: stripMagicCommands removes %matplotlib magic commands', () => {
+test('notebookParser: stripMagicCommands comments out %matplotlib magic commands', () => {
   const code = '%matplotlib inline\nimport numpy as np\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('%matplotlib'), false, 'should remove %matplotlib');
+  assert.ok(result.includes('# %matplotlib inline'), 'should comment out %matplotlib');
   assert.ok(result.includes('import numpy as np'), 'should keep actual code');
 });
 
-test('notebookParser: stripMagicCommands removes %pylab magic commands', () => {
+test('notebookParser: stripMagicCommands comments out %pylab magic commands', () => {
   const code = '%pylab inline\nimport matplotlib.pyplot as plt\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('%pylab'), false);
+  assert.ok(result.includes('# %pylab inline'));
   assert.ok(result.includes('import matplotlib.pyplot'));
 });
 
-test('notebookParser: stripMagicCommands removes %config magic commands', () => {
+test('notebookParser: stripMagicCommands comments out %config magic commands', () => {
   const code = '%config InlineBackend.figure_format = "retina"\nplt.plot([1,2,3])\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('%config'), false);
+  assert.ok(result.includes('# %config InlineBackend.figure_format'));
   assert.ok(result.includes('plt.plot'));
 });
 
-test('notebookParser: stripMagicCommands removes %%time cell magic', () => {
+test('notebookParser: stripMagicCommands comments out %%time cell magic', () => {
   const code = '%%time\nfor i in range(1000):\n    pass\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('%%time'), false);
+  assert.ok(result.includes('# %%time'));
   assert.ok(result.includes('for i in range'));
 });
 
-test('notebookParser: stripMagicCommands removes %%capture cell magic line', () => {
+test('notebookParser: stripMagicCommands comments out %%capture cell magic line', () => {
   const code = '%%capture\nprint("captured")\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('%%capture'), false, '%%capture should be removed');
+  assert.ok(result.includes('# %%capture'), '%%capture should be commented out');
   assert.ok(result.includes('print("captured")'), 'cell body should remain');
 });
 
-test('notebookParser: stripMagicCommands removes %%writefile cell magic', () => {
+test('notebookParser: stripMagicCommands comments out %%writefile cell magic', () => {
   const code = '%%writefile output.txt\nHello World\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('%%writefile'), false);
+  assert.ok(result.includes('# %%writefile output.txt'));
 });
 
-test('notebookParser: stripMagicCommands removes %%sh and %%bash cell magic lines', () => {
+test('notebookParser: stripMagicCommands comments out %%sh and %%bash cell magic lines', () => {
   const code = '%%sh\nls -la\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('%%sh'), false, '%%sh should be removed');
+  assert.ok(result.includes('# %%sh'), '%%sh should be commented out');
   assert.ok(result.includes('ls -la'), 'shell command should remain');
 
   const code2 = '%%bash\necho hello\n';
   const result2 = stripMagicCommands(code2);
-  assert.equal(result2.includes('%%bash'), false, '%%bash should be removed');
+  assert.ok(result2.includes('# %%bash'), '%%bash should be commented out');
   assert.ok(result2.includes('echo hello'), 'bash command should remain');
 });
 
-test('notebookParser: stripMagicCommands removes ! shell escape lines', () => {
+test('notebookParser: stripMagicCommands comments out ! shell escape lines', () => {
   const code = '!pip install numpy\nimport numpy as np\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('!pip'), false);
+  assert.ok(result.includes('# !pip install numpy'));
   assert.ok(result.includes('import numpy'));
 });
 
-test('notebookParser: stripMagicCommands removes bare % line magics', () => {
+test('notebookParser: stripMagicCommands comments out bare % line magics', () => {
   const code = '%reset -f\n%time sum(range(100))\nimport os\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.includes('%reset'), false);
-  assert.equal(result.includes('%time'), false);
+  assert.ok(result.includes('# %reset -f'));
+  assert.ok(result.includes('# %time sum(range(100))'));
   assert.ok(result.includes('import os'));
 });
 
-test('notebookParser: stripMagicCommands removes leading/trailing blank lines after stripping', () => {
+test('notebookParser: stripMagicCommands preserves exact line count mapping', () => {
   const code = '\n\n   \n!echo hello\n   \n\n';
   const result = stripMagicCommands(code);
-  assert.equal(result.startsWith('\n'), false, 'should not start with newline');
-  assert.equal(result.endsWith('\n'), false, 'should not end with newline');
+  assert.equal(result.split('\n').length, 7, 'line count should be exactly preserved');
+  assert.ok(result.includes('# !echo hello'));
 });
 
 test('notebookParser: extractCodeCells returns empty array for invalid notebook', () => {
@@ -154,7 +154,7 @@ test('notebookParser: parseCellsWithMetadata strips magic commands and tracks li
     assert.equal(result[0].cellIndex, 0);
     assert.equal(result[0].originalSource, '%matplotlib inline\nx = [1, 2, 3]\n');
     assert.ok(result[0].cleanedSource.includes('x = [1, 2, 3]'), 'cleaned source should have code');
-    assert.ok(!result[0].cleanedSource.includes('%matplotlib'), 'cleaned source should not have magic');
+    assert.ok(result[0].cleanedSource.includes('# %matplotlib'), 'cleaned source should comment out magic');
     assert.ok(result[0].lineCount > 0, 'should have a line count');
   });
 });
@@ -205,5 +205,5 @@ test('notebookParser: formatNotebookFindings adds cellContext to each finding', 
 test('notebookParser: stripMagicCommands removes indented magics but preserves %s format specifiers', () => {
   const code = '  %matplotlib inline\n%s FROM users\n  !ls -la';
   const result = stripMagicCommands(code);
-  assert.equal(result, '%s FROM users');
+  assert.equal(result, '  # %matplotlib inline\n%s FROM users\n  # !ls -la');
 });

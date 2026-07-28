@@ -80,8 +80,12 @@ export async function getFolderSize(dirPath) {
       if (file.isDirectory() && !file.isSymbolicLink()) {
         size += await getFolderSize(filePath);
       } else if (!file.isSymbolicLink()) {
-        const stats = await fs.promises.stat(filePath);
-        size += stats.size;
+        try {
+          const stats = await fs.promises.stat(filePath);
+          size += stats.size;
+        } catch (e) {
+          console.warn(`getFolderSize: could not stat file ${filePath}: ${e.message}`);
+        }
       }
     }
   } catch (err) {

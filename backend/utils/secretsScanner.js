@@ -26,7 +26,7 @@ export const rules = [
   },
   {
     type: "Slack Incoming Webhook",
-    regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8}\/B[A-Z0-9]{8}\/[A-Za-z0-9]{24}/g,
+    regex: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{8,11}\/B[A-Z0-9]{8,11}\/[A-Za-z0-9]{24,32}/g,
     description: "Hardcoded Slack Incoming Webhook detected. Allows external parties to send spam or phish users inside your workspace channels."
   },
   {

@@ -48,18 +48,17 @@ class DedupStore {
   async addToSet(key, member, ttlMs = 3600000) {
     if (this.redisClient) {
       try {
-        await this.redisClient.sadd(key, member);
-        await this.redisClient.pexpire(key, ttlMs);
+        const pipeline = this.redisClient.pipeline();
+        pipeline.sadd(key, member);
+        pipeline.pexpire(key, ttlMs);
+        await pipeline.exec();
         return;
       } catch (err) {
         console.warn(`⚠️ Redis sadd failed for ${key}, falling back to memory:`, err.message);
       }
     }
-    if (!this.memoryStore.has(key)) {
+    if (!this.memoryStore.has(key) || !(this.memoryStore.get(key).value instanceof Set)) {
       this.memoryStore.set(key, { value: new Set(), expiresAt: Date.now() + ttlMs });
-    } else {
-      const entry = this.memoryStore.get(key);
-      entry.expiresAt = Date.now() + ttlMs;
     }
     const entry = this.memoryStore.get(key);
     if (Date.now() > entry.expiresAt) {
@@ -79,12 +78,13 @@ class DedupStore {
       }
     }
     const entry = this.memoryStore.get(key);
+    if (!entry || !(entry.value instanceof Set)) return false;
     if (!entry) return false;
     if (Date.now() > entry.expiresAt) {
       this.memoryStore.delete(key);
       return false;
     }
-    return entry.value.has(member);
+    return entry.value instanceof Set ? entry.value.has(member) : false;
   }
 
   async removeFromSet(key, member) {
@@ -102,7 +102,9 @@ class DedupStore {
       this.memoryStore.delete(key);
       return;
     }
-    entry.value.delete(member);
+    if (entry.value instanceof Set) {
+      entry.value.delete(member);
+    }
   }
 
   async expire(key, ttlMs) {

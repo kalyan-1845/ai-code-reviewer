@@ -1,14 +1,18 @@
 export function verifyPort(portVal) {
-  if (portVal === undefined || portVal === '' || portVal === null) {
+  let cleanVal = portVal;
+  if (typeof portVal === 'string') {
+    cleanVal = portVal.trim();
+  }
+  if (cleanVal === undefined || cleanVal === '' || cleanVal === null) {
     return 5000;
   }
-  if (typeof portVal !== 'string' && typeof portVal !== 'number') {
+  if (typeof cleanVal !== 'string' && typeof cleanVal !== 'number') {
     throw new Error(`Invalid port: ${portVal} must be a string or number`);
   }
-  if (typeof portVal === 'string' && !/^\d+$/.test(portVal)) {
+  if (typeof cleanVal === 'string' && !/^\d+$/.test(cleanVal)) {
     throw new Error(`Invalid port: "${portVal}" contains non-numeric characters`);
   }
-  const parsed = Number(portVal);
+  const parsed = Number(cleanVal);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
     throw new Error(`Invalid port: ${portVal} must be an integer between 0 and 65535`);
   }

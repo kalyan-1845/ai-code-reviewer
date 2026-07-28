@@ -10,7 +10,7 @@ services:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY:-FALSE}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "wget", "--spider", "http://localhost:8000/api/v1/heartbeat"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,6 +30,7 @@ services:
     environment:
       - PORT=8000
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - REPOSAGE_API_KEY=${REPOSAGE_API_KEY}
       - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       - CHROMA_HOST=${CHROMA_HOST:-chromadb}
@@ -61,9 +62,11 @@ services:
     environment:
       - PORT=5000
       - AI_ENGINE_URL=http://ai-engine:8000
-      - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
       - GITHUB_PAT=${GITHUB_PAT}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - REPOSAGE_API_KEY=${REPOSAGE_API_KEY:-docker-dev-key}
+      - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
+      - SESSION_SECRET=${SESSION_SECRET:-reposage-docker-dev-secret-key-change-in-prod-long-enough}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       - GIT_CLONE_TIMEOUT=${GIT_CLONE_TIMEOUT:-120000}
       - MAX_REPO_SIZE_MB=${MAX_REPO_SIZE_MB:-100}
