@@ -8,5 +8,8 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['recharts']
-  }
+  },
+  worker: {
+    format: 'es',
+  },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useTransition } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import { useStore, ChatMessage } from '../store/useStore';
 import SettingsModal from "../components/SettingsModal";
@@ -13,6 +13,7 @@ import AuditHistoryPanel from "../components/AuditHistoryPanel";
 import MentorshipPortal from "../components/MentorshipPortal";
 import HealthScoreSection from "../components/HealthScoreSection";
 import ChatPanel from "../components/ChatPanel";
+import VirtualizedFileTree from "../components/VirtualizedFileTree";
 import MermaidDiagramViewer from "../components/MermaidDiagramViewer";
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -49,6 +50,50 @@ import { apiFetch } from "../utils/api";
 const LazyMetricsChart = React.lazy(() =>
   import('../components/MetricsChart').then((module) => ({ default: module.MetricsChart }))
 );
+
+// ---------------------------------------------------------------------------
+// useDiffParserWorker — manages the Web Worker lifecycle for off-thread parsing
+// ---------------------------------------------------------------------------
+interface ParsedDiff {
+  files: Array<{ name: string; hunks: Array<{ header: string; lines: string[] }> }>;
+}
+
+function useDiffParserWorker() {
+  const workerRef = useRef<Worker | null>(null);
+  const [parsedDiff, setParsedDiff] = useState<ParsedDiff | null>(null);
+
+  useEffect(() => {
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker(
+        new URL('../workers/diffParser.worker.js', import.meta.url),
+        { type: 'module' }
+      );
+      worker.onmessage = (e: MessageEvent) => {
+        const { type, result } = e.data || {};
+        if (type === 'DIFF_PARSED') setParsedDiff(result as ParsedDiff);
+      };
+      worker.onerror = (err) => {
+        console.warn('[diffParser.worker] error:', err.message);
+      };
+      workerRef.current = worker;
+    } catch (err) {
+      console.warn('[diffParser.worker] failed to initialise:', err);
+    }
+    return () => {
+      worker?.terminate();
+      workerRef.current = null;
+    };
+  }, []);
+
+  const parseDiff = (rawDiff: string) => {
+    if (workerRef.current) {
+      workerRef.current.postMessage({ type: 'PARSE_DIFF', payload: rawDiff });
+    }
+  };
+
+  return { parsedDiff, parseDiff };
+}
 
 
 
@@ -139,6 +184,14 @@ export default function Dashboard() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+
+  // Non-blocking transitions for heavy view switches (React 19)
+  const [isPending, startTransition] = useTransition();
+
+  // Off-thread diff parsing via Web Worker
+  const { parsedDiff, parseDiff: _parseDiff } = useDiffParserWorker();
+  // parsedDiff is available for consumers; _parseDiff prefix suppresses unused-var lint
+  void parsedDiff;
 
   // Input State
   const [repoUrl, setRepoUrl] = useState("");
@@ -1331,7 +1384,7 @@ export default function Dashboard() {
               <div data-html2canvas-ignore="true" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "100%" }}>
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button
-                    onClick={() => setActiveDashboardView("audit")}
+                    onClick={() => startTransition(() => setActiveDashboardView("audit"))}
                     style={{
                       background:
                         activeDashboardView === "audit"
@@ -1358,7 +1411,7 @@ export default function Dashboard() {
                     <Layers size={14} /> Code Audit Report
                   </button>
                   <button
-                    onClick={() => setActiveDashboardView("chat")}
+                    onClick={() => startTransition(() => setActiveDashboardView("chat"))}
                     style={{
                       background:
                         activeDashboardView === "chat"
@@ -1385,7 +1438,7 @@ export default function Dashboard() {
                     <MessageSquare size={14} /> AI Code Chatbot
                   </button>
                   <button
-                    onClick={() => setActiveDashboardView("diagram")}
+                    onClick={() => startTransition(() => setActiveDashboardView("diagram"))}
                     style={{
                       background:
                         activeDashboardView === "diagram"
@@ -1640,132 +1693,13 @@ export default function Dashboard() {
                       </button>
                     ))}
                   </div>
-                  {(() => {
-                    if (fileTreeData.length === 0) {
-                      return (
-                        <div
-                          style={{
-                            textAlign: "center",
-                            padding: "24px 10px",
-                            color: "var(--subtext-color)",
-                            fontSize: "11px",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: "6px",
-                          }}
-                        >
-                          <span>🚫 No matching files found</span>
-                        </div>
-                      );
-                    }
-
-                    const renderTreeNode = (node: FileTreeNode, depth: number = 0) => {
-                      if (node.isFolder) {
-                        const isExpanded = expandedFolders.has(node.fullPath);
-                        return (
-                          <div key={node.fullPath}>
-                            <button
-                              onClick={() => toggleFolder(node.fullPath)}
-                              style={{
-                                width: '100%',
-                                padding: '5px 8px',
-                                paddingLeft: `${8 + depth * 14}px`,
-                                borderRadius: '4px',
-                                background: 'transparent',
-                                border: '1px solid transparent',
-                                color: '#d1d5db',
-                                textAlign: 'left',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                transition: 'all 0.15s',
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                            >
-                              {isExpanded ? (
-                                <ChevronDown size={12} style={{ color: '#9ca3af', flexShrink: 0 }} />
-                              ) : (
-                                <ChevronRight size={12} style={{ color: '#9ca3af', flexShrink: 0 }} />
-                              )}
-                              {isExpanded ? (
-                                <FolderOpen size={14} style={{ color: '#60a5fa', flexShrink: 0 }} />
-                              ) : (
-                                <Folder size={14} style={{ color: '#60a5fa', flexShrink: 0 }} />
-                              )}
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
-                            </button>
-                            {isExpanded && (
-                              <div style={{ transition: 'all 0.15s ease-in-out' }}>
-                                {node.children.map(child => renderTreeNode(child, depth + 1))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      // File node
-                      return (
-                        <button
-                          key={node.fullPath}
-                          onClick={() => setSelectedFile(node.fullPath)}
-                          style={{
-                            width: '100%',
-                            padding: '5px 8px',
-                            paddingLeft: `${8 + depth * 14}px`,
-                            borderRadius: '4px',
-                            background:
-                              selectedFile === node.fullPath
-                                ? 'rgba(59,130,246,0.1)'
-                                : 'transparent',
-                            border:
-                              selectedFile === node.fullPath
-                                ? '1px solid rgba(59,130,246,0.3)'
-                                : '1px solid transparent',
-                            color:
-                              selectedFile === node.fullPath
-                                ? '#60a5fa'
-                                : 'var(--text-color)',
-                            textAlign: 'left',
-                            fontSize: '12px',
-                            fontWeight: selectedFile === node.fullPath ? 600 : 500,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            transition: 'all 0.15s',
-                          }}
-                          onMouseEnter={(e) => {
-                            if (selectedFile !== node.fullPath) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                          }}
-                          onMouseLeave={(e) => {
-                            if (selectedFile !== node.fullPath) e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <FileCode
-                            size={14}
-                            style={{
-                              color:
-                                selectedFile === node.fullPath
-                                  ? '#60a5fa'
-                                  : 'var(--subtext-color)',
-                              flexShrink: 0,
-                            }}
-                          />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
-                        </button>
-                      );
-                    };
-
-                    return fileTreeData.map(node => renderTreeNode(node, 0));
-                  })()}
+                  <VirtualizedFileTree
+                    fileTreeData={fileTreeData}
+                    expandedFolders={expandedFolders}
+                    selectedFile={selectedFile}
+                    toggleFolder={toggleFolder}
+                    setSelectedFile={setSelectedFile}
+                  />
                 </div>
 
                 {activeDashboardView === "audit" && (

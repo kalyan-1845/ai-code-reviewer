@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.10.9",
     "dompurify": "^3.2.4",
     "html2pdf.js": "^0.10.1",
     "lucide-react": "^0.475.0",
