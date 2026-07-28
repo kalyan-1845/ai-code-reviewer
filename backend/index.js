@@ -48,6 +48,7 @@ import User from './models/User.js';
 import { RoiMetrics } from './models/RoiMetrics.js';
 import { connectDatabase, isDatabaseConnected, ensureConnection, closeDatabase } from './config/db.js';
 import { streamReview } from './controllers/streamController.js';
+import analyticsRouter from './routes/analytics.js';
 
 dotenv.config();
 
@@ -2789,7 +2790,10 @@ app.post('/api/reports/pdf', requireApiKey, pdfExportLimiter, (req, res) => {
   doc.end();
 });
 
-// ≡ƒƒó Route: Analytics Trends ΓÇö 30-day time-series of repository health scores
+// 📊 Route: Analytics — Maintainability Index overview & time-series trends (file + store backed)
+app.use('/api/analytics', requireApiKey, analyticsRouter);
+
+// 📊 Route: Analytics Trends — 30-day time-series of repository health scores
 app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
   try {
     await ensureConnection();
