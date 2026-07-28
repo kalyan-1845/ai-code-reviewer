@@ -26,6 +26,11 @@ from config_loader import load_config_from_files, ConfigValidationError, CONFIG_
 from diff_helper import get_changed_files_from_git, filter_files_by_changes, format_diff_header
 
 try:
+    from src.graph.tracing import init_telemetry
+except ImportError:
+    init_telemetry = lambda: False
+
+try:
     import redis
     _redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", ""), decode_responses=True) if os.getenv("REDIS_URL") else None
     if _redis_client:
@@ -461,7 +466,8 @@ async def rate_limit_middleware(request: Request, call_next):
 app.middleware("http")(rate_limit_middleware)
 
 @app.on_event("startup")
-async def start_rate_limit_cleanup():
+async def startup_telemetry_and_cleanup():
+    init_telemetry()
     async def cleanup():
         while True:
             await asyncio.sleep(60)
