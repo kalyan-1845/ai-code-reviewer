@@ -16,6 +16,7 @@ import RedisStore from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
 import { llmAnalysisLimiter, webhookRateLimiter } from './middleware/rateLimiter.js';
+import { idempotencyMiddleware } from './middleware/idempotency.js';
 import { scrubRepositoryPayload } from './utils/secretScrubber.js';
 import { recordAnalysis as recordFileAnalytics } from './utils/analyticsStore.js';
 import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
@@ -719,7 +720,7 @@ app.post('/api/user/settings', requireApiKey, express.json(), async (req, res) =
 // 🚀 Route: Stream AI Review (SSE)
 app.post('/api/review/stream', requireApiKey, requireJsonContentType, llmAnalysisLimiter, streamReview);
 // ≡ƒƒó Route: GitHub Import & AI Review
-app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimiter, async (req, res) => {
+app.post('/api/analyze', requireApiKey, requireJsonContentType, idempotencyMiddleware, llmAnalysisLimiter, async (req, res) => {
   let { repoUrl, company = 'General', language = 'English', model, temperature = 0.7,
      maxTokens = 2048, systemPrompt = '', batchSize = 5, githubToken
    } = req.body;
@@ -1621,7 +1622,7 @@ app.get('/api/roi', async (req, res) => {
 });
 
 // 🚀 Route: GitHub Webhook Receiver for automated Pull Request Reviews
-app.post('/api/webhook', webhookLimiter, webhookRateLimiter, async (req, res) => {
+app.post('/api/webhook', webhookLimiter, webhookRateLimiter, idempotencyMiddleware, async (req, res) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('Γ¥î WEBHOOK_SECRET not configured');
