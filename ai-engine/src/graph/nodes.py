@@ -1,6 +1,16 @@
+from __future__ import annotations
+
+import logging
 from typing import List, Dict, Any
+
 from src.graph.state import AgentState
 
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Existing nodes — unchanged
+# ---------------------------------------------------------------------------
 
 def chunker_node(state: AgentState) -> dict:
     raw_diff = state.get("raw_diff", "")
@@ -49,3 +59,82 @@ def synthesizer_node(state: AgentState) -> dict:
     return {
         "final_review": final_review
     }
+
+
+# ---------------------------------------------------------------------------
+# New nodes — Issue #3188: AST chunking + vector retrieval
+# ---------------------------------------------------------------------------
+
+def ast_chunker_node(state: AgentState) -> dict:
+    """
+    Parse the raw diff / code content into semantic AST chunks using
+    ``services.ast_chunker.chunk_code``.
+
+    The node treats the entire ``raw_diff`` as a single pseudo-file named
+    ``"review.diff"`` so the fallback line-splitter always activates for raw
+    diffs.  In a future extension, callers can pass individual file contents
+    via ``state["files"]`` and this node will chunk each one with full AST
+    support.
+
+    On any failure the node logs a warning and returns an empty ``ast_chunks``
+    list — the rest of the pipeline continues unaffected.
+    """
+    raw_diff: str = state.get("raw_diff", "")
+    ast_chunks: List[Dict[str, Any]] = []
+
+    if raw_diff and raw_diff.strip():
+        try:
+            from services.ast_chunker import chunk_code  # local import keeps module optional
+            ast_chunks = chunk_code(
+                file_name="review.diff",
+                content=raw_diff,
+            )
+        except Exception as exc:
+            logger.warning("ast_chunker_node: AST chunking failed, continuing: %s", exc)
+
+    return {"ast_chunks": ast_chunks}
+
+
+def vector_retriever_node(state: AgentState) -> dict:
+    """
+    Store the AST chunks produced by ``ast_chunker_node`` into an ephemeral
+    ChromaDB collection and retrieve the top-5 semantically closest chunks to
+    the raw diff query.
+
+    The retrieved context is written to ``state["retrieved_context"]`` so the
+    ``synthesizer_node`` (or future LLM node) can inject it as additional
+    grounding information.
+
+    On any failure the node logs a warning and returns an empty
+    ``retrieved_context`` list — the rest of the pipeline continues
+    unaffected.
+    """
+    ast_chunks: List[Dict[str, Any]] = state.get("ast_chunks") or []
+    raw_diff: str = state.get("raw_diff", "")
+    retrieved_context: List[Dict[str, Any]] = []
+
+    if ast_chunks and raw_diff:
+        try:
+            from services.vector_store import store_chunks, retrieve_top_k, clear_collection  # local import
+
+            collection_name = "ast-review-session"
+            # Clear any stale data from a previous invocation in the same process
+            clear_collection(collection_name)
+
+            stored = store_chunks(ast_chunks, collection_name=collection_name)
+            logger.debug("vector_retriever_node: stored %d AST chunks", stored)
+
+            if stored > 0:
+                retrieved_context = retrieve_top_k(
+                    query=raw_diff,
+                    collection_name=collection_name,
+                    k=5,
+                )
+                logger.debug(
+                    "vector_retriever_node: retrieved %d context chunks",
+                    len(retrieved_context),
+                )
+        except Exception as exc:
+            logger.warning("vector_retriever_node: retrieval failed, continuing: %s", exc)
+
+    return {"retrieved_context": retrieved_context}
