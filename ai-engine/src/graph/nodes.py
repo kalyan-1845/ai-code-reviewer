@@ -138,3 +138,24 @@ def vector_retriever_node(state: AgentState) -> dict:
             logger.warning("vector_retriever_node: retrieval failed, continuing: %s", exc)
 
     return {"retrieved_context": retrieved_context}
+
+
+# ---------------------------------------------------------------------------
+# New nodes — Issue #3191: Adaptive Model Router
+# ---------------------------------------------------------------------------
+
+def model_router_node(state: AgentState) -> dict:
+    """
+    Evaluate payload complexity C = diff_lines * cyclomatic_weight and select
+    the optimal model endpoint (gemma, llama3, or deepseek).
+    """
+    try:
+        from nodes.model_router import model_router_node as _router
+        return _router(state)
+    except Exception as exc:
+        logger.warning("model_router_node failed, defaulting to llama-3.3-70b-versatile: %s", exc)
+        return {
+            "complexity_score": 0.0,
+            "selected_model": "llama-3.3-70b-versatile",
+        }
+

@@ -7,6 +7,7 @@ from src.graph.nodes import (
     synthesizer_node,
     ast_chunker_node,
     vector_retriever_node,
+    model_router_node,
 )
 from src.graph.tracing import get_tracing_config, init_telemetry
 
@@ -23,13 +24,15 @@ def build_graph():
     builder.add_node("chunker", chunker_node)
     builder.add_node("ast_chunker", ast_chunker_node)
     builder.add_node("vector_retriever", vector_retriever_node)
+    builder.add_node("model_router", model_router_node)
     builder.add_node("reviewer", reviewer_node)
     builder.add_node("synthesizer", synthesizer_node)
 
     builder.add_edge(START, "chunker")
     builder.add_edge("chunker", "ast_chunker")
     builder.add_edge("ast_chunker", "vector_retriever")
-    builder.add_edge("vector_retriever", "reviewer")
+    builder.add_edge("vector_retriever", "model_router")
+    builder.add_edge("model_router", "reviewer")
 
     builder.add_conditional_edges(
         "reviewer",
