@@ -124,10 +124,8 @@ async def run_batch_pipeline(
         "impact_findings": impact_res.get("fileReviews", {}),
 <<<<<<< HEAD
         "test_findings": test_res.get("fileReviews", {}),
-        "architecture_findings": arch_res.get("fileReviews", {})
-=======
+        "architecture_findings": arch_res.get("fileReviews", {}),
         "historical_bug_findings": historical_res.get("fileReviews", {})
->>>>>>> feat/historical-bug-pattern-recognition-3070
     }
     
     readme_mermaid_instructions = ""
