@@ -63,18 +63,37 @@ function validateUrlBasic(url) {
   return { valid: true, parsed };
 }
 
+async function _checkRedirect(urlString) {
+  try {
+    const resp = await fetch(urlString, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(5000) });
+    if (resp.status >= 300 && resp.status < 400) {
+      const location = resp.headers.get('location');
+      if (location) {
+        return isSafeUrl(new URL(location, urlString).href);
+      }
+    }
+  } catch {
+    /* no redirect to check */
+  }
+  return { valid: true };
+}
+
 export async function isSafeUrl(url) {
   const basic = validateUrlBasic(url);
   if (!basic.valid) return basic;
   const { parsed } = basic;
   try {
-    const { address } = await dnsLookup(parsed.hostname, { verbatim: true });
-    if (isPrivateIP(address)) {
-      return { valid: false, reason: `URL resolves to a private or restricted IP (${address})` };
+    const addresses = await dnsLookup(parsed.hostname, { all: true, verbatim: true });
+    for (const { address } of addresses) {
+      if (isPrivateIP(address)) {
+        return { valid: false, reason: `URL resolves to a private or restricted IP (${address})` };
+      }
     }
   } catch {
     return { valid: false, reason: `Failed to resolve hostname: ${parsed.hostname}` };
   }
+  const redirectCheck = await _checkRedirect(url);
+  if (!redirectCheck.valid) return redirectCheck;
   return { valid: true };
 }
 

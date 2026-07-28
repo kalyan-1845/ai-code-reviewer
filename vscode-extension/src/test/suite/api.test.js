@@ -175,6 +175,15 @@ suite('api.ts - reviewFileContent', function () {
       'Expected URL to start with configured apiUrl, got: ' + mockFetchUrl);
   });
 
+  test('defaults to the local HTTP backend URL', async function () {
+    setupFetchMock({ ok: true, status: 200, body: {} }, null);
+
+    await api.reviewFileContent('test.js', 'code', '');
+
+    assert.ok(mockFetchUrl.startsWith('http://localhost:5000'),
+      'Expected default URL to use local HTTP backend, got: ' + mockFetchUrl);
+  });
+
   test('returns response as stringified JSON', async function () {
     const mockBody = { foo: 'bar', num: 42 };
     setupFetchMock({ ok: true, status: 200, body: mockBody }, null);

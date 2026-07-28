@@ -1,6 +1,5 @@
 import json
 import urllib.request
-import ssl
 import os
 import sys
 
@@ -36,12 +35,8 @@ def run_graphql(title, body):
         }
     )
     
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    
     try:
-        with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+        with urllib.request.urlopen(req) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             if res_data.get("errors"):
                 print("GraphQL Error:", json.dumps(res_data["errors"], indent=2))

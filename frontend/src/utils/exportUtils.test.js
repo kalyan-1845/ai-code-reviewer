@@ -20,7 +20,7 @@ describe('generateMarkdownReport', () => {
   });
 
   it('summarizes bug findings correctly', () => {
-    const analysis: any = {
+    const analysis = {
       fileReviews: {
         'src/index.js': {
           bugs: [{ type: 'null-check', line: 42, description: 'Missing null check', suggestion: 'Add null check' }],
@@ -34,7 +34,7 @@ describe('generateMarkdownReport', () => {
   });
 
   it('summarizes security findings correctly', () => {
-    const analysis: any = {
+    const analysis = {
       fileReviews: {
         'auth.js': {
           bugs: [],
@@ -49,7 +49,7 @@ describe('generateMarkdownReport', () => {
   });
 
   it('summarizes optimization and styling findings', () => {
-    const analysis: any = {
+    const analysis = {
       fileReviews: {
         'utils.js': {
           bugs: [],
@@ -65,7 +65,7 @@ describe('generateMarkdownReport', () => {
   });
 
   it('escapes pipe characters in finding fields', () => {
-    const analysis: any = {
+    const analysis = {
       fileReviews: {
         'a|b.js': {
           bugs: [{ type: 't', line: 1, description: 'desc|ription', suggestion: 'sug|gestion' }],
@@ -79,7 +79,7 @@ describe('generateMarkdownReport', () => {
   });
 
   it('includes metrics table when metrics are present', () => {
-    const analysis: any = {
+    const analysis = {
       fileReviews: {},
       metrics: {
         'src/index.js': { totalLines: 100, codeLines: 80, commentLines: 10, emptyLines: 10, functionCount: 5, complexityScore: 7, grade: 'B' }
@@ -92,7 +92,7 @@ describe('generateMarkdownReport', () => {
   });
 
   it('escapes pipe characters in metric file paths', () => {
-    const analysis: any = {
+    const analysis = {
       fileReviews: {},
       metrics: {
         'src/a|b.js': { totalLines: 1, codeLines: 1, commentLines: 0, emptyLines: 0, functionCount: 0, complexityScore: 1, grade: 'A|B' }
@@ -109,7 +109,7 @@ describe('generateMarkdownReport', () => {
   });
 
   it('handles multiple files with multiple finding types', () => {
-    const analysis: any = {
+    const analysis = {
       fileReviews: {
         'file1.js': {
           bugs: [{ type: 't', line: 1, description: 'd', suggestion: 's' }],

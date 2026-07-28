@@ -93,7 +93,9 @@ function filterByMinimumSeverity(findings, minimumSeverity = 'error') {
   const minRank = severityRank[minimumSeverity] ?? 0;
 
   return findings.filter(f => {
-    const rank = severityRank[f.severity] ?? 2;
+    // Default unknown severities (e.g. 'critical', 'high') to 0 (highest severity)
+    // so they are not filtered out when filtering for errors.
+    const rank = severityRank[f.severity] ?? 0;
     return rank <= minRank;
   });
 }

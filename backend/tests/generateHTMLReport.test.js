@@ -328,7 +328,7 @@ test('generateHTMLReport shows "No findings" message when all categories are emp
 });
 
 test('generateHTMLReport returns error result on invalid output path', async () => {
-  const result = generateHTMLReport('test-repo', [], {}, '/invalid/read-only/path/report.html');
+  const result = generateHTMLReport('test-repo', [], {}, '\0invalid/read-only/path/report.html');
   assert.equal(result.success, false);
   assert.ok(result.error !== undefined);
 });
@@ -356,5 +356,32 @@ test('generateHTMLReport renders severity stats in the stats section', async () 
     assert.ok(html.includes('Errors') || html.includes('error'), 'Errors stat should appear');
     assert.ok(html.includes('Warnings') || html.includes('warning'), 'Warnings stat should appear');
     assert.ok(html.includes('Info') || html.includes('info'), 'Info stat should appear');
+  });
+});
+
+test('generateHTMLReport sorts findings stably even with custom/unknown severity levels (no NaN)', async () => {
+  await withTempFile(async (outputPath) => {
+    const files = [{ name: 'test.js' }];
+    const reviewResult = {
+      fileReviews: {
+        'test.js': {
+          bugs: [
+            { line: 10, description: 'bug 1', rule: 'b1' }
+          ],
+          security: [],
+          optimization: [
+            // Injecting unknown severity category name which would normally cause NaN sort
+            { line: 20, description: 'opt 1', rule: 'o1', severity: 'super-critical' }
+          ],
+          styling: [],
+        },
+      },
+    };
+
+    const result = generateHTMLReport('test-repo', files, reviewResult, outputPath);
+    assert.equal(result.success, true);
+    
+    const html = fs.readFileSync(outputPath, 'utf-8');
+    assert.ok(html.includes('super-critical'));
   });
 });

@@ -53,7 +53,7 @@
       "properties": {
         "reposage.apiUrl": {
           "type": "string",
-          "default": "https://localhost:5000",
+          "default": "http://localhost:5000",
           "description": "RepoSage backend API base URL"
         },
         "reposage.apiKey": {

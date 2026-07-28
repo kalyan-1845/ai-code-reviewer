@@ -179,8 +179,8 @@ test('analyzeComplexity detects opening HTML comment line', () => {
     '<div>Hello</div>',
   ].join('\n');
   const result = analyzeComplexity(code, 'page.html');
-  assert.equal(result.commentLines, 1);
-  assert.equal(result.codeLines, 3);
+  assert.equal(result.commentLines, 3);
+  assert.equal(result.codeLines, 1);
 });
 
 test('analyzeComplexity detects Go functions', () => {

@@ -23,8 +23,20 @@ inputs:
     description: 'Maximum tokens for the AI model response.'
     required: false
     default: '4096'
+  max-review-files:
+    description: 'Maximum number of changed files to review before marking the review as partial.'
+    required: false
+    default: '50'
   auto-approve:
     description: 'Whether to automatically approve PRs with no issues found.'
+    required: false
+    default: 'false'
+  security-mode:
+    description: 'If true, dramatically alters the LLM prompt to hunt exclusively for OWASP Top 10 vulnerabilities (DevSecOps mode).'
+    required: false
+    default: 'false'
+  mute-nitpicks:
+    description: 'If true, silently drops all NITPICK level comments.'
     required: false
     default: 'false'
 runs:

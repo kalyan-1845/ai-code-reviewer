@@ -76,8 +76,8 @@ export class CircuitBreaker {
     if (this._state === STATES.HALF_OPEN) {
       if (this._successCount >= this._halfOpenMaxRequests) {
         this._state = STATES.CLOSED;
-        this._halfOpenRequests = 0;
       }
+      this._halfOpenRequests = 0;
     } else {
       this._halfOpenRequests = 0;
     }

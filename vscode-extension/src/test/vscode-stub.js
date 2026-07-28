@@ -81,6 +81,7 @@ module.exports = {
     warningMessage = '';
     infoMessage = '';
     diagnosticsMap.clear();
+    mockApiUrl = 'http://localhost:5000';
   },
   setApiUrl: (url) => { mockApiUrl = url; },
 };

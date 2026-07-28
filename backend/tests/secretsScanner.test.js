@@ -179,4 +179,17 @@ test('scanSecrets detects multiple credentials on different lines', async () => 
   assert.ok(findings.length >= 3, 'Should find secrets on each line');
 });
 
+test('scanSecrets detects variable-length Slack Incoming Webhooks', async () => {
+  const { scanSecrets } = await import('../utils/secretsScanner.js');
+  // Legacy / standard lengths (8, 8, 24)
+  const legacyWebhook = 'https://' + 'hooks.slack.com/services/T12345678/B12345678/A12345678901234567890124';
+  // Modern / longer lengths (9, 11, 30)
+  const modernWebhook = 'https://' + 'hooks.slack.com/services/T123456789/B12345678901/A123456789012345678901234567890';
+  
+  const findings = scanSecrets(`${legacyWebhook}\n${modernWebhook}`);
+  assert.equal(findings.length, 2);
+  assert.equal(findings[0].type, 'Slack Incoming Webhook');
+  assert.equal(findings[1].type, 'Slack Incoming Webhook');
+});
+
 console.warn = originalWarn;
