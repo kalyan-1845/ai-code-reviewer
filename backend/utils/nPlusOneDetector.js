@@ -2,7 +2,7 @@ export function detectNPlusOne(content, fileName = '') {
   if (typeof content !== 'string') return false;
 
   if (!/(for|while|\.map|\.forEach)/.test(content)) return false;
-  if (!/(\.find|\.query|\.execute|\.select|prisma\.)/.test(content)) return false;
+  if (!/(\.find|\.query|\.execute|\.select|\.insert|\.update|prisma\.)/.test(content)) return false;
 
   let inLoop = false;
   let braceDepth = 0;
@@ -15,8 +15,11 @@ export function detectNPlusOne(content, fileName = '') {
     }
 
     if (inLoop) {
-      braceDepth += (line.match(/\{/g) || []).length;
-      braceDepth -= (line.match(/\}/g) || []).length;
+      // Strip content inside parentheses before counting braces, so braces inside
+      // ORM call arguments (e.g. .insert({ data: item })) don't affect loop tracking.
+      const parenStripped = line.replace(/\([^)]*\)/g, '');
+      braceDepth += (parenStripped.match(/\{/g) || []).length;
+      braceDepth -= (parenStripped.match(/\}/g) || []).length;
 
       const isOrmCall = /(?:\.find(?:Many|One|All)?|\.query|\.execute|\.select|\.insert|\.update|prisma\.[a-zA-Z]+\.[a-zA-Z]+)\s*\(/.test(line);
       
