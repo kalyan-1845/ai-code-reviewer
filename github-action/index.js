@@ -7,6 +7,7 @@ import { globToRegex } from './utils/globToRegex.js';
 import { cleanAndParseJSON, normalizeReviewLineNumber, sanitizeMarkdownCodeBlocks } from './utils/actionUtils.js';
 import { GitHubProvider } from './providers/GitHubProvider.js';
 import { GitLabProvider } from './providers/GitLabProvider.js';
+import { fetchExistingCommentsAndThreads, autoResolveFixedThreads, filterDuplicateComments } from './src/reviewer.js';
 
 const PARSE_FAILED = { reviews: [], _parseFailed: true };
 
@@ -122,19 +123,16 @@ async function run() {
       return;
     }
     
-    // Fetch existing PR review comments to avoid duplicates
+    // Fetch existing PR review comments and GraphQL threads
     let existingComments = [];
+    let existingThreads = [];
     try {
-      const response = await octokit.rest.pulls.listReviewComments({
-        owner,
-        repo,
-        pull_number: pullNumber,
-        per_page: 100
-      });
-      existingComments = response.data;
-      console.log(`💬 Found ${existingComments.length} existing review comments.`);
+      const fetched = await fetchExistingCommentsAndThreads(octokit, { owner, repo, pullNumber });
+      existingComments = fetched.existingComments;
+      existingThreads = fetched.threads;
+      console.log(`💬 Found ${existingComments.length} existing review comments and ${existingThreads.length} GraphQL review threads.`);
     } catch (err) {
-      console.warn(`⚠️ Could not fetch existing comments: ${err.message}`);
+      console.warn(`⚠️ Could not fetch existing comments or threads: ${err.message}`);
     }
 
     // 5. Parse Diff
@@ -409,6 +407,25 @@ If no issues are found, reply with: { "reviews": [] }`;
         }
       }
     }
+
+    // Auto-resolve threads for issues that were fixed or lines that were deleted in the latest push
+    try {
+      const { resolvedCount } = await autoResolveFixedThreads(octokit, { owner, repo, pullNumber }, {
+        threads: existingThreads,
+        diff,
+        newIssues: commentsToPost,
+      });
+      if (resolvedCount > 0) {
+        console.log(`🧹 Auto-resolved ${resolvedCount} outdated review threads.`);
+      }
+    } catch (err) {
+      console.warn(`⚠️ Auto-resolving review threads failed: ${err.message}`);
+    }
+
+    // Filter out duplicate comments covered by active unresolved threads
+    const filteredCommentsToPost = filterDuplicateComments(commentsToPost, existingThreads, existingComments, diff);
+    commentsToPost.length = 0;
+    commentsToPost.push(...filteredCommentsToPost);
 
     // 6. Generate PR Summary
     try {

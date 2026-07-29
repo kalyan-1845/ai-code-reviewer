@@ -87,4 +87,53 @@ export class GitHubProvider extends Provider {
       body
     });
   }
+
+  async getReviewThreads() {
+    const { owner, repo, pullNumber } = this.getContext();
+    const query = `
+      query getPRReviewThreads($owner: String!, $repo: String!, $pullNumber: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $pullNumber) {
+            reviewThreads(first: 100) {
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                originalLine
+                comments(first: 10) {
+                  nodes {
+                    id
+                    databaseId
+                    body
+                    author {
+                      login
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const res = await this.octokit.graphql(query, { owner, repo, pullNumber });
+    return res?.repository?.pullRequest?.reviewThreads?.nodes || [];
+  }
+
+  async resolveReviewThread(threadId) {
+    const mutation = `
+      mutation resolveThread($threadId: ID!) {
+        resolveReviewThread(input: { threadId: $threadId }) {
+          thread {
+            id
+            isResolved
+          }
+        }
+      }
+    `;
+    return await this.octokit.graphql(mutation, { threadId });
+  }
 }
+
