@@ -169,7 +169,7 @@ def analyze_go_source(filename: str, content: str) -> dict:
     Go analysis pipeline against it, returning results keyed by the
     original `filename` regardless of the temp path used on disk.
     """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".go", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".go", delete=False, encoding="utf-8") as tmp:
         tmp.write(content)
         tmp_path = tmp.name
 
