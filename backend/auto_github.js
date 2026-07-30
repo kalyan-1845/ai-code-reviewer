@@ -35,30 +35,30 @@ const owner = GITHUB_OWNER || cliArgs.owner;
 const repo = GITHUB_REPO || cliArgs.repo;
 
 if (!token || token === 'your_github_personal_access_token_here' || token === 'your-github-token') {
-  console.error('❌ Error: Please set a valid GITHUB_PAT environment variable');
+  console.error('Error: Please set a valid GITHUB_PAT environment variable');
   process.exit(1);
 }
 
 if (!owner) {
-  console.error('❌ Error: GITHUB_OWNER must be set. Use GITHUB_OWNER=my-org or --owner my-org');
+  console.error('Error: GITHUB_OWNER must be set. Use GITHUB_OWNER=my-org or --owner my-org');
   process.exit(1);
 }
 
 if (!repo) {
-  console.error('❌ Error: GITHUB_REPO must be set. Use GITHUB_REPO=my-repo or --repo my-repo');
+  console.error('Error: GITHUB_REPO must be set. Use GITHUB_REPO=my-repo or --repo my-repo');
   process.exit(1);
 }
 
-console.log(`🔧 Target repository: ${owner}/${repo}`);
+console.log(`? Target repository: ${owner}/${repo}`);
 
 const octokit = new Octokit({ auth: token });
 
 async function autoAssignAndMerge() {
-  console.log(`🤖 Starting GitHub Automator for ${owner}/${repo}...`);
+  console.log(`[BOT] Starting GitHub Automator for ${owner}/${repo}...`);
 
   try {
     // 1. Check for 'assign me' in issues
-    console.log('\n🔍 Checking for "assign me" comments on open issues...');
+    console.log('\n[CHECK] Checking for "assign me" comments on open issues...');
     const issues = await octokit.paginate(octokit.rest.issues.listForRepo, {
       owner,
       repo,
@@ -82,21 +82,21 @@ async function autoAssignAndMerge() {
           const assignees = issue.assignees.map(a => a.login);
           
           if (!assignees.includes(userToAssign)) {
-            console.log(`👉 Assigning @${userToAssign} to Issue #${issue.number}...`);
+            console.log(`> Assigning @${userToAssign} to Issue #${issue.number}...`);
             await octokit.rest.issues.addAssignees({
               owner,
               repo,
               issue_number: issue.number,
               assignees: [userToAssign]
             });
-            console.log(`✅ Assigned @${userToAssign} to Issue #${issue.number}`);
+            console.log(`[CHECK] Assigned @${userToAssign} to Issue #${issue.number}`);
           }
         }
       }
     }
 
     // 2. Check for Open PRs
-    console.log('\n🔍 Checking for open PRs to review and merge...');
+    console.log('\n[CHECK] Checking for open PRs to review and merge...');
     const prs = await octokit.paginate(octokit.rest.pulls.list, {
       owner,
       repo,
@@ -105,16 +105,16 @@ async function autoAssignAndMerge() {
     });
 
     if (prs.length === 0) {
-      console.log('✅ No open Pull Requests found.');
+      console.log('[CHECK] No open Pull Requests found.');
     } else {
       for (const pr of prs) {
-        console.log(`\n📦 PR #${pr.number}: ${pr.title}`);
+        console.log(`\n[PR] PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
         console.log(`   URL: ${pr.html_url}`);
         console.log(`   Draft: ${pr.draft ? 'Yes' : 'No'}`);
 
         if (pr.draft) {
-          console.log(`   ⏭️ Skipping draft PR #${pr.number}`);
+          console.log(`   [SKIP] Skipping draft PR #${pr.number}`);
           continue;
         }
 
@@ -126,13 +126,13 @@ async function autoAssignAndMerge() {
         const labelNames = labels.map(l => l.name);
         const mergeLabel = process.env.AUTO_MERGE_LABEL || 'gssoc:approved';
         if (!labelNames.includes(mergeLabel)) {
-          console.log(`   ⏭️ Skipping PR #${pr.number} — missing label "${mergeLabel}"`);
+          console.log(`   [SKIP] Skipping PR #${pr.number} — missing label "${mergeLabel}"`);
           continue;
         }
 
         // Verify PR is mergeable before attempting merge
         if (pr.mergeable === false) {
-          console.log(`   ⏭️ Skipping PR #${pr.number} — has merge conflicts (mergeable=false)`);
+          console.log(`   [SKIP] Skipping PR #${pr.number} — has merge conflicts (mergeable=false)`);
           continue;
         }
 
@@ -143,7 +143,7 @@ async function autoAssignAndMerge() {
           ref: pr.head.sha,
         });
         if (combinedStatus.state === 'failure' || combinedStatus.state === 'error') {
-          console.log(`   ⏭️ Skipping PR #${pr.number} — CI checks have not passed (state=${combinedStatus.state})`);
+          console.log(`   [SKIP] Skipping PR #${pr.number} — CI checks have not passed (state=${combinedStatus.state})`);
           continue;
         }
 
@@ -157,7 +157,7 @@ async function autoAssignAndMerge() {
           r => r.state === 'APPROVED' && r.user.login !== pr.user.login
         );
         if (!hasApprovedReview) {
-          console.log(`   ⏭️ Skipping PR #${pr.number} — no approved review found (self-approvals excluded)`);
+          console.log(`   [SKIP] Skipping PR #${pr.number} — no approved review found (self-approvals excluded)`);
           continue;
         }
 
@@ -169,18 +169,18 @@ async function autoAssignAndMerge() {
             pull_number: pr.number,
             merge_method: 'squash'
           });
-          console.log(`✅ Merged PR #${pr.number}`);
+          console.log(`[CHECK] Merged PR #${pr.number}`);
         } catch (e) {
-          console.error(`❌ Failed to merge PR #${pr.number}:`, e.message);
+          console.error(`[FAIL] Failed to merge PR #${pr.number}:`, e.message);
         }
       }
-      console.log('\n💡 Auto-merge complete. Draft PRs and PRs without the configured label are skipped.');
+      console.log('\n[TIP] Auto-merge complete. Draft PRs and PRs without the configured label are skipped.');
     }
 
-    console.log(`\n🎉 Automator finished successfully for ${owner}/${repo}!`);
+    console.log(`\n! Automator finished successfully for ${owner}/${repo}!`);
 
   } catch (error) {
-    console.error(`❌ An error occurred for ${owner}/${repo}:`, error.message);
+    console.error(`[FAIL] An error occurred for ${owner}/${repo}:`, error.message);
   }
 }
 
