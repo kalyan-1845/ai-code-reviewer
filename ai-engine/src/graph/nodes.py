@@ -36,15 +36,34 @@ def chunker_node(state: AgentState) -> dict:
     }
 
 
-def reviewer_node(state: AgentState) -> dict:
+def reviewer_node(state: AgentState, cache_manager=None) -> dict:
     chunks = state.get("chunks", [])
     current_index = state.get("current_index", 0)
     micro_reviews = list(state.get("micro_reviews", []))
 
+    if cache_manager is None:
+        try:
+            from services.cache_manager import default_cache_manager
+            cache_manager = default_cache_manager
+        except Exception as exc:
+            logger.warning("reviewer_node: cache_manager import failed: %s", exc)
+            cache_manager = None
+
     if current_index < len(chunks):
         chunk_content = chunks[current_index]
-        # Simulated micro-review step for chunk
-        review = f"Micro-review for chunk {current_index + 1}/{len(chunks)}:\nAnalyzed snippet ({len(chunk_content)} chars). No critical flaws detected."
+        chunk_hash = cache_manager.normalize_and_hash(chunk_content) if cache_manager else ""
+        
+        cached_review = cache_manager.get_cached_review(chunk_hash) if (cache_manager and chunk_hash) else None
+        
+        if cached_review:
+            logger.info("reviewer_node: Cache HIT for chunk hash %s", chunk_hash[:8])
+            review = cached_review
+        else:
+            # Simulated micro-review step for chunk (or LLM call)
+            review = f"Micro-review for chunk {current_index + 1}/{len(chunks)}:\nAnalyzed snippet ({len(chunk_content)} chars). No critical flaws detected."
+            if cache_manager and chunk_hash:
+                cache_manager.set_cached_review(chunk_hash, review)
+
         micro_reviews.append(review)
 
     return {
