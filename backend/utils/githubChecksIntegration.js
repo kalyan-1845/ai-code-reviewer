@@ -52,7 +52,7 @@ async function createCheckRun(octokit, owner, repo, sha, findings) {
     const batchAnnotations = batches[i];
     const isLastBatch = i === batches.length - 1;
 
-    const hasErrorSeverity = findings.some(f => f.severity === 'error');
+    const hasErrorSeverity = batchAnnotations.some(a => a.annotation_level === 'failure');
 
     const checkRunPayload = {
       owner,
@@ -63,7 +63,9 @@ async function createCheckRun(octokit, owner, repo, sha, findings) {
       conclusion: hasErrorSeverity ? 'failure' : 'success',
       output: {
         title: `Code Review Results (Batch ${i + 1}/${batches.length})`,
-        summary: `${findings.length} finding(s) detected`,
+        summary: hasErrorSeverity
+          ? `${batchAnnotations.length} finding(s) including errors`
+          : `${batchAnnotations.length} finding(s) (no errors)`,
         annotations: batchAnnotations,
       },
     };

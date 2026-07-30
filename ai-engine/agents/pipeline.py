@@ -125,6 +125,7 @@ async def run_batch_pipeline(
         "test_findings": test_res.get("fileReviews", {}),
         "architecture_findings": arch_res.get("fileReviews", {}),
         "historical_bug_findings": historical_res.get("fileReviews", {})
+        "historical_bug_findings": historical_res.get("fileReviews", {}),
     }
     
     readme_mermaid_instructions = ""

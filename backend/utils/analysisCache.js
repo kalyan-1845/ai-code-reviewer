@@ -150,7 +150,7 @@ class AnalysisCache {
     const absoluteExpiresAt = now + (ttl * this.absoluteMaxMultiplier);
     const repoUrl = options.repoUrl;
     const normalizedRepoUrl = repoUrl ? repoUrl.replace(/\/+$/, '').toLowerCase() : undefined;
-    this.cache.set(key, { result, expiresAt, absoluteExpiresAt, repoUrl: normalizedRepoUrl, isMock: !!options.isMock });
+    this.cache.set(key, { result, expiresAt, absoluteExpiresAt, createdAt: now, repoUrl: normalizedRepoUrl, isMock: !!options.isMock });
     if (normalizedRepoUrl) {
       if (!this._repoUrlIndex.has(normalizedRepoUrl)) {
         this._repoUrlIndex.set(normalizedRepoUrl, new Set());
@@ -313,7 +313,8 @@ class AnalysisCache {
     let totalAge = 0;
     let mockCount = 0;
     for (const entry of this.cache.values()) {
-      totalAge += Date.now() - (entry.expiresAt - this.ttlMs);
+      const createdAt = entry.createdAt || (entry.expiresAt - this.ttlMs);
+      totalAge += Date.now() - createdAt;
       if (entry.isMock) mockCount++;
     }
 
