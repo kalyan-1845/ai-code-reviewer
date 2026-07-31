@@ -14,3 +14,39 @@ export const llmAnalysisLimiter = rateLimit({
 
 export { webhookRateLimiter };
 
+const concurrentRequestsMap = new Map();
+const MAX_CONCURRENT_REQUESTS_PER_USER = parseInt(process.env.MAX_CONCURRENT_REQUESTS_PER_USER || '3', 10);
+
+export const concurrencyThrottleMiddleware = (req, res, next) => {
+  const clientId = req.clientId;
+
+  if (!clientId) {
+    return next();
+  }
+
+  if (!concurrentRequestsMap.has(clientId)) {
+    concurrentRequestsMap.set(clientId, 0);
+  }
+
+  const currentCount = concurrentRequestsMap.get(clientId);
+
+  if (currentCount >= MAX_CONCURRENT_REQUESTS_PER_USER) {
+    return res.status(429).json({
+      success: false,
+      error: `User has reached maximum concurrent requests (${MAX_CONCURRENT_REQUESTS_PER_USER}). Please wait for previous requests to complete.`
+    });
+  }
+
+  concurrentRequestsMap.set(clientId, currentCount + 1);
+
+  res.on('finish', () => {
+    const newCount = (concurrentRequestsMap.get(clientId) || 1) - 1;
+    if (newCount <= 0) {
+      concurrentRequestsMap.delete(clientId);
+    } else {
+      concurrentRequestsMap.set(clientId, newCount);
+    }
+  });
+
+  next();
+};

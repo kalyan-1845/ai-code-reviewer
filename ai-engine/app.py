@@ -94,6 +94,7 @@ if not loaded:
 MAX_FILE_CHARS_PER_FILE = int(os.getenv("MAX_FILE_CHARS_PER_FILE", "1500"))
 MAX_CHAT_FILES = int(os.getenv("MAX_CHAT_FILES", "20"))
 MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", "10000"))
+MAX_FILE_SIZE_BYTES = int(os.getenv("MAX_FILE_SIZE_BYTES", "100000"))  # 100 KB per file
 # Maximum seconds to wait for a single LLM API response before returning 504 (#786)
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 # Maximum seconds for the entire /analyze endpoint to complete before 504 (#2173)
@@ -103,6 +104,7 @@ BATCH_TIMEOUT_SECONDS = float(os.getenv("BATCH_TIMEOUT_SECONDS", "60"))
 # Maximum number of Groq batch requests to run concurrently during /analyze.
 # Bounds fan-out so large repositories don't blow past Groq's rate limits. (#1675)
 GROQ_CONCURRENCY_LIMIT = int(os.getenv("GROQ_CONCURRENCY_LIMIT", "10"))
+GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 
 # Single source of truth — loaded from shared-safety-config.json
 _SHARED_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'shared-safety-config.json')
@@ -124,6 +126,36 @@ def _neutralize_pattern(content: str, pattern: str) -> str:
     token = f"__NEUTRALIZED_{uuid.uuid4().hex[:8]}__"
     flexible_pattern = r"\s+".join(re.escape(w) for w in pattern.split())
     return re.sub(flexible_pattern, token, content, flags=re.IGNORECASE)
+
+def _get_comment_delimiters(filename: str) -> tuple[str, str]:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    comment_map = {
+        "py": ("# ", ""),
+        "js": ("// ", ""),
+        "jsx": ("// ", ""),
+        "ts": ("// ", ""),
+        "tsx": ("// ", ""),
+        "java": ("// ", ""),
+        "rs": ("// ", ""),
+        "rb": ("# ", ""),
+        "php": ("// ", ""),
+        "cs": ("// ", ""),
+        "cpp": ("// ", ""),
+        "h": ("// ", ""),
+        "go": ("// ", ""),
+        "sql": ("-- ", ""),
+        "html": ("<!-- ", " -->"),
+        "css": ("/* ", " */"),
+        "xml": ("<!-- ", " -->"),
+    }
+    start, end = comment_map.get(ext, ("# ", ""))
+    return start, end
+
+def _wrap_code_with_delimiters(code: str, filename: str) -> str:
+    start_delim, end_delim = _get_comment_delimiters(filename)
+    begin = f"{start_delim}[BEGIN IMMUTABLE CODE BLOCK]{end_delim}"
+    end = f"{start_delim}[END IMMUTABLE CODE BLOCK]{end_delim}"
+    return f"{begin}\n{code}\n{end}"
 
 def sanitize_file_content(content: str) -> str:
     for _round in range(3):
@@ -1345,9 +1377,19 @@ Format your JSON precisely as:
 async def review_diff(request: ReviewDiffRequest, raw_request: Request):
     if not groq_client:
         raise HTTPException(status_code=500, detail="Groq API client is not configured on this engine.")
-    
+
     files = request.files
     comments = []
+
+    # Validate file sizes to prevent unbounded LLM token consumption and OOM
+    for file in files:
+        changes_text = "\n".join([f"Line {c.line}: {c.content}" for c in file.changes])
+        file_size = len(changes_text.encode('utf-8'))
+        if file_size > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File '{file.path}' exceeds {MAX_FILE_SIZE_BYTES} byte limit (got {file_size} bytes). Split into smaller files or increase MAX_FILE_SIZE_BYTES."
+            )
 
     # Cap the number of files reviewed per PR so a single oversized diff cannot
     # silently leave files unreviewed without anyone noticing. Files beyond the
@@ -1378,7 +1420,8 @@ async def review_diff(request: ReviewDiffRequest, raw_request: Request):
 
                 changes_text = "\n".join([f"Line {c.line}: {c.content}" for c in file.changes])
                 changes_text = sanitize_file_content(changes_text)
-        
+                changes_text = _wrap_code_with_delimiters(changes_text, file.path)
+
                 # FIXED: Prompt now explicitly requests a JSON object {"reviews": [...]}
                 custom_rules_text = f"CRITICAL CUSTOM REPOSITORY RULES:\n{request.custom_rules}\n\nYou MUST strictly adhere to the above custom repository rules over any default guidelines.\n" if request.custom_rules else ""
                 
@@ -1618,6 +1661,31 @@ async def extract_code_chunks(request: ExtractRequest):
     return ExtractResponse(chunks=all_chunks)
 
 
+# 🟢 Route: GitHub webhook with HMAC signature verification
+@app.post("/webhook/github")
+async def github_webhook(request: Request):
+    if not GITHUB_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=400,
+            detail="Webhook secret not configured (GITHUB_WEBHOOK_SECRET not set)"
+        )
+
+    body = await request.body()
+    signature_header = request.headers.get("x-hub-signature-256", "")
+
+    if not signature_header:
+        raise HTTPException(status_code=401, detail="Missing X-Hub-Signature-256 header")
+
+    expected_signature = "sha256=" + hmac.new(
+        GITHUB_WEBHOOK_SECRET.encode(),
+        body,
+        "sha256"
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature_header, expected_signature):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
