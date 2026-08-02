@@ -128,7 +128,13 @@ def filter_files_by_changes(
     Returns:
         Tuple of (filtered_files, num_skipped)
     """
-    filtered = [f for f in files if f.name in changed_files]
+    if not files:
+        return [], 0
+    filtered = []
+    for f in files:
+        name = getattr(f, "name", None) if not isinstance(f, dict) else f.get("name")
+        if name and name in changed_files:
+            filtered.append(f)
     skipped = len(files) - len(filtered)
     return filtered, skipped
 

@@ -100,7 +100,8 @@ export function resolveSafePath(baseDir, targetPath) {
   const absolutePath = path.resolve(resolvedBase, targetPath);
 
   // Allow the base directory itself, otherwise require it to be strictly inside
-  if (!absolutePath.startsWith(resolvedBase + path.sep) && absolutePath !== resolvedBase) {
+  const baseWithSep = resolvedBase.endsWith(path.sep) ? resolvedBase : resolvedBase + path.sep;
+  if (!absolutePath.startsWith(baseWithSep) && absolutePath !== resolvedBase) {
     throw new Error('Path traversal blocked');
   }
 

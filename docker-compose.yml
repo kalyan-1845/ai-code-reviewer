@@ -1,6 +1,6 @@
 services:
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9
     container_name: reposage-chromadb
     ports:
       - "8001:8000"
@@ -37,12 +37,12 @@ services:
       - CHROMA_PORT=${CHROMA_PORT:-8000}
       - CHROMA_COLLECTION=${CHROMA_COLLECTION:-reposage_code_chunks}
     env_file:
-      - .env.docker
+      - .env.docker.example
     depends_on:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:8000/health"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -71,7 +71,7 @@ services:
       - GIT_CLONE_TIMEOUT=${GIT_CLONE_TIMEOUT:-120000}
       - MAX_REPO_SIZE_MB=${MAX_REPO_SIZE_MB:-100}
     env_file:
-      - .env.docker
+      - .env.docker.example
     depends_on:
       ai-engine:
         condition: service_healthy
@@ -96,10 +96,16 @@ services:
     environment:
       - VITE_API_URL=http://localhost:5000
     env_file:
-      - .env.docker
+      - .env.docker.example
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: always
 
 volumes:

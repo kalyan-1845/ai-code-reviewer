@@ -26,4 +26,9 @@ userSchema.pre('save', function (next) {
   next();
 });
 
+userSchema.pre('findOneAndUpdate', function (next) {
+  this.set({ updatedAt: new Date() });
+  next();
+});
+
 export default mongoose.model('User', userSchema);
