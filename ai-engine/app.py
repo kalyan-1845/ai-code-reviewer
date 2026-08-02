@@ -57,9 +57,38 @@ _EXTENSION_TO_LANGUAGE = {
     "css": "css",
 }
 
+BINARY_AND_MINIFIED_EXTENSIONS = {
+    "pyc", "pyo", "wasm", "o", "so", "dll", "exe", "bin",
+    "jar", "class", "iso", "zip", "tar", "gz", "bz2", "7z", "rar",
+}
+
+MINIFIED_PATTERNS = {".min.js", ".min.css", ".bundle.js"}
+
 def _language_key_for_extension(filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     return _EXTENSION_TO_LANGUAGE.get(ext, ext)
+
+def _is_binary_or_minified(filename: str) -> bool:
+    """Check if a file is binary or minified and should be skipped from review."""
+    filename_lower = filename.lower()
+
+    # Check for minified file patterns
+    for pattern in MINIFIED_PATTERNS:
+        if filename_lower.endswith(pattern):
+            return True
+
+    # Check for binary file extensions
+    if "." in filename_lower:
+        ext = filename_lower.rsplit(".", 1)[-1]
+        if ext in BINARY_AND_MINIFIED_EXTENSIONS:
+            return True
+
+    # Skip cache directories and build artifacts
+    parts = filename_lower.split("/")
+    if any(part in {"__pycache__", "node_modules", ".git", ".venv", "dist", "build"} for part in parts):
+        return True
+
+    return False
 
 def _rule_key(finding_type: str) -> str:
     """
@@ -767,6 +796,13 @@ async def analyze_repository(request: AnalyzeRequest):
             print(f"🔍 {diff_mode_header}")
         else:
             print("⚠️  Diff mode requested but no changed files found. Analyzing all files.")
+
+    # 1.5. Filter out binary, compiled, and minified files
+    binary_filtered_files = [f for f in files if not _is_binary_or_minified(f.name)]
+    num_binary_skipped = len(files) - len(binary_filtered_files)
+    if num_binary_skipped > 0:
+        print(f"⏭️  Skipped {num_binary_skipped} binary/minified files (e.g., .pyc, .wasm, .min.js) that cannot be meaningfully reviewed")
+    files = binary_filtered_files
 
     # 2. Prepare global repository structure
     repo_structure = [f.name for f in files]
