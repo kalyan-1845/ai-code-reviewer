@@ -5,6 +5,10 @@ const analyticsSchema = new mongoose.Schema({
     type: String,
     index: true,
   },
+  clientId: {
+    type: String,
+    index: true,
+  },
   repoUrl: {
     type: String,
     required: true,
@@ -115,5 +119,6 @@ commitHash: {
 
 analyticsSchema.index({ analyzedAt: -1 });
 analyticsSchema.index({ repoName: 1, analyzedAt: -1 });
+analyticsSchema.index({ clientId: 1, analyzedAt: -1 });
 
 export default mongoose.model('Analytics', analyticsSchema);

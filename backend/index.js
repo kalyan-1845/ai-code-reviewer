@@ -1229,6 +1229,7 @@ const prSummary = {
           try {
             await Analytics.create({
               sessionId,
+              clientId: req.clientId,
               repoUrl,
               repoName,
               filesReviewedCount: files.length,
@@ -1640,7 +1641,7 @@ const webhookLimiter = rateLimit({
   message: { error: 'Too many webhook requests.' }
 });
 
-app.get('/api/roi', async (req, res) => {
+app.get('/api/roi', requireApiKey, async (req, res) => {
   try {
     const metrics = await RoiMetrics.find({});
     
@@ -2846,6 +2847,7 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
 
     const matchFilter = {
       analyzedAt: { $gte: thirtyDaysAgo },
+      clientId: req.clientId,
     };
 
     if (req.query.sessionId && typeof req.query.sessionId === 'string') {

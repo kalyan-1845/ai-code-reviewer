@@ -136,10 +136,18 @@ export const requireApiKey = (req, res, next) => {
   }
 
   if (providedKey && safeEqual(providedKey, validKey)) {
-    // API key auth without cookie — derive clientId from a fresh UUID
-    // so that any session created with this clientId is unique to this
-    // request. The next response's Set-Cookie will bind subsequent
-    // requests to the cookie's uid.
+    // API key auth without a session cookie — persist a stable per-client
+    // identity cookie so ownership-scoped data (analytics history, RAG
+    // tenant, user settings) survives across requests. Without this, a
+    // fresh random UUID per request would make ownership filters match
+    // nothing for cookie-less API-key clients. Falling back to a fresh
+    // UUID only if cookie creation fails (e.g. missing session secret).
+    const persisted = createFrontendSessionCookie(res);
+    if (persisted) {
+      req.clientId = persisted.clientId;
+      next();
+      return;
+    }
     req.clientId = crypto.randomUUID();
     next();
     return;
