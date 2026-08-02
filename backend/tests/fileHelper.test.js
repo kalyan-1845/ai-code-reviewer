@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { deleteFolderRecursive } from '../utils/fileHelper.js';
+import { deleteFolderRecursive, resolveSafePath } from '../utils/fileHelper.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -149,4 +149,12 @@ test('deleteFolderRecursive continues without throwing when unlinkSync raises EA
       deleteFolderRecursive(tempDir);
     }
   }
+});
+
+test('resolveSafePath validates paths strictly within baseDir', () => {
+  const base = path.resolve('/app/dir');
+  assert.equal(resolveSafePath(base, 'file.txt'), path.join(base, 'file.txt'));
+  assert.equal(resolveSafePath(base, '.'), base);
+  assert.throws(() => resolveSafePath(base, '../outside.txt'), /Path traversal blocked/);
+  assert.throws(() => resolveSafePath(base, '/etc/passwd'), /Path traversal blocked/);
 });

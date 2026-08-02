@@ -109,7 +109,7 @@ GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 # Single source of truth — loaded from shared-safety-config.json
 _SHARED_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'shared-safety-config.json')
 try:
-    with open(_SHARED_CONFIG_PATH) as _f:
+    with open(_SHARED_CONFIG_PATH, encoding="utf-8") as _f:
         _shared_config = json.load(_f)
     _REQUIRED_KEYS = {'homoglyph_map', 'dangerous_phrases', 'version'}
     _missing = _REQUIRED_KEYS - set(_shared_config.keys())
@@ -444,8 +444,9 @@ def _resolve_client_ip(request: Request) -> str:
     if xff:
         candidates = [ip.strip() for ip in xff.split(",") if ip.strip()]
         if candidates:
-            # Use the rightmost (trusted) IP address per RFC 7239
-            raw_ip = candidates[-1]
+            # X-Forwarded-For lists the original client first; each proxy
+            # appends its own address to the right. Leftmost = client.
+            raw_ip = candidates[0]
             try:
                 ipaddress.ip_address(raw_ip)
                 return raw_ip
@@ -1190,16 +1191,27 @@ Guidelines:
         role = h.get("role", "user")
         if role not in ["user", "assistant"]:
             role = "user"
+        hist_content = h.get("content", "")
+        # Scan history messages for prompt injection
+        hist_normalized = unicodedata.normalize("NFKC", hist_content).lower()
+        for phrase in DANGEROUS_PATTERNS:
+            pattern = r"\s+".join(re.escape(w) for w in phrase.split())
+            if re.search(pattern, hist_normalized):
+                return {
+                    "response": "I can only answer questions about the provided code context. Please ask a specific question about the repository.",
+                    "truncatedFiles": [],
+                    "blocked": True
+                }
         messages.append({
             "role": role,
-            "content": sanitize_ai_output(h.get("content", ""))
+            "content": sanitize_ai_output(hist_content)
         })
         
     # Sanitize user message for prompt injection attempts
-    message_lower = message.lower()
+    message_normalized = unicodedata.normalize("NFKC", message).lower()
     for phrase in DANGEROUS_PATTERNS:
         pattern = r"\s+".join(re.escape(w) for w in phrase.split())
-        if re.search(pattern, message_lower):
+        if re.search(pattern, message_normalized):
             return {
                 "response": "I can only answer questions about the provided code context. Please ask a specific question about the repository.",
                 "truncatedFiles": [],
@@ -1407,6 +1419,7 @@ async def review_diff(request: ReviewDiffRequest, raw_request: Request):
     print(f"📡 Forwarding PR diff reviews to Groq using model: {groq_model}")
 
     # Overall timeout mirroring /analyze to prevent unbounded resource consumption
+    files_reviewed_count = 0
     try:
         async with asyncio.timeout(ANALYSIS_TIMEOUT_SECONDS):
             for file in files_to_review:
@@ -1420,11 +1433,11 @@ async def review_diff(request: ReviewDiffRequest, raw_request: Request):
 
                 changes_text = "\n".join([f"Line {c.line}: {c.content}" for c in file.changes])
                 changes_text = sanitize_file_content(changes_text)
-                changes_text = _wrap_code_with_delimiters(changes_text, file.path)
-
+        
                 # FIXED: Prompt now explicitly requests a JSON object {"reviews": [...]}
                 custom_rules_text = f"CRITICAL CUSTOM REPOSITORY RULES:\n{request.custom_rules}\n\nYou MUST strictly adhere to the above custom repository rules over any default guidelines.\n" if request.custom_rules else ""
                 
+
 
 
                 if request.security_mode:
@@ -1512,12 +1525,14 @@ If no issues are found, reply with: {{ "reviews": [] }}"""
                                     "line": line_int,
                                     "body": f"\n{sanitize_ai_output(comment_body)}"
                                 })
+                    files_reviewed_count += 1
                 except Exception as e:
                     print(f"⚠️ Error reviewing file {file.path} on Groq: {sanitize_error(str(e), api_key)}")
     except asyncio.TimeoutError:
         print(f"⚠️ review-diff timed out after {int(ANALYSIS_TIMEOUT_SECONDS)}s, returning partial results")
 
-    result = {"comments": comments}
+    review_status = "error" if files_reviewed_count == 0 else "success"
+    result = {"comments": comments, "status": review_status}
     if truncated:
         result["truncated"] = True
         result["files_reviewed"] = len(files_to_review)

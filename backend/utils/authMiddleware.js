@@ -54,6 +54,7 @@ function getCookie(req, name) {
 }
 
 function safeEqual(left, right) {
+  if (!left || !right) return false;
   const leftBuffer = Buffer.from(String(left));
   const rightBuffer = Buffer.from(String(right));
   const a = crypto.createHash('sha256').update(leftBuffer).digest();
@@ -69,6 +70,9 @@ function decodeSessionCookie(req) {
   if (!payload || !signature) return null;
 
   const secret = getSessionSecret();
+  // Without a configured secret, signValue would throw TypeError in
+  // createHmac. Treat the cookie as absent instead of crashing.
+  if (!secret) return null;
   if (!safeEqual(signature, signValue(payload, secret))) return null;
 
   try {

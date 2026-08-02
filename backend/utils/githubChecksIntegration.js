@@ -4,7 +4,7 @@ const MAX_ANNOTATIONS_PER_REQUEST = 50;
 function severityToGitHubLevel(severity) {
   const levelMap = {
     error: 'failure',
-    warning: 'neutral',
+    warning: 'warning',
     info: 'notice',
   };
   return levelMap[severity] || 'notice';

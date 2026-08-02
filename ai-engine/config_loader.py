@@ -84,16 +84,13 @@ class ConfigLoader:
 
 
 def _normalize_yaml_bool_severities(rules: Dict[str, Any]) -> None:
-    """
-    YAML 1.1 (which PyYAML's safe_load follows) treats the unquoted scalar
-    `off` as the boolean False (and `on`/`yes`/`no` similarly), so
-    `severity: off` in a real .codereviewer.yml parses as
-    {"severity": False}, not the string "off". Normalize that back to the
-    string authors actually wrote, in place, before validation.
-    """
     for rule_settings in rules.values():
-        if isinstance(rule_settings, dict) and rule_settings.get("severity") is False:
-            rule_settings["severity"] = "off"
+        if isinstance(rule_settings, dict):
+            sev = rule_settings.get("severity")
+            if sev is False:
+                rule_settings["severity"] = "off"
+            elif sev is True:
+                rule_settings["severity"] = "error"
 
 
 def _validate_raw_config(raw: Dict[str, Any]) -> None:

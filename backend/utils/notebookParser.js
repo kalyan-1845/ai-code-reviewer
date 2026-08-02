@@ -45,7 +45,7 @@ function extractCodeCells(notebookPath) {
 
     const codeCells = [];
     for (const cell of notebook.cells) {
-      if (cell.cell_type === 'code' && cell.source) {
+      if (cell && cell.cell_type === 'code' && cell.source) {
         let sourceCode = '';
         if (Array.isArray(cell.source)) {
           sourceCode = cell.source.join('');
@@ -87,7 +87,7 @@ function parseCellsWithMetadata(notebookPath) {
     let cellIndex = 0;
 
     for (const cell of notebook.cells) {
-      if (cell.cell_type === 'code' && cell.source) {
+      if (cell && cell.cell_type === 'code' && cell.source) {
         let sourceCode = '';
         if (Array.isArray(cell.source)) {
           sourceCode = cell.source.join('');

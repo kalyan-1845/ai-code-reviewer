@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { load as yamlLoad } from 'js-yaml';
+import { load as yamlLoad, CORE_SCHEMA } from 'js-yaml';
 
 const DEFAULT_CONFIG = {
   severity: {
@@ -17,7 +17,9 @@ function loadConfigFile(repoPath) {
   try {
     if (fs.existsSync(configPath)) {
       const fileContent = fs.readFileSync(configPath, 'utf-8');
-      const config = yamlLoad(fileContent) || {};
+      // Pin the safe CORE_SCHEMA explicitly: .codereview.yml is
+      // user-controlled, so the parser must never execute custom tags.
+      const config = yamlLoad(fileContent, { schema: CORE_SCHEMA }) || {};
       return mergeWithDefaults(config);
     }
   } catch (err) {
@@ -69,7 +71,7 @@ function applySeverityConfig(findings, config) {
   return findings
     .filter(finding => {
       const ruleId = finding.rule_id || finding.rule;
-      return !suppressedRules.has(ruleId);
+      return !ruleId || !suppressedRules.has(ruleId);
     })
     .map(finding => {
       const category = categorizeFinding(finding);
