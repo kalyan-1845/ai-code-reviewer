@@ -133,3 +133,60 @@ test('requireApiKey returns 401 and safely handles error when session cookie pay
   assert.equal(res.statusCode, 401, 'should return 401 Unauthorized');
   assert.ok(res.body.error.includes('Unauthorized'), 'should return unauthorized error');
 });
+
+test('API-key auth derives a STABLE clientId per caller (same IP, same key)', () => {
+  // Regression test for #3548: cookie-less API-key callers used to get a fresh
+  // crypto.randomUUID() per request, which made the concurrency throttle and
+  // every per-user budget keyed on clientId completely ineffective.
+  const makeReq = () => ({
+    headers: { 'x-api-key': 'test-secret-key' },
+    originalUrl: '/api/test',
+    ip: '203.0.113.42',
+  });
+
+  const first = makeReq();
+  const second = makeReq();
+  requireApiKey(first, { status(){return this;}, json(){} }, () => {});
+  requireApiKey(second, { status(){return this;}, json(){} }, () => {});
+
+  assert.ok(first.clientId, 'clientId should be set for API-key auth');
+  assert.equal(first.clientId, second.clientId,
+    'same caller must always get the same clientId so throttle/budgets engage');
+});
+
+test('API-key auth gives different clientIds to different caller IPs', () => {
+  const invoke = (ip) => {
+    const req = {
+      headers: { 'x-api-key': 'test-secret-key' },
+      originalUrl: '/api/test',
+      ip,
+    };
+    requireApiKey(req, { status(){return this;}, json(){} }, () => {});
+    return req.clientId;
+  };
+
+  const ipA = invoke('203.0.113.10');
+  const ipB = invoke('203.0.113.20');
+
+  assert.ok(ipA && ipB, 'both callers should get a clientId');
+  assert.notEqual(ipA, ipB,
+    'different IPs must not share a clientId, otherwise unrelated callers share one throttle bucket');
+});
+
+test('API-key clientId is stable even when an X-Forwarded-For header is present', () => {
+  // req.ip is the trust-proxy-resolved address; the raw header must not leak
+  // into the derived key (an attacker would otherwise rotate the header to
+  // get a fresh identity each request and bypass the throttle again).
+  const invoke = (xff) => {
+    const req = {
+      headers: { 'x-api-key': 'test-secret-key', 'x-forwarded-for': xff },
+      originalUrl: '/api/test',
+      ip: '198.51.100.7',
+    };
+    requireApiKey(req, { status(){return this;}, json(){} }, () => {});
+    return req.clientId;
+  };
+
+  assert.equal(invoke('1.2.3.4'), invoke('9.9.9.9'),
+    'clientId must depend only on req.ip, never on the client-controlled X-Forwarded-For header');
+});

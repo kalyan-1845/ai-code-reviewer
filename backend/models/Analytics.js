@@ -120,5 +120,6 @@ commitHash: {
 analyticsSchema.index({ analyzedAt: -1 });
 analyticsSchema.index({ repoName: 1, analyzedAt: -1 });
 analyticsSchema.index({ clientId: 1, analyzedAt: -1 });
+analyticsSchema.index({ clientId: 1, repoUrl: 1 });
 
 export default mongoose.model('Analytics', analyticsSchema);

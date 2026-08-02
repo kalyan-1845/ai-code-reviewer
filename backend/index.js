@@ -71,6 +71,48 @@ const ANALYSIS_CACHE_MOCK_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 120
 const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, 2, ANALYSIS_CACHE_MOCK_TTL_MS);
 const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 
+// ---------------------------------------------------------------------------
+// Per-caller daily analysis budget (#3549). /api/analyze and /api/analyze-file
+// clone repos server-side and fan out one LLM call per batch, so an
+// unauthenticated-by-cookie key-holder can otherwise force unbounded clones
+// and Groq calls against the shared paid quotas. The budget is keyed on a
+// stable per-caller identity (session-cookie uid when present, otherwise a
+// hash of the caller's IP) so it cannot be evaded by minting a fresh clientId
+// per request. In-memory is sufficient: the counter resets on restart, exactly
+// like responseCache / analysisCache.
+// ---------------------------------------------------------------------------
+const ANALYSIS_DAILY_BUDGET_PER_CLIENT = parseInt(process.env.ANALYSIS_DAILY_BUDGET_PER_CLIENT || '50', 10);
+const ANALYSIS_DAILY_BUDGET_WINDOW_MS = 24 * 60 * 60 * 1000;
+const dailyAnalysisBudgetMap = new Map(); // key -> { windowStart, count }
+
+function getAnalysisBudgetKey(req) {
+  const hasSessionCookie = typeof req.headers?.cookie === 'string' && req.headers.cookie.includes('rps_v1_session');
+  if (hasSessionCookie && req.clientId) {
+    return req.clientId;
+  }
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  return crypto.createHash('sha256').update(`daily-analysis:${ip}`).digest('hex');
+}
+
+function consumeDailyAnalysisBudget(req) {
+  const key = getAnalysisBudgetKey(req);
+  const now = Date.now();
+  const entry = dailyAnalysisBudgetMap.get(key);
+  if (!entry || now - entry.windowStart >= ANALYSIS_DAILY_BUDGET_WINDOW_MS) {
+    dailyAnalysisBudgetMap.set(key, { windowStart: now, count: 1 });
+    return { allowed: true, remaining: ANALYSIS_DAILY_BUDGET_PER_CLIENT - 1 };
+  }
+  if (entry.count >= ANALYSIS_DAILY_BUDGET_PER_CLIENT) {
+    return { allowed: false, remaining: 0 };
+  }
+  entry.count += 1;
+  return { allowed: true, remaining: ANALYSIS_DAILY_BUDGET_PER_CLIENT - entry.count };
+}
+
+// Hard cap on source files forwarded to the AI engine per analysis, so a repo
+// of thousands of tiny files cannot force one LLM sub-call per file (#3549).
+const MAX_FILES_PER_ANALYSIS = parseInt(process.env.MAX_FILES_PER_ANALYSIS || '100', 10);
+
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
 // rather than the internal proxy address.
@@ -750,6 +792,12 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
      maxTokens = 2048, systemPrompt = '', batchSize = 5, githubToken
    } = req.body;
 
+  // Per-caller daily budget: blocks unbounded clone + LLM-call amplification (#3549).
+  const budget = consumeDailyAnalysisBudget(req);
+  if (!budget.allowed) {
+    return res.status(429).json({ error: `Daily analysis budget exceeded for this caller (${ANALYSIS_DAILY_BUDGET_PER_CLIENT} analyses per 24 hours). Please try again tomorrow.` });
+  }
+
   // Enforce boundary limits for batchSize to prevent downstream parsing crashes
   batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
 
@@ -806,21 +854,42 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
   const maxRepoSizeMB = parseInt(process.env.MAX_REPO_SIZE_MB, 10) || 100;
   const maxSizeBytes = maxRepoSizeMB * 1024 * 1024;
 
-  // Pre-clone size check via GitHub API to prevent disk exhaustion
+  // Pre-clone size check via GitHub API to prevent disk exhaustion.
+  // This check is MANDATORY (#3549): when the PAT is rate-limited or
+  // unauthorized we fall back to an unauthenticated size lookup, and if the
+  // size still cannot be verified we refuse to clone rather than proceeding
+  // with a partial/filtered clone of unknown size.
+  const verifyRepoSize = async (octokitInstance) => {
+    const { data: repoData } = await octokitInstance.rest.repos.get({ owner, repo: repoName });
+    return (repoData.size || 0) * 1024;
+  };
+  const enforceSizeLimit = (repoSizeBytes) => {
+    if (repoSizeBytes > maxSizeBytes) {
+      return res.status(413).json({ error: `Repository exceeds the maximum allowed size of ${maxRepoSizeMB}MB (Reported size: ~${Math.round(repoSizeBytes / 1024 / 1024)}MB).` });
+    }
+    return null;
+  };
+
   if (process.env.GITHUB_PAT) {
+    let repoSizeBytes;
     try {
-      const { data: repoData } = await octokit.rest.repos.get({ owner, repo: repoName });
-      const repoSizeBytes = (repoData.size || 0) * 1024;
-      if (repoSizeBytes > maxSizeBytes) {
-        return res.status(413).json({ error: `Repository exceeds the maximum allowed size of ${maxRepoSizeMB}MB (Reported size: ~${Math.round(repoSizeBytes/1024/1024)}MB).` });
-      }
+      repoSizeBytes = await verifyRepoSize(octokit);
     } catch (err) {
-      if (err.status !== 403 && err.status !== 429) {
+      if (err.status === 403 || err.status === 429) {
+        // PAT rate-limited/blocked — retry without auth before refusing.
+        try {
+          repoSizeBytes = await verifyRepoSize(new Octokit());
+        } catch (fallbackErr) {
+          console.warn(`Could not verify repository size for ${owner}/${repoName} via GitHub API (${err.status ?? 'auth'} / ${fallbackErr.status ?? 'auth'}). Refusing to clone: pre-clone size check is mandatory.`);
+          return res.status(429).json({ error: 'Could not verify repository size because GitHub API is rate-limited. Please try again later.' });
+        }
+      } else {
         console.error(`Γ¥î GitHub API error verifying size for ${owner}/${repoName}: ${err.message}`);
         return res.status(502).json({ error: `Failed to verify repository size: ${err.message}. Check GITHUB_PAT configuration.` });
       }
-      console.warn(`Could not verify repository size via GitHub API for ${owner}/${repoName}. Proceeding to clone with filters...`);
     }
+    const rejection = enforceSizeLimit(repoSizeBytes);
+    if (rejection) return rejection;
   } else {
     console.warn('No GITHUB_PAT configured ΓÇö skipping pre-clone size check. Set MAX_REPO_SIZE_MB to enforce limit at clone time.');
   }
@@ -840,21 +909,53 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
     console.warn(`⚠️ Failed to fetch remote HEAD for ${repoUrl}: ${err.message}`);
   }
 
-  const finalCacheKey = commitSha ? crypto.createHash('sha256').update(`${repoUrl}|${commitSha}|${model}|${language}|${company}|${validatedPrompt}|${temperature}|${maxTokens}|${batchSize}`).digest('hex') : null;
+  // The response cache key is namespaced by clientId so a cached response
+  // (and any data derived from it) is only ever served back to the caller
+  // that created it — never to a different tenant.
+  const finalCacheKey = commitSha ? crypto.createHash('sha256').update(`${repoUrl}|${req.clientId}|${commitSha}|${model}|${language}|${company}|${validatedPrompt}|${temperature}|${maxTokens}|${batchSize}`).digest('hex') : null;
 
   if (finalCacheKey) {
     const cachedResponse = responseCache.get(finalCacheKey);
     if (cachedResponse) {
       console.log(`🎯 Using cached final response for ${repoUrl} at ${commitSha}`);
-      if (cachedResponse.sessionPersisted && cachedResponse.csrfToken) {
-        res.cookie(CSRF_COOKIE_NAME, cachedResponse.csrfToken, {
-          httpOnly: true,
-          sameSite: 'strict',
-          path: '/',
-          secure: process.env.NODE_ENV === 'production',
-        });
+      // The cached payload never contains per-session credentials (they are
+      // stripped before caching), so nothing from the original caller can be
+      // served to this one. Regenerate a fresh, per-caller session instead.
+      const freshSessionId = crypto.randomUUID();
+      const freshOwnerToken = crypto.randomUUID();
+      const freshCsrfToken = res.locals.rotatedCsrfToken || await generateCsrfToken();
+      let persisted = false;
+      const sessionFiles = Array.isArray(cachedResponse._sessionFiles) ? cachedResponse._sessionFiles : [];
+      if (sessionFiles.length > 0) {
+        try {
+          await Session.create({
+            sessionId: freshSessionId,
+            repoUrl,
+            repoName,
+            files: sessionFiles,
+            lastAccessedAt: new Date(),
+            ownerToken: freshOwnerToken,
+            csrfToken: freshCsrfToken,
+          });
+          persisted = true;
+        } catch (sessionErr) {
+          console.warn('⚠️ Failed to persist fresh session on cached review:', sessionErr.message);
+        }
       }
-      return res.json(cachedResponse);
+      delete cachedResponse._sessionFiles;
+      res.cookie(CSRF_COOKIE_NAME, freshCsrfToken, {
+        httpOnly: false,
+        sameSite: 'strict',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      });
+      return res.json({
+        ...cachedResponse,
+        sessionId: freshSessionId,
+        sessionPersisted: persisted,
+        chatAvailable: persisted,
+        ...(persisted ? { sessionOwnerToken: freshOwnerToken, csrfToken: freshCsrfToken } : {}),
+      });
     }
   }
 
@@ -899,7 +1000,8 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
       let currentPayloadLength = 0;
       let truncatedFiles = [];
       for (const file of files) {
-        if (currentPayloadLength + file.content.length > MAX_PAYLOAD_CHARS) {
+        if (currentPayloadLength + file.content.length > MAX_PAYLOAD_CHARS
+            || truncatedFiles.length >= MAX_FILES_PER_ANALYSIS) {
           partial_review = true;
           break;
         }
@@ -1099,7 +1201,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
               const ingestResp = await fetchWithTimeout(`${baseUrl}/api/rag/ingest`, {
                 validate: false,
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '', 'x-rag-ingest-key': process.env.RAG_INGEST_KEY || '' },
+                headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '', 'x-rag-ingest-key': process.env.RAG_INGEST_KEY || '', 'x-client-id': req.clientId || '' },
                 body: JSON.stringify({ repo_url: repoUrl, chunks })
               }, 60000);
               if (ingestResp.ok) {
@@ -1109,7 +1211,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
                   const verifyResp = await fetchWithTimeout(`${baseUrl}/api/rag/chunks`, {
                     validate: false,
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '', 'x-client-id': req.clientId || '' },
                     body: JSON.stringify({ repo_url: repoUrl, limit: 1, offset: 0 })
                   }, 10000);
                   if (verifyResp.ok) {
@@ -1303,7 +1405,25 @@ if (reviewResult?.fileReviews) {
       };
 
       if (finalCacheKey && !reviewResult?._mock) {
-        responseCache.set(finalCacheKey, responseObject, { repoUrl });
+        // Strip per-session credentials (sessionId, sessionOwnerToken,
+        // csrfToken, sessionPersisted, chatAvailable) from the cached
+        // payload so a cache hit can never return another caller's
+        // session credentials or CSRF token. The raw files are cached
+        // under a private field so a fresh session can be created for
+        // the next caller on a cache hit; the field is deleted before
+        // the response is returned.
+        const cachedPayload = {
+          ...responseObject,
+          sessionId: undefined,
+          sessionOwnerToken: undefined,
+          csrfToken: undefined,
+          sessionPersisted: false,
+          chatAvailable: false,
+        };
+        if (sessionPersisted && Array.isArray(storedFiles) && storedFiles.length > 0) {
+          cachedPayload._sessionFiles = storedFiles;
+        }
+        responseCache.set(finalCacheKey, cachedPayload, { repoUrl });
       }
 
       return res.json(responseObject);
@@ -1321,8 +1441,20 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, concurrency
   try {
     let { files, company = 'General', language = 'English', model, temperature = 0.7, maxTokens = 2048, systemPrompt = '', batchSize = 5 } = req.body;
 
+    // Per-caller daily budget for direct file analysis (#3549).
+    const budget = consumeDailyAnalysisBudget(req);
+    if (!budget.allowed) {
+      return res.status(429).json({ error: `Daily analysis budget exceeded for this caller (${ANALYSIS_DAILY_BUDGET_PER_CLIENT} analyses per 24 hours). Please try again tomorrow.` });
+    }
+
     if (!files || !Array.isArray(files) || files.length === 0) {
       return res.status(400).json({ error: 'At least one file is required.' });
+    }
+
+    // Bound the number of files so a single request cannot fan out one LLM
+    // sub-call per tiny file (#3549).
+    if (files.length > MAX_FILES_PER_ANALYSIS) {
+      files = files.slice(0, MAX_FILES_PER_ANALYSIS);
     }
 
     for (const file of files) {
@@ -1546,7 +1678,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
         const aiResponse = await fetchWithTimeout(`${baseUrl}/chat`, {
           validate: false,
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '', 'x-client-id': req.clientId || '' },
           body: JSON.stringify({
             files: context.files,
             message,
@@ -1590,6 +1722,23 @@ app.post('/api/rag/query', requireApiKey, async (req, res) => {
   if (!question) {
     return res.status(400).json({ error: 'question is required.' });
   }
+  if (!repoUrl || typeof repoUrl !== 'string') {
+    return res.status(400).json({ error: 'repoUrl is required.' });
+  }
+
+  // Tenant isolation: only allow RAG queries against a repository that this
+  // client has actually analyzed. Without this, any caller could read (or
+  // delete) another tenant's private source code via its repo_url.
+  try {
+    const ownsRepo = await Analytics.exists({ clientId: req.clientId, repoUrl });
+    if (!ownsRepo) {
+      console.warn(`⛔ RAG query blocked: caller ${req.clientId} does not own ${repoUrl}`);
+      return res.status(403).json({ error: 'Access denied: you have not analyzed this repository.' });
+    }
+  } catch (ownershipErr) {
+    console.error('Γ¥î RAG ownership check error:', sanitizeErrorMessage(ownershipErr.message));
+    return res.status(500).json({ error: 'RAG query failed: ownership check unavailable.' });
+  }
 
   const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 
@@ -1598,7 +1747,7 @@ app.post('/api/rag/query', requireApiKey, async (req, res) => {
     const aiResponse = await fetchWithTimeout(`${baseUrl}/api/rag/query`, {
       validate: false,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '', 'x-client-id': req.clientId || '' },
       body: JSON.stringify({ question, repo_url: repoUrl })
     }, 30000);
 
@@ -1990,9 +2139,31 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
   return res.json({ success: true, message: 'Webhook received.' });
 });
 
+// Per-client quota for issue creation. The server uses a shared GITHUB_PAT,
+// so a holder of the shared API key could otherwise create issues in arbitrary
+// repositories. Binding creation to an analyzed session plus this quota keeps
+// the blast radius of any leaked key limited.
+const ISSUE_QUOTA_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const MAX_ISSUES_PER_CLIENT = 5;
+const issueQuotaByClient = new Map(); // clientId -> { windowStart, count }
+
+function consumeIssueQuota(clientId) {
+  const now = Date.now();
+  const entry = issueQuotaByClient.get(clientId);
+  if (!entry || now - entry.windowStart >= ISSUE_QUOTA_WINDOW_MS) {
+    issueQuotaByClient.set(clientId, { windowStart: now, count: 1 });
+    return true;
+  }
+  if (entry.count >= MAX_ISSUES_PER_CLIENT) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
+
 // ≡ƒƒó Route: Create GitHub Issue automatically for Code Reviews
 app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimiter, async (req, res) => {
-  const { repoUrl, title, body, labels = [] } = req.body;
+  const { repoUrl, title, body, labels = [], sessionId, sessionOwnerToken } = req.body;
   const token = process.env.GITHUB_PAT;
 
   if (!token) {
@@ -2024,9 +2195,51 @@ app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimit
   const owner = parsed.owner;
   const repo = parsed.repo;
 
+  // The target repo must match the repository this caller actually analyzed in
+  // their own session. Without this binding, any holder of the shared API key
+  // could use the server's PAT to open issues in arbitrary repositories.
+  if (!isValidUuid(sessionId)) {
+    return res.status(400).json({ error: 'sessionId is required and must be a valid UUID.' });
+  }
+  if (!sessionOwnerToken || typeof sessionOwnerToken !== 'string') {
+    return res.status(403).json({ error: 'Access denied: sessionOwnerToken is required.' });
+  }
+
   try {
+    const session = await Session.findOne({ sessionId }).lean();
+    if (!session) {
+      return res.status(403).json({ error: 'Access denied: session not found or expired. Please analyze a repository first.' });
+    }
+    if (!session.ownerToken) {
+      return res.status(403).json({ error: 'Access denied: session has no ownership token.' });
+    }
+    const providedBuf = Buffer.from(sessionOwnerToken, 'utf8');
+    const storedBuf = Buffer.from(String(session.ownerToken), 'utf8');
+    if (providedBuf.length !== storedBuf.length || !crypto.timingSafeEqual(providedBuf, storedBuf)) {
+      console.warn(`ΓÜá Session ownership mismatch for issue creation: session ${sessionId}`);
+      return res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
+    }
+
+    const analyzed = parseRepoUrl(session.repoUrl);
+    if (!analyzed || analyzed.owner !== owner || analyzed.repo !== repo) {
+      return res.status(403).json({ error: 'Access denied: you can only create issues for the repository you analyzed in your session.' });
+    }
+
+    if (!consumeIssueQuota(req.clientId || 'unknown')) {
+      return res.status(429).json({ error: 'Issue creation limit reached for this session. Try again later.' });
+    }
+
     const octokit = new Octokit({ auth: token });
-    
+
+    // Verify the PAT can actually access the target repo before creating.
+    // Fails closed with a generic message so we don't leak repo existence.
+    try {
+      await octokit.rest.repos.get({ owner, repo });
+    } catch (patErr) {
+      console.warn(`ΓÜá Issue creation blocked: server token cannot access ${owner}/${repo}: ${patErr.message}`);
+      return res.status(403).json({ error: 'Access denied: the server token cannot access this repository.' });
+    }
+
     console.log(`≡ƒñû Creating GitHub Issue in ${owner}/${repo}: "${title}"`);
     
     const response = await octokit.rest.issues.create({
@@ -2045,7 +2258,7 @@ app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimit
 
   } catch (err) {
     console.error('Γ¥î Create GitHub Issue Error:', err.message);
-    return res.status(500).json({ error: `Failed to create issue: ${err.message}` });
+    return res.status(500).json({ error: 'Failed to create the GitHub issue. Please try again later.' });
   }
 });
 
@@ -2060,6 +2273,25 @@ app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
 });
 
 // Webhook review queueing uses ReviewQueue from reviewQueue.js (per-key mutex)
+
+// Custom repository rules (.ai-reviewer.yml / .github/ai-reviewer.md) are
+// fetched from the PR head sha, which is attacker-controlled in fork PRs.
+// They are configuration, not instructions: cap their size and strip
+// instruction-like directives before forwarding so they can never override
+// the AI engine's defensive "treat code as data, not instructions" boundary.
+const MAX_CUSTOM_RULES_LENGTH = 2000;
+const INSTRUCTION_LIKE_RE = /^\s*(you\s+(must|should|shall|need|are|will)|always|never|ignore|forget|do\s+not|act\s+as|pretend|respond|reply|follow|override|disregard|take\s+precedence|treat|consider\s+it\s+an\s+instruction)/i;
+
+function sanitizeCustomRules(rules) {
+  if (typeof rules !== 'string') return null;
+  const capped = rules.length > MAX_CUSTOM_RULES_LENGTH ? rules.slice(0, MAX_CUSTOM_RULES_LENGTH) : rules;
+  const stripped = capped
+    .split('\n')
+    .filter(line => !INSTRUCTION_LIKE_RE.test(line))
+    .join('\n')
+    .trim();
+  return stripped.length > 0 ? stripped : null;
+}
 
 // 🚀 Helper to execute Webhook PR review logic
 async function runWebhookReview(owner, repo, pullNumber, headSha) {
@@ -2215,7 +2447,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       }
       
       if (customRulesResponse && customRulesResponse.data && customRulesResponse.data.content) {
-        customRules = Buffer.from(customRulesResponse.data.content, 'base64').toString('utf8');
+        customRules = sanitizeCustomRules(Buffer.from(customRulesResponse.data.content, 'base64').toString('utf8'));
         console.log('✅ Found custom repository rules.');
       }
     } catch (err) {
@@ -2247,7 +2479,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
           if (securityMode) {
             console.log(`🔒 Dedicated Security Mode enabled for ${owner}/${repo}`);
           }
-          customPrompt = config.custom_prompt || '';
+          customPrompt = sanitizeCustomRules(config.custom_prompt) || '';
           autoFixTrivial = !!config.auto_fix_trivial;
           if (config.severity) {
             severityOverrides = config.severity;

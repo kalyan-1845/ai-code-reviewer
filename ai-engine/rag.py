@@ -42,16 +42,28 @@ def _get_client() -> chromadb.ClientAPI:
     return _client
 
 
-def _collection_name(repo_url: Optional[str] = None) -> str:
+def _collection_name(repo_url: Optional[str] = None, tenant_id: Optional[str] = None) -> str:
     if repo_url:
-        suffix = hashlib.sha256(repo_url.encode()).hexdigest()[:12]
-        return f"{_COLLECTION_NAME}_{suffix}"
+        repo_hash = hashlib.sha256(repo_url.encode()).hexdigest()[:12]
+        if tenant_id:
+            # Namespace the collection with the owning tenant (clientId) so a
+            # different tenant can never address another tenant's collection,
+            # even when they know the repo_url.
+            tenant_hash = hashlib.sha256(str(tenant_id).encode()).hexdigest()[:12]
+            return f"{_COLLECTION_NAME}_{tenant_hash}_{repo_hash}"
+        return f"{_COLLECTION_NAME}_{repo_hash}"
     return _COLLECTION_NAME
 
 
-def _get_collection(repo_url: Optional[str] = None):
+# Pass tenant_id to collection helpers only when provided, so callers that do
+# not (yet) carry a tenant keep the previous, fully backward-compatible behavior.
+def _tenant_kwargs(tenant_id: Optional[str]) -> dict:
+    return {"tenant_id": tenant_id} if tenant_id else {}
+
+
+def _get_collection(repo_url: Optional[str] = None, tenant_id: Optional[str] = None):
     client = _get_client()
-    name = _collection_name(repo_url)
+    name = _collection_name(repo_url, tenant_id)
     return client.get_or_create_collection(
         name,
         metadata={"hnsw:space": "cosine"},
@@ -63,6 +75,7 @@ def ingest_chunks(
     metadatas: list[dict],
     ids: list[str],
     repo_url: Optional[str] = None,
+    tenant_id: Optional[str] = None,
 ) -> int:
     if not chunks:
         return 0
@@ -73,7 +86,7 @@ def ingest_chunks(
     chunks = chunks[:_MAX_INGEST_CHUNKS]
     metadatas = metadatas[:_MAX_INGEST_CHUNKS]
     ids = ids[:_MAX_INGEST_CHUNKS]
-    collection = _get_collection(repo_url)
+    collection = _get_collection(repo_url, **_tenant_kwargs(tenant_id))
     embeddings = embed_texts(chunks)
     collection.add(
         embeddings=embeddings,
@@ -88,10 +101,11 @@ def query_chunks(
     query_text: str,
     n_results: int = 5,
     repo_url: Optional[str] = None,
+    tenant_id: Optional[str] = None,
 ) -> list[dict]:
     if not query_text or not query_text.strip():
         return []
-    collection = _get_collection(repo_url)
+    collection = _get_collection(repo_url, **_tenant_kwargs(tenant_id))
     count = collection.count()
     if count == 0:
         return []
@@ -117,11 +131,11 @@ def query_chunks(
     return chunks
 
 
-def get_collection_stats(repo_url: Optional[str] = None) -> dict:
-    collection = _get_collection(repo_url)
+def get_collection_stats(repo_url: Optional[str] = None, tenant_id: Optional[str] = None) -> dict:
+    collection = _get_collection(repo_url, **_tenant_kwargs(tenant_id))
     count = collection.count()
     return {
-        "collection": _collection_name(repo_url),
+        "collection": _collection_name(repo_url, **_tenant_kwargs(tenant_id)),
         "chunk_count": count,
         "embedding_dimension": get_embedding_dimension(),
     }
@@ -131,8 +145,9 @@ def get_chunks_paginated(
     limit: int = 50,
     offset: int = 0,
     repo_url: Optional[str] = None,
+    tenant_id: Optional[str] = None,
 ) -> list[dict]:
-    collection = _get_collection(repo_url)
+    collection = _get_collection(repo_url, **_tenant_kwargs(tenant_id))
     results = collection.get(limit=limit, offset=offset)
     chunks = []
     documents = results.get("documents", [])
@@ -147,8 +162,8 @@ def get_chunks_paginated(
     return chunks
 
 
-def delete_chunks_for_file(file_path: str, repo_url: Optional[str] = None) -> int:
-    collection = _get_collection(repo_url)
+def delete_chunks_for_file(file_path: str, repo_url: Optional[str] = None, tenant_id: Optional[str] = None) -> int:
+    collection = _get_collection(repo_url, **_tenant_kwargs(tenant_id))
     results = collection.get(where={"source_file": file_path})
     ids_to_delete = results.get("ids", [])
     if ids_to_delete:
@@ -156,8 +171,8 @@ def delete_chunks_for_file(file_path: str, repo_url: Optional[str] = None) -> in
     return len(ids_to_delete)
 
 
-def cleanup_stale_chunks(current_files: set, repo_url: Optional[str] = None) -> dict:
-    collection = _get_collection(repo_url)
+def cleanup_stale_chunks(current_files: set, repo_url: Optional[str] = None, tenant_id: Optional[str] = None) -> dict:
+    collection = _get_collection(repo_url, **_tenant_kwargs(tenant_id))
     stored_paths = set()
     offset = 0
     while True:
@@ -170,7 +185,7 @@ def cleanup_stale_chunks(current_files: set, repo_url: Optional[str] = None) -> 
     stale_paths = stored_paths - current_files
     removed_count = 0
     for stale_path in stale_paths:
-        removed_count += delete_chunks_for_file(stale_path, repo_url=repo_url)
+        removed_count += delete_chunks_for_file(stale_path, repo_url=repo_url, **_tenant_kwargs(tenant_id))
     return {
         "stale_paths": list(stale_paths),
         "removed_count": removed_count,
@@ -183,6 +198,7 @@ def upsert_chunks(
     metadatas: list[dict],
     ids: list[str],
     repo_url: Optional[str] = None,
+    tenant_id: Optional[str] = None,
 ) -> int:
     if not chunks:
         return 0
@@ -193,7 +209,7 @@ def upsert_chunks(
     chunks = chunks[:_MAX_INGEST_CHUNKS]
     metadatas = metadatas[:_MAX_INGEST_CHUNKS]
     ids = ids[:_MAX_INGEST_CHUNKS]
-    collection = _get_collection(repo_url)
+    collection = _get_collection(repo_url, **_tenant_kwargs(tenant_id))
     embeddings = embed_texts(chunks)
     collection.upsert(
         embeddings=embeddings,
@@ -204,8 +220,8 @@ def upsert_chunks(
     return len(chunks)
 
 
-def delete_repo_chunks(repo_url: str) -> int:
-    collection = _get_collection(repo_url)
+def delete_repo_chunks(repo_url: str, tenant_id: Optional[str] = None) -> int:
+    collection = _get_collection(repo_url, **_tenant_kwargs(tenant_id))
     total = 0
     while True:
         batch = collection.get(limit=_MAX_INGEST_CHUNKS, include=[])
@@ -217,9 +233,9 @@ def delete_repo_chunks(repo_url: str) -> int:
     return total
 
 
-def delete_collection(repo_url: str) -> bool:
+def delete_collection(repo_url: str, tenant_id: Optional[str] = None) -> bool:
     client = _get_client()
-    name = _collection_name(repo_url)
+    name = _collection_name(repo_url, **_tenant_kwargs(tenant_id))
     try:
         client.delete_collection(name)
         return True

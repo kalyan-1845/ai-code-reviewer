@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app import app
 
 
-client = TestClient(app)
+client = TestClient(app, headers={"x-client-id": "tenant-test"})
 
 
 class TestRagIngestEndpoint:
@@ -110,6 +110,6 @@ class TestRagIngestEndpoint:
         response = client.post(
             "/api/rag/ingest",
             json=payload,
-            headers={"x-rag-ingest-key": "ingest-secret"},
+            headers={"x-rag-ingest-key": "ingest-secret", "x-client-id": "tenant-test"},
         )
         assert response.status_code == 200

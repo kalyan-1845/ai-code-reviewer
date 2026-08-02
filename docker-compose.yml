@@ -22,8 +22,10 @@ services:
       context: ./ai-engine
       dockerfile: Dockerfile.dev
     container_name: reposage-ai-engine
-    ports:
-      - "8000:8000"
+    # The engine is intentionally NOT published to the host. It is reached only
+    # by the backend over the compose network (AI_ENGINE_URL=http://ai-engine:8000),
+    # so external clients cannot bypass the backend's rate limiting / auth by
+    # connecting directly to port 8000.
     volumes:
       - ./ai-engine:/usr/src/app
       - /usr/src/app/__pycache__

@@ -565,6 +565,8 @@ export default function Dashboard() {
           title,
           body,
           labels,
+          sessionId,
+          sessionOwnerToken: getSessionOwnerToken(),
         }),
       });
 
