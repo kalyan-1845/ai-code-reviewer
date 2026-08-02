@@ -2,8 +2,8 @@ const SECRET_DETECTION_RULES = [
   // AWS Access Key ID
   /\b((?:AKIA|A3T|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[0-9A-Z]{16})\b/g,
 
-  // AWS Secret Access Key (lookaround for 40 char base64-like strings)
-  /(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])/g,
+  // AWS Secret Access Key (lookaround for 40 char base64-like strings, excluding pure 40-hex commit SHAs)
+  /(?<![A-Za-z0-9/+=])(?![0-9a-fA-F]{40}\b)[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])/g,
 
   // GitHub Personal Access Token (PAT)
   /\b(gh[pousr]_[a-zA-Z0-9]{36})\b/g,
@@ -35,13 +35,17 @@ function scrubRepositoryPayload(codebaseString) {
   let sanitizedPayload = codebaseString;
 
   for (const rule of SECRET_DETECTION_RULES) {
-    sanitizedPayload = sanitizedPayload.replace(rule, (match, capturedGroup) => {
+    // Replace against a snapshot of the pre-replacement string so the line
+    // context lookup below never sees text already modified by this rule's
+    // earlier matches (or by previous rules).
+    const source = sanitizedPayload;
+    sanitizedPayload = source.replace(rule, (match, capturedGroup) => {
       if (capturedGroup) {
         return match.replace(capturedGroup, '[REDACTED_SECRET]');
       }
       // Context check: only redact 40-char base64 strings on lines with secret keywords
       if (!capturedGroup && match.length === 40 && /^[A-Za-z0-9\/+=]{40}$/.test(match)) {
-        const lineMatch = sanitizedPayload.match(new RegExp('^.*' + match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '.*$', 'm'));
+        const lineMatch = source.match(new RegExp('^.*' + match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '.*$', 'm'));
         const line = lineMatch ? lineMatch[0] : '';
         if (!hasSecretContext(line)) {
           return match;

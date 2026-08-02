@@ -16,7 +16,7 @@ export default function MermaidDiagramViewer({ chart, repoName }: MermaidViewerP
     let cancelled = false;
     if (!chart) return;
     setError(null);
-    const uniqueId = `mermaid-${Math.floor(Math.random() * 100000)}`;
+    const uniqueId = `mermaid-${crypto.randomUUID()}`;
     const renderChart = async () => {
       try {
         setSvg("");

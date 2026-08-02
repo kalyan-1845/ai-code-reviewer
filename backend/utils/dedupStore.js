@@ -2,12 +2,38 @@ class DedupStore {
   constructor(redisClient) {
     this.redisClient = redisClient;
     this.memoryStore = new Map();
+    this._locks = new Map();
     this._sweeper = null;
     this._startSweeper();
   }
 
   get size() {
     return this.memoryStore.size;
+  }
+
+  // Atomic check-and-set: returns true if key already exists, false if set was performed
+  async checkAndSet(key, value, ttlMs) {
+    if (this.redisClient) {
+      try {
+        const result = await this.redisClient.set(key, value, 'NX', 'PX', ttlMs);
+        return result === null;
+      } catch (err) {
+        console.warn(`⚠️ Redis checkAndSet failed for ${key}, falling back to memory:`, err.message);
+      }
+    }
+    while (this._locks.has(key)) {
+      await this._locks.get(key);
+    }
+    const next = (async () => {
+      const entry = this.memoryStore.get(key);
+      if (entry && Date.now() <= entry.expiresAt) return true;
+      this.memoryStore.set(key, { value, expiresAt: Date.now() + ttlMs });
+      return false;
+    })();
+    this._locks.set(key, next.finally(() => {
+      if (this._locks.get(key) === next) this._locks.delete(key);
+    }));
+    return next;
   }
 
   async set(key, value, ttlMs) {

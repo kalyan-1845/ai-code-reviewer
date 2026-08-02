@@ -38,7 +38,16 @@ export function buildRequestHeaders(apiKey?: string): Record<string, string> {
   return headers;
 }
 
+export const MAX_FILE_CONTENT_BYTES = 100 * 1024;
+
 export function buildRequestBody(fileName: string, content: string) {
+  const contentBytes = Buffer.byteLength(content, "utf8");
+  if (contentBytes > MAX_FILE_CONTENT_BYTES) {
+    throw new Error(
+      `File "${fileName}" is ${contentBytes} bytes, exceeding the ` +
+      `${MAX_FILE_CONTENT_BYTES}-byte limit for API review.`
+    );
+  }
   return {
     files: [{ name: fileName, content }],
     company: "General",

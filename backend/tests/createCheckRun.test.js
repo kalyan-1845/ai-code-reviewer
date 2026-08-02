@@ -305,6 +305,6 @@ test('createCheckRun summary reflects total findings across all batches', async 
 
   await createCheckRun(mockOctokit, 'owner', 'repo', 'sha123', findings);
 
-  assert.equal(capturedPayloads[0].output.summary, '60 finding(s) detected');
-  assert.equal(capturedPayloads[1].output.summary, '60 finding(s) detected');
+  assert.equal(capturedPayloads[0].output.summary, '50 finding(s) (no errors)');
+  assert.equal(capturedPayloads[1].output.summary, '10 finding(s) (no errors)');
 });

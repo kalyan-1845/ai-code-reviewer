@@ -81,7 +81,7 @@ export const rules = [
   },
   {
     type: "Discord Bot Token",
-    regex: /\b[a-zA-Z0-9_-]{24}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}\b/g,
+    regex: /\b[MNT][a-zA-Z0-9_-]{23}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}\b/g,
     description: "Potential hardcoded Discord Bot Token detected. This allows attackers to fully control your Discord bot and access guilds/channels."
   }
 ];

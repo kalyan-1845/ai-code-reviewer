@@ -2,12 +2,14 @@
 # sentence_transformers hangs in sandbox due to torch/torchvision import.
 import sys
 
+import types
+
 # Patch sentence_transformers BEFORE pytest imports any test files.
 # Register a stub module that mimics sentence_transformers with SentenceTransformer = None.
-class _FakeSentenceTransformers:
-    SentenceTransformer = None
+_fake_st = types.ModuleType("sentence_transformers")
+_fake_st.SentenceTransformer = None
 
-sys.modules["sentence_transformers"] = _FakeSentenceTransformers()
+sys.modules["sentence_transformers"] = _fake_st
 
 
 def pytest_configure(config):

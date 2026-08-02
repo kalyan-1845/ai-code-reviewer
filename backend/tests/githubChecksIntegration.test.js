@@ -8,7 +8,7 @@ import {
 
 test('severityToGitHubLevel maps known severities correctly', () => {
   assert.equal(severityToGitHubLevel('error'), 'failure');
-  assert.equal(severityToGitHubLevel('warning'), 'neutral');
+  assert.equal(severityToGitHubLevel('warning'), 'warning');
   assert.equal(severityToGitHubLevel('info'), 'notice');
 });
 
@@ -42,7 +42,7 @@ test('formatAnnotations transforms findings to GitHub annotation shape', () => {
   assert.equal(annotations[0].path, 'src/index.js');
   assert.equal(annotations[0].start_line, 10);
   assert.equal(annotations[0].end_line, 10);
-  assert.equal(annotations[0].annotation_level, 'neutral');
+  assert.equal(annotations[0].annotation_level, 'warning');
   assert.equal(annotations[0].message, 'Unused variable');
   assert.equal(annotations[0].title, 'no-unused-vars');
 
