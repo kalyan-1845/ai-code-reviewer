@@ -109,8 +109,20 @@ function walkForExtensions(rootDir, extensionSet, ignorePatterns, maxFiles, maxD
 
       let content;
       try {
-        const safePath = resolveSafePath(rootDir, full);
-        content = fs.readFileSync(safePath, 'utf-8');
+        resolveSafePath(rootDir, full);
+        // Open with O_NOFOLLOW: the lstatSync() symlink check above has a
+        // TOCTOU window (a symlink could replace the file in between), so
+        // re-verify at open time. Falls back to O_RDONLY on platforms that
+        // do not define O_NOFOLLOW.
+        const flags = fs.constants.O_NOFOLLOW !== undefined
+          ? fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+          : fs.constants.O_RDONLY;
+        const fd = fs.openSync(full, flags);
+        try {
+          content = fs.readFileSync(fd, 'utf-8');
+        } finally {
+          fs.closeSync(fd);
+        }
       } catch {
         continue;
       }

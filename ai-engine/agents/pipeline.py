@@ -122,12 +122,9 @@ async def run_batch_pipeline(
         "performance_findings": performance_res.get("fileReviews", {}),
         "style_findings": style_res.get("fileReviews", {}),
         "impact_findings": impact_res.get("fileReviews", {}),
-<<<<<<< HEAD
         "test_findings": test_res.get("fileReviews", {}),
-        "architecture_findings": arch_res.get("fileReviews", {})
-=======
-        "historical_bug_findings": historical_res.get("fileReviews", {})
->>>>>>> feat/historical-bug-pattern-recognition-3070
+        "architecture_findings": arch_res.get("fileReviews", {}),
+        "historical_bug_findings": historical_res.get("fileReviews", {}),
     }
     
     readme_mermaid_instructions = ""

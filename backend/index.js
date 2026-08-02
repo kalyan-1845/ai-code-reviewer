@@ -17,6 +17,7 @@ import Redis from 'ioredis';
 import { scanSecrets, scanSecretsInChanges } from './utils/secretsScanner.js';
 import { llmAnalysisLimiter, webhookRateLimiter } from './middleware/rateLimiter.js';
 import { idempotencyMiddleware } from './middleware/idempotency.js';
+import { llmAnalysisLimiter, concurrencyThrottleMiddleware } from './middleware/rateLimiter.js';
 import { scrubRepositoryPayload } from './utils/secretScrubber.js';
 import { recordAnalysis as recordFileAnalytics } from './utils/analyticsStore.js';
 import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
@@ -211,7 +212,11 @@ const csrfTokenStore = redisClient ? {
     return (await redisClient.del(this._prefix + token)) > 0;
   },
   async size() {
-    const keys = await redisClient.keys(this._prefix + '*');
+    const keys = [];
+    const stream = redisClient.scanStream({ match: this._prefix + '*', count: 500 });
+    for await (const batch of stream) {
+      keys.push(...batch);
+    }
     return keys.length;
   },
   async cleanup() {
@@ -310,7 +315,6 @@ async function csrfProtection(req, res, next) {
       try {
         const session = await Session.findOne({ sessionId }).select('csrfToken').lean();
         if (session && session.csrfToken) {
-          if (!session?.csrfToken) { return next(); }
           const storedBuf = Buffer.from(String(session.csrfToken));
           const headerBuf = Buffer.from(String(headerToken || ''));
           if (storedBuf.length === headerBuf.length && crypto.timingSafeEqual(storedBuf, headerBuf)) {
@@ -379,7 +383,7 @@ app.post('/api/session', requireApiKey, async (req, res) => {
 
   const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
-    httpOnly: true,
+    httpOnly: false,
     sameSite: 'strict',
     path: '/',
     secure: process.env.NODE_ENV === 'production',
@@ -403,7 +407,7 @@ app.post('/api/logout', requireApiKey, async (req, res) => {
 app.get('/api/csrf-token', async (req, res) => {
   const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
-    httpOnly: true,
+    httpOnly: false,
     sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
@@ -473,10 +477,8 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Utility: fetch with configurable timeout using AbortController and optional SSRF check
 async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
-  if (options.validate !== false && options.validate !== true) {
-    // default: skip validation for explicitly trusted URLs; validate only when requested
-  }
-  if (options.validate === true) {
+  const validate = options.validate !== false;
+  if (validate) {
     const safe = await isSafeUrl(url);
     if (!safe.valid) {
       throw new Error(`SSRF validation failed: ${safe.reason}`);
@@ -584,7 +586,28 @@ const DELIVERY_REDIS_TTL = 300;
 
 // In-memory fallback for webhook SHA dedup when Redis is unavailable
 const shaDedupMemoryMap = new Map();
+const shaDedupLocks = new Map();
 const SHA_DEDUP_MAX_SIZE = 10000;
+
+// Per-key mutex for atomic SHA dedup check-and-set to prevent TOCTOU races
+async function checkAndSetSha(mapKey) {
+  while (shaDedupLocks.has(mapKey)) {
+    await shaDedupLocks.get(mapKey);
+  }
+  const next = (async () => {
+    if (shaDedupMemoryMap.has(mapKey)) return true;
+    if (shaDedupMemoryMap.size >= SHA_DEDUP_MAX_SIZE) {
+      const oldestKey = shaDedupMemoryMap.keys().next().value;
+      if (oldestKey !== undefined) shaDedupMemoryMap.delete(oldestKey);
+    }
+    shaDedupMemoryMap.set(mapKey, Date.now());
+    return false;
+  })();
+  shaDedupLocks.set(mapKey, next.finally(() => {
+    if (shaDedupLocks.get(mapKey) === next) shaDedupLocks.delete(mapKey);
+  }));
+  return next;
+}
 
 const cacheMetricsTimer = setInterval(() => {
   const stats = analysisCache.getStats();
@@ -599,7 +622,7 @@ let aiEngineHealthy = true;
 const aiEngineHealthTimer = setInterval(async () => {
   const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
   try {
-    const resp = await fetchWithTimeout(`${baseUrl}/health`, {}, 5000);
+    const resp = await fetchWithTimeout(`${baseUrl}/health`, { validate: false }, 5000);
     if (resp.ok && !aiEngineHealthy) {
       console.log('≡ƒƒó AI Engine recovered ΓÇö clearing mock cache entries');
       analysisCache.clearMockEntries();
@@ -718,9 +741,10 @@ app.post('/api/user/settings', requireApiKey, express.json(), async (req, res) =
 });
 
 // 🚀 Route: Stream AI Review (SSE)
-app.post('/api/review/stream', requireApiKey, requireJsonContentType, llmAnalysisLimiter, streamReview);
+app.post('/api/review/stream', requireApiKey, requireJsonContentType, concurrencyThrottleMiddleware, llmAnalysisLimiter, streamReview);
 // ≡ƒƒó Route: GitHub Import & AI Review
 app.post('/api/analyze', requireApiKey, requireJsonContentType, idempotencyMiddleware, llmAnalysisLimiter, async (req, res) => {
+app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrottleMiddleware, llmAnalysisLimiter, async (req, res) => {
   let { repoUrl, company = 'General', language = 'English', model, temperature = 0.7,
      maxTokens = 2048, systemPrompt = '', batchSize = 5, githubToken
    } = req.body;
@@ -904,47 +928,52 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, idempotencyMiddl
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize, repositoryContext })
         });
-        
+
         if (aiResponse.ok) {
           reviewResult = await aiResponse.json();
           reviewResult._mock = false;
         } else {
           throw new Error('AI engine responded with error');
-      console.log(`≡ƒôü Found ${files.length} valid source files. Checking cache...`);
-
-      // 1.3. Scan files for prompt injection patterns
-      const fileWarnings = [];
-      for (const file of files) {
-        const fileScanWarnings = scanFileContentForWarnings(file.content);
-        for (const warning of fileScanWarnings) {
-          fileWarnings.push({ file: file.name, warning });
         }
-      }
-      if (fileWarnings.length > 0) {
-        console.warn(`ΓÜá∩╕Å Found ${fileWarnings.length} potential prompt injection patterns across ${files.length} files`);
-      }
-
-      // 1.5. Check analysis cache to avoid redundant LLM calls for identical analyses
-      const CONFIG_FILENAME = '.codereviewer.yml';
-      const scrubbedFiles = files
-        .filter(f => f.name !== CONFIG_FILENAME)
-        .map(file => ({
-        ...file,
-        content: scrubRepositoryPayload(file.content)
-      }));
-
-      const cacheKey = analysisCache.generateKey(repoUrl, scrubbedFiles, { model, language, company, systemPrompt: validatedPrompt, temperature, maxTokens, batchSize });
-      let cacheHit = !!analysisCache.get(cacheKey);
-      if (cacheHit) {
-        console.log(`🎯 Using cached analysis result for this repository and configuration`);
+      } catch (err) {
+        console.warn('⚠️ FastAPI engine error, falling back...');
       }
 
-      let reviewResult = await analysisCache.getOrSet(cacheKey, async () => {
-        // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
+      if (!reviewResult) {
+        console.log(`📁 Found ${files.length} valid source files. Checking cache...`);
+
+        const fileWarnings = [];
+        for (const file of files) {
+          const fileScanWarnings = scanFileContentForWarnings(file.content);
+          for (const warning of fileScanWarnings) {
+            fileWarnings.push({ file: file.name, warning });
+          }
+        }
+        if (fileWarnings.length > 0) {
+          console.warn(`⚠️ Found ${fileWarnings.length} potential prompt injection patterns across ${files.length} files`);
+        }
+
+        const CONFIG_FILENAME = '.codereviewer.yml';
+        const scrubbedFiles = files
+          .filter(f => f.name !== CONFIG_FILENAME)
+          .map(file => ({
+          ...file,
+          content: scrubRepositoryPayload(file.content)
+        }));
+
+        const cacheKey = analysisCache.generateKey(repoUrl, scrubbedFiles, { model, language, company, systemPrompt: validatedPrompt, temperature, maxTokens, batchSize });
+        let cacheHit = !!analysisCache.get(cacheKey);
+        if (cacheHit) {
+          console.log(`🎯 Using cached analysis result for this repository and configuration`);
+        }
+
+        reviewResult = await analysisCache.getOrSet(cacheKey, async () => {
+          // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
         const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         try {
           const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+            validate: false,
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
             body: JSON.stringify({ files: scrubbedFiles, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
@@ -1055,6 +1084,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, idempotencyMiddl
         try {
           const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
         const splitResp = await fetchWithTimeout(`${baseUrl}/api/rag/split`, {
+          validate: false,
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
           body: JSON.stringify({ files: storedFiles, repo_url: repoUrl })
@@ -1066,6 +1096,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, idempotencyMiddl
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
               const ingestResp = await fetchWithTimeout(`${baseUrl}/api/rag/ingest`, {
+                validate: false,
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '', 'x-rag-ingest-key': process.env.RAG_INGEST_KEY || '' },
                 body: JSON.stringify({ repo_url: repoUrl, chunks })
@@ -1075,6 +1106,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, idempotencyMiddl
                 // Post-ingestion verification: check chunks are stored
                 try {
                   const verifyResp = await fetchWithTimeout(`${baseUrl}/api/rag/chunks`, {
+                    validate: false,
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
                     body: JSON.stringify({ repo_url: repoUrl, limit: 1, offset: 0 })
@@ -1273,6 +1305,7 @@ if (reviewResult?.fileReviews) {
       }
 
       return res.json(responseObject);
+      }
 
     } catch (err) {
       console.error(err);
@@ -1282,7 +1315,7 @@ if (reviewResult?.fileReviews) {
 });
 
 // ≡ƒƒó Route: Direct File Analysis (for VS Code extension and single-file use cases)
-app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysisLimiter, async (req, res) => {
+app.post('/api/analyze-file', requireApiKey, requireJsonContentType, concurrencyThrottleMiddleware, llmAnalysisLimiter, async (req, res) => {
   try {
     let { files, company = 'General', language = 'English', model, temperature = 0.7, maxTokens = 2048, systemPrompt = '', batchSize = 5 } = req.body;
 
@@ -1343,6 +1376,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysis
     let reviewResult;
     try {
       const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+        validate: false,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
         body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
@@ -1438,6 +1472,23 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
     return res.status(400).json({ error: err.message });
   }
 
+  // Validate all history messages for prompt injection, not just the current message
+  if (Array.isArray(history) && history.length > 0) {
+    for (const entry of history) {
+      if (entry && entry.content) {
+        try {
+          validatePrompt(entry.content);
+        } catch (err) {
+          return res.status(400).json({ error: `History contains prohibited content: ${err.message}` });
+        }
+      }
+    }
+    // Enforce message budget — limit history to 20 messages to prevent replay attacks
+    if (history.length > 20) {
+      history = history.slice(-20);
+    }
+  }
+
   // Use reviewQueue to serialize requests per session, preventing
   // lost-update race conditions when multiple messages arrive concurrently
   // for the same session (see issue #746). Session ownership verification
@@ -1491,6 +1542,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
       try {
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         const aiResponse = await fetchWithTimeout(`${baseUrl}/chat`, {
+          validate: false,
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
           body: JSON.stringify({
@@ -1542,6 +1594,7 @@ app.post('/api/rag/query', requireApiKey, async (req, res) => {
   try {
     const baseUrl = aiEngineUrl.replace(/\/+$/, '');
     const aiResponse = await fetchWithTimeout(`${baseUrl}/api/rag/query`, {
+      validate: false,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
       body: JSON.stringify({ question, repo_url: repoUrl })
@@ -1732,6 +1785,7 @@ app.post('/api/webhook', webhookLimiter, webhookRateLimiter, idempotencyMiddlewa
         const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         const aiResponse = await fetchWithTimeout(`${baseUrl}/chat-inline`, {
+          validate: false,
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
           body: JSON.stringify({
@@ -1803,11 +1857,8 @@ app.post('/api/webhook', webhookLimiter, webhookRateLimiter, idempotencyMiddlewa
     if (redisClient) {
       isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
     } else {
-      const existing = await dedupStore.get(deliveryDedupKey);
-      isDuplicate = existing ? 0 : 1;
-      if (isDuplicate) {
-        await dedupStore.set(deliveryDedupKey, Date.now().toString(), DELIVERY_REDIS_TTL * 1000);
-      }
+      const exists = await dedupStore.checkAndSet(deliveryDedupKey, Date.now().toString(), DELIVERY_REDIS_TTL * 1000);
+      isDuplicate = exists ? 0 : 1;
     }
     if (isDuplicate === 0) {
       console.log(`ΓÅ¡∩╕Å Skipping duplicate webhook delivery: ${deliveryId}`);
@@ -1841,17 +1892,7 @@ app.post('/api/webhook', webhookLimiter, webhookRateLimiter, idempotencyMiddlewa
         }
       } else {
         const mapKey = `${shaDedupKey}:${headSha}`;
-        shaAlreadyReviewed = shaDedupMemoryMap.has(mapKey) ? 1 : 0;
-        if (!shaAlreadyReviewed) {
-          // Enforce max size cap with oldest-entry eviction
-          if (shaDedupMemoryMap.size >= SHA_DEDUP_MAX_SIZE) {
-            const oldestKey = shaDedupMemoryMap.keys().next().value;
-            if (oldestKey !== undefined) {
-              shaDedupMemoryMap.delete(oldestKey);
-            }
-          }
-          shaDedupMemoryMap.set(mapKey, Date.now());
-        }
+        shaAlreadyReviewed = (await checkAndSetSha(mapKey)) ? 1 : 0;
       }
       if (shaAlreadyReviewed) {
         console.log(`ΓÅ¡∩╕Å Already reviewed commit ${headSha.substring(0,7)} for PR #${pullNumber}`);
@@ -2214,6 +2255,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
 
       const baseUrl = aiEngineUrl.replace(/\/+$/, '');
       const aiResponse = await fetchWithTimeout(`${baseUrl}/review-diff`, {
+        validate: false,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
         body: JSON.stringify({ files: filesToReview, security_mode: securityMode, custom_prompt: customPrompt, custom_rules: customRules })
@@ -2226,7 +2268,9 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
         } catch (parseErr) {
           console.warn('ΓÜá∩╕Å AI engine returned HTTP 200 with malformed (non-JSON) body:', parseErr.message);
         }
-        if (result && Array.isArray(result.comments)) {
+        if (result && result.status === 'error') {
+          console.error(`Γ¥î ALERT: AI Engine review returned error status for ${owner}/${repo}#${pullNumber}. Review blocked from auto-approval.`);
+        } else if (result && Array.isArray(result.comments)) {
           
           // Map body to message for categorizeFinding
           result.comments.forEach(c => { c.message = c.body; });
@@ -2289,6 +2333,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     const truncatedDiff = diff.length > 15000 ? diff.substring(0, 15000) + '\n...[Diff truncated]' : diff;
     
     const summaryResponse = await fetchWithTimeout(`${baseUrl}/summarize-pr`, {
+      validate: false,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
       body: JSON.stringify({ diff: truncatedDiff })
@@ -2846,6 +2891,14 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
   }
 });
 
+async function verifyAnalyticsOwnership(recordId, clientId) {
+  const record = await Analytics.findOne({ _id: recordId, clientId });
+  if (!record) {
+    return null;
+  }
+  return record;
+}
+
 app.get("/api/review-history", requireApiKey, async (req, res) => {
 
     try {
@@ -2925,16 +2978,13 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
           return res.status(400).json({ error: 'Invalid ID format.' });
         }
 
-        const first = await Analytics.findOne({ _id: req.params.id1, clientId: req.clientId });
-
-        const second = await Analytics.findOne({ _id: req.params.id2, clientId: req.clientId });
+        const first = await verifyAnalyticsOwnership(req.params.id1, req.clientId);
+        const second = await verifyAnalyticsOwnership(req.params.id2, req.clientId);
 
         if (!first || !second) {
-
             return res.status(404).json({
                 error: "Review not found."
             });
-
         }
 
         res.json({

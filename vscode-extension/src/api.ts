@@ -25,13 +25,17 @@ export async function reviewFileContent(
 
   const headers = buildRequestHeaders(apiKey);
 
+  // Build outside the try so an oversized file throws a clear error
+  // instead of being mislabeled as a network failure.
+  const requestBody = JSON.stringify(buildRequestBody(fileName, content));
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
     const response = await fetch(`${apiUrl}/api/analyze-file`, {
       method: "POST",
       headers,
-      body: JSON.stringify(buildRequestBody(fileName, content)),
+      body: requestBody,
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -44,7 +48,16 @@ export async function reviewFileContent(
       };
     }
 
-    const data = (await response.json()) as BackendResponse;
+    let data: BackendResponse;
+    try {
+      data = (await response.json()) as BackendResponse;
+    } catch {
+      const raw = await response.text().catch(() => "");
+      return {
+        success: false,
+        error: `Backend returned a non-JSON response (HTTP ${response.status}): ${raw.slice(0, 200)}`,
+      };
+    }
     console.log("RepoSage API response:", data);
     return {
       success: true,
