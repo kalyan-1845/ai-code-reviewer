@@ -61,6 +61,31 @@ def _language_key_for_extension(filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     return _EXTENSION_TO_LANGUAGE.get(ext, ext)
 
+def _escape_markdown_backticks(text: str) -> str:
+    """
+    Escape backtick sequences in text to prevent breaking GitHub markdown code fences.
+    Replaces triple backticks (```) with escaped versions so they're rendered literally
+    instead of interpreted as markdown code block delimiters.
+    """
+    if not isinstance(text, str):
+        return text
+    return text.replace("```", "`\\`\\`")
+
+def _escape_review_backticks(review: dict) -> dict:
+    """Recursively escape backticks in all description/suggestion fields of a review."""
+    if not isinstance(review, dict):
+        return review
+
+    result = {}
+    for key, value in review.items():
+        if key in ("description", "suggestion") and isinstance(value, str):
+            result[key] = _escape_markdown_backticks(value)
+        elif isinstance(value, list):
+            result[key] = [_escape_review_backticks(item) if isinstance(item, dict) else item for item in value]
+        else:
+            result[key] = value
+    return result
+
 def _rule_key(finding_type: str) -> str:
     """
     Normalize an LLM-generated finding `type` (free text, e.g.
@@ -980,7 +1005,8 @@ You must obey the JSON output format above."""
                     sanitized = sanitize_ai_output(batch_result["complexityHeatmap"])
                     combined_result["complexityHeatmap"] = sanitize_mermaid_code(sanitized)
                 if "generatedReadme" in batch_result:
-                    combined_result["generatedReadme"] = sanitize_ai_output(batch_result["generatedReadme"])
+                    readme = sanitize_ai_output(batch_result["generatedReadme"])
+                    combined_result["generatedReadme"] = _escape_markdown_backticks(readme)
 
             if "fileReviews" in batch_result:
                 reviews = batch_result["fileReviews"]
@@ -988,9 +1014,11 @@ You must obey the JSON output format above."""
                     for entry in reviews:
                         file_path = entry.get("filePath", "unknown")
                         review = {k: entry.get(k, []) for k in ("bugs", "security", "optimization", "styling", "impact", "tests", "architecture", "historical_bugs")}
+                        review = _escape_review_backticks(review)
                         _merge_review(combined_result, file_path, review, idx, review_config)
                 elif isinstance(reviews, dict):
                     for file_path, review in reviews.items():
+                        review = _escape_review_backticks(review)
                         _merge_review(combined_result, file_path, review, idx, review_config)
             
             if "refactoring_suggestions" in batch_result:
