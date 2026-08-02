@@ -103,7 +103,7 @@ export function formatReviewToMarkdown(data: BackendResponse): string {
     md += `## ${file}\n\n`;
     for (const [category, items] of Object.entries({ security: review.security, bugs: review.bugs, optimization: review.optimization, styling: review.styling })) {
       if (!items || items.length === 0) continue;
-      md += `### ${category.charAt(0).toUpperCase() + category.slice(1)}\n\n`;
+      md += `### ${category[0].toUpperCase() + category.slice(1)}\n\n`;
       for (const item of items) {
         md += `- **Line ${item.line}** - ${item.type}: ${item.description}\n`;
         if (item.suggestion) md += `  - *Suggestion:* ${item.suggestion}\n`;
