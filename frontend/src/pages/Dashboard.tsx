@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
+import { getSessionOwnerToken, setSessionOwnerToken } from '../utils/sessionToken';
 import { useStore, ChatMessage } from '../store/useStore';
 import SettingsModal from "../components/SettingsModal";
 import DashboardFooter from "../components/DashboardFooter";
@@ -185,6 +187,7 @@ export interface AuditHistoryEntry {
 export default function Dashboard() {
   const { reviewText, isStreaming, error: streamError } = useStreamingReview();
   const [showSettings, setShowSettings] = useState(false);
+  const handleCloseSettings = useCallback(() => setShowSettings(false), []);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
@@ -720,6 +723,22 @@ export default function Dashboard() {
     e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
 
+    // Basic client-side scan of history for dangerous patterns
+    if (Array.isArray(chatHistory) && chatHistory.length > 0) {
+      const lowMsg = chatInput.toLowerCase();
+      for (const entry of chatHistory) {
+        if (entry?.content) {
+          for (const phrase of ['ignore all instructions', 'ignore previous', 'forget everything', 'you are now', 'new instructions']) {
+            if (entry.content.toLowerCase().includes(phrase) || lowMsg.includes(phrase)) {
+              setApiError('Message blocked: prohibited content detected.');
+              setIsChatLoading(false);
+              return;
+            }
+          }
+        }
+      }
+    }
+
     const userMessage = chatInput;
     setChatInput("");
 
@@ -746,7 +765,7 @@ export default function Dashboard() {
             temperature: chatAiSettings.temperature ?? 0.4,
             maxTokens: chatAiSettings.maxTokens ?? 2048,
             sessionId,
-            sessionOwnerToken: localStorage.getItem("sessionOwnerToken") || "",
+            sessionOwnerToken: getSessionOwnerToken(),
             useRag,
             systemPrompt: chatAiSettings.systemPrompt ?? "",
           }),
@@ -758,14 +777,10 @@ export default function Dashboard() {
 
       const data = await response.json();
       const sources = data.sources || [];
-      setChatHistory((prev) => {
-        const updated = truncateChatHistory([
-          ...prev,
-          { role: "assistant" as const, content: data.response ?? data.message ?? "", sources: sources.length > 0 ? sources : undefined },
-        ]);
-        if (!safeSetItem(CHAT_HISTORY_KEY, JSON.stringify(updated))) setStorageWarning(true);
-        return updated;
-      });
+      setChatHistory((prev) => truncateChatHistory([
+        ...prev,
+        { role: "assistant" as const, content: data.response ?? data.message ?? "", sources: sources.length > 0 ? sources : undefined },
+      ]));
     } catch (err: unknown) {
       console.error(err);
       let errMsg = (err instanceof Error ? err.message : String(err)) || "Chat service unavailable.";
@@ -927,8 +942,6 @@ export default function Dashboard() {
     setApiError(null);
     setAnalysisResult(null);
     setSelectedFile(null);
-    setChatHistory([]);
-    try { localStorage.removeItem('reposage_chat_history'); } catch {};
 
     setIsLoading(true);
 
@@ -956,12 +969,14 @@ export default function Dashboard() {
       }
 
       const data: BackendResponse = await response.json();
+      setChatHistory([]);
+      try { localStorage.removeItem('reposage_chat_history'); } catch {};
       const currentSessionId = data.sessionPersisted === true ? data.sessionId ?? null : null;
       setSessionId(currentSessionId);
       await saveReport(data, repoUrl, currentSessionId);
       setAnalysisResult(data);
       if (data.sessionPersisted === true && data.sessionOwnerToken) {
-        localStorage.setItem("sessionOwnerToken", data.sessionOwnerToken);
+        setSessionOwnerToken(data.sessionOwnerToken);
       }
       persistAuditHistory(data);
       setChatHistory([]);
@@ -1007,7 +1022,7 @@ export default function Dashboard() {
       }
       URL.revokeObjectURL(url);
     }
-  };
+  }, [analysisResult]);
 
   const chatInputEmpty = !chatInput.trim();
 
@@ -3200,7 +3215,7 @@ export default function Dashboard() {
         </section>
       </main>
       {showSettings && (
-        <SettingsModal onClose={() => setShowSettings(false)} />
+        <SettingsModal onClose={handleCloseSettings} />
       )}
       {showShortcutsHelp && <KeyboardShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
 

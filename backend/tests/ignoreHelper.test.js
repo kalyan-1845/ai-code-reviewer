@@ -35,6 +35,7 @@ test('isIgnored should match directory, extension, and wildcard patterns correct
   assert.equal(isIgnored('/app/dist/main.js', patterns, baseDir), true);
   assert.equal(isIgnored('/app/temp/data.txt', patterns, baseDir), true);
   assert.equal(isIgnored('/app/temp/sub/data.txt', patterns, baseDir), false);
+  assert.equal(isIgnored('/outside/app/error.log', patterns, baseDir), false);
 });
 
 test('readFilesRecursively should list valid files and respect ignore list', () => {

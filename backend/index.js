@@ -213,7 +213,11 @@ const csrfTokenStore = redisClient ? {
     return (await redisClient.del(this._prefix + token)) > 0;
   },
   async size() {
-    const keys = await redisClient.keys(this._prefix + '*');
+    const keys = [];
+    const stream = redisClient.scanStream({ match: this._prefix + '*', count: 500 });
+    for await (const batch of stream) {
+      keys.push(...batch);
+    }
     return keys.length;
   },
   async cleanup() {
@@ -312,7 +316,6 @@ async function csrfProtection(req, res, next) {
       try {
         const session = await Session.findOne({ sessionId }).select('csrfToken').lean();
         if (session && session.csrfToken) {
-          if (!session?.csrfToken) { return next(); }
           const storedBuf = Buffer.from(String(session.csrfToken));
           const headerBuf = Buffer.from(String(headerToken || ''));
           if (storedBuf.length === headerBuf.length && crypto.timingSafeEqual(storedBuf, headerBuf)) {
@@ -475,10 +478,8 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Utility: fetch with configurable timeout using AbortController and optional SSRF check
 async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
-  if (options.validate !== false && options.validate !== true) {
-    // default: skip validation for explicitly trusted URLs; validate only when requested
-  }
-  if (options.validate === true) {
+  const validate = options.validate !== false;
+  if (validate) {
     const safe = await isSafeUrl(url);
     if (!safe.valid) {
       throw new Error(`SSRF validation failed: ${safe.reason}`);
@@ -586,7 +587,28 @@ const DELIVERY_REDIS_TTL = 300;
 
 // In-memory fallback for webhook SHA dedup when Redis is unavailable
 const shaDedupMemoryMap = new Map();
+const shaDedupLocks = new Map();
 const SHA_DEDUP_MAX_SIZE = 10000;
+
+// Per-key mutex for atomic SHA dedup check-and-set to prevent TOCTOU races
+async function checkAndSetSha(mapKey) {
+  while (shaDedupLocks.has(mapKey)) {
+    await shaDedupLocks.get(mapKey);
+  }
+  const next = (async () => {
+    if (shaDedupMemoryMap.has(mapKey)) return true;
+    if (shaDedupMemoryMap.size >= SHA_DEDUP_MAX_SIZE) {
+      const oldestKey = shaDedupMemoryMap.keys().next().value;
+      if (oldestKey !== undefined) shaDedupMemoryMap.delete(oldestKey);
+    }
+    shaDedupMemoryMap.set(mapKey, Date.now());
+    return false;
+  })();
+  shaDedupLocks.set(mapKey, next.finally(() => {
+    if (shaDedupLocks.get(mapKey) === next) shaDedupLocks.delete(mapKey);
+  }));
+  return next;
+}
 
 const cacheMetricsTimer = setInterval(() => {
   const stats = analysisCache.getStats();
@@ -601,7 +623,7 @@ let aiEngineHealthy = true;
 const aiEngineHealthTimer = setInterval(async () => {
   const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
   try {
-    const resp = await fetchWithTimeout(`${baseUrl}/health`, {}, 5000);
+    const resp = await fetchWithTimeout(`${baseUrl}/health`, { validate: false }, 5000);
     if (resp.ok && !aiEngineHealthy) {
       console.log('≡ƒƒó AI Engine recovered ΓÇö clearing mock cache entries');
       analysisCache.clearMockEntries();
@@ -952,6 +974,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         try {
           const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+            validate: false,
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
             body: JSON.stringify({ files: scrubbedFiles, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
@@ -1062,6 +1085,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
         try {
           const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
         const splitResp = await fetchWithTimeout(`${baseUrl}/api/rag/split`, {
+          validate: false,
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
           body: JSON.stringify({ files: storedFiles, repo_url: repoUrl })
@@ -1073,6 +1097,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
               const ingestResp = await fetchWithTimeout(`${baseUrl}/api/rag/ingest`, {
+                validate: false,
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '', 'x-rag-ingest-key': process.env.RAG_INGEST_KEY || '' },
                 body: JSON.stringify({ repo_url: repoUrl, chunks })
@@ -1082,6 +1107,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
                 // Post-ingestion verification: check chunks are stored
                 try {
                   const verifyResp = await fetchWithTimeout(`${baseUrl}/api/rag/chunks`, {
+                    validate: false,
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
                     body: JSON.stringify({ repo_url: repoUrl, limit: 1, offset: 0 })
@@ -1280,6 +1306,7 @@ if (reviewResult?.fileReviews) {
       }
 
       return res.json(responseObject);
+      }
 
     } catch (err) {
       console.error(err);
@@ -1350,6 +1377,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, concurrency
     let reviewResult;
     try {
       const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+        validate: false,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
         body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize })
@@ -1445,6 +1473,23 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
     return res.status(400).json({ error: err.message });
   }
 
+  // Validate all history messages for prompt injection, not just the current message
+  if (Array.isArray(history) && history.length > 0) {
+    for (const entry of history) {
+      if (entry && entry.content) {
+        try {
+          validatePrompt(entry.content);
+        } catch (err) {
+          return res.status(400).json({ error: `History contains prohibited content: ${err.message}` });
+        }
+      }
+    }
+    // Enforce message budget — limit history to 20 messages to prevent replay attacks
+    if (history.length > 20) {
+      history = history.slice(-20);
+    }
+  }
+
   // Use reviewQueue to serialize requests per session, preventing
   // lost-update race conditions when multiple messages arrive concurrently
   // for the same session (see issue #746). Session ownership verification
@@ -1498,6 +1543,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
       try {
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         const aiResponse = await fetchWithTimeout(`${baseUrl}/chat`, {
+          validate: false,
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
           body: JSON.stringify({
@@ -1549,6 +1595,7 @@ app.post('/api/rag/query', requireApiKey, async (req, res) => {
   try {
     const baseUrl = aiEngineUrl.replace(/\/+$/, '');
     const aiResponse = await fetchWithTimeout(`${baseUrl}/api/rag/query`, {
+      validate: false,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
       body: JSON.stringify({ question, repo_url: repoUrl })
@@ -1739,6 +1786,7 @@ app.post('/api/webhook', webhookLimiter, webhookRateLimiter, idempotencyMiddlewa
         const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         const aiResponse = await fetchWithTimeout(`${baseUrl}/chat-inline`, {
+          validate: false,
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
           body: JSON.stringify({
@@ -1810,11 +1858,8 @@ app.post('/api/webhook', webhookLimiter, webhookRateLimiter, idempotencyMiddlewa
     if (redisClient) {
       isDuplicate = await redisClient.setnx(deliveryDedupKey, Date.now().toString());
     } else {
-      const existing = await dedupStore.get(deliveryDedupKey);
-      isDuplicate = existing ? 0 : 1;
-      if (isDuplicate) {
-        await dedupStore.set(deliveryDedupKey, Date.now().toString(), DELIVERY_REDIS_TTL * 1000);
-      }
+      const exists = await dedupStore.checkAndSet(deliveryDedupKey, Date.now().toString(), DELIVERY_REDIS_TTL * 1000);
+      isDuplicate = exists ? 0 : 1;
     }
     if (isDuplicate === 0) {
       console.log(`ΓÅ¡∩╕Å Skipping duplicate webhook delivery: ${deliveryId}`);
@@ -1848,17 +1893,7 @@ app.post('/api/webhook', webhookLimiter, webhookRateLimiter, idempotencyMiddlewa
         }
       } else {
         const mapKey = `${shaDedupKey}:${headSha}`;
-        shaAlreadyReviewed = shaDedupMemoryMap.has(mapKey) ? 1 : 0;
-        if (!shaAlreadyReviewed) {
-          // Enforce max size cap with oldest-entry eviction
-          if (shaDedupMemoryMap.size >= SHA_DEDUP_MAX_SIZE) {
-            const oldestKey = shaDedupMemoryMap.keys().next().value;
-            if (oldestKey !== undefined) {
-              shaDedupMemoryMap.delete(oldestKey);
-            }
-          }
-          shaDedupMemoryMap.set(mapKey, Date.now());
-        }
+        shaAlreadyReviewed = (await checkAndSetSha(mapKey)) ? 1 : 0;
       }
       if (shaAlreadyReviewed) {
         console.log(`ΓÅ¡∩╕Å Already reviewed commit ${headSha.substring(0,7)} for PR #${pullNumber}`);
@@ -2221,6 +2256,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
 
       const baseUrl = aiEngineUrl.replace(/\/+$/, '');
       const aiResponse = await fetchWithTimeout(`${baseUrl}/review-diff`, {
+        validate: false,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
         body: JSON.stringify({ files: filesToReview, security_mode: securityMode, custom_prompt: customPrompt, custom_rules: customRules })
@@ -2233,7 +2269,9 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
         } catch (parseErr) {
           console.warn('ΓÜá∩╕Å AI engine returned HTTP 200 with malformed (non-JSON) body:', parseErr.message);
         }
-        if (result && Array.isArray(result.comments)) {
+        if (result && result.status === 'error') {
+          console.error(`Γ¥î ALERT: AI Engine review returned error status for ${owner}/${repo}#${pullNumber}. Review blocked from auto-approval.`);
+        } else if (result && Array.isArray(result.comments)) {
           
           // Map body to message for categorizeFinding
           result.comments.forEach(c => { c.message = c.body; });
@@ -2296,6 +2334,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     const truncatedDiff = diff.length > 15000 ? diff.substring(0, 15000) + '\n...[Diff truncated]' : diff;
     
     const summaryResponse = await fetchWithTimeout(`${baseUrl}/summarize-pr`, {
+      validate: false,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
       body: JSON.stringify({ diff: truncatedDiff })

@@ -15,16 +15,25 @@ export function detectNPlusOne(content, fileName = '') {
     }
 
     if (inLoop) {
-      braceDepth += (line.match(/\{/g) || []).length;
-      braceDepth -= (line.match(/\}/g) || []).length;
+      // Strip string literals, template literals and comments so braces
+      // inside them do not affect the block-depth tracking.
+      const code = line
+        .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+        .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+        .replace(/`(?:[^`\\]|\\.)*`/g, '``')
+        .replace(/\/\/.*$/, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+      braceDepth += (code.match(/\{/g) || []).length;
+      braceDepth -= (code.match(/\}/g) || []).length;
 
       const isOrmCall = /(?:\.find(?:Many|One|All)?|\.query|\.execute|\.select|\.insert|\.update|prisma\.[a-zA-Z]+\.[a-zA-Z]+)\s*\(/.test(line);
-      
+
       if (isOrmCall) {
         return true;
       }
 
-      if (braceDepth <= 0 && line.includes('}')) {
+      if (braceDepth <= 0 && code.includes('}')) {
         inLoop = false;
       }
     }

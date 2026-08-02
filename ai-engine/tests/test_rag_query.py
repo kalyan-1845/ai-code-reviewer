@@ -113,3 +113,20 @@ class TestQueryChunks:
             mock_collection.query.assert_called_once()
             call_kwargs = mock_collection.query.call_args[1]
             assert call_kwargs["n_results"] == 3
+
+    def test_handles_none_distance(self):
+        with patch('rag.embed_texts') as mock_embed_texts, \
+             patch('rag._get_collection') as mock_get_collection:
+            mock_embed_texts.return_value = [[0.1] * 10]
+            mock_collection = MagicMock()
+            mock_collection.count.return_value = 10
+            mock_collection.query.return_value = {
+                "ids": [["c1"]],
+                "documents": [["doc1"]],
+                "metadatas": [[{}]],
+                "distances": [[None]],
+            }
+            mock_get_collection.return_value = mock_collection
+
+            result = query_chunks("test", n_results=1)
+            assert result[0]["similarity_score"] is None

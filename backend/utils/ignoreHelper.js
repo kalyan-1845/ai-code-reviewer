@@ -49,6 +49,20 @@ import picomatch from 'picomatch';
 
 // 🟢 Helper to check if a path matches any ignore pattern
 export function isIgnored(filePath, patterns, baseDir) {
+  if (!patterns || !Array.isArray(patterns)) return false;
+  const relative = path.relative(baseDir, filePath).replace(/\\/g, '/');
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return false;
+  for (const pattern of patterns) {
+    if (typeof pattern !== 'string') continue;
+    let cleanPattern = pattern.startsWith('/') ? pattern.slice(1) : pattern;
+    if (!cleanPattern) continue;
+    if (cleanPattern.endsWith('/')) {
+      if (relative === cleanPattern.slice(0, -1) || relative.startsWith(cleanPattern)) {
+        return true;
+      }
+    } else if (cleanPattern.startsWith('*.')) {
+      if (relative.endsWith(cleanPattern.slice(1))) {
+        return true;
   if (!patterns || !Array.isArray(patterns) || patterns.length === 0) return false;
   const normalizedFilePath = filePath.replace(/\\/g, '/');
   const normalizedBaseDir = baseDir.replace(/\\/g, '/');

@@ -18,18 +18,16 @@ class AsyncLock {
     this._resolve = null;
   }
   async acquire(fn) {
-    while (this._promise) {
-      await this._promise;
-    }
-    this._promise = new Promise(resolve => { this._resolve = resolve; });
-    try {
-      return await fn();
-    } finally {
-      const resolve = this._resolve;
-      this._promise = null;
-      this._resolve = null;
-      if (resolve) resolve();
-    }
+    // Chain onto the previous run instead of polling with a while-loop.
+    // Promise chaining is atomic and provides mutual exclusion without a
+    // busy-wait that churns microtasks.
+    const prev = this._promise || Promise.resolve();
+    const run = prev.then(async () => fn());
+    this._promise = run.then(
+      () => { this._promise = null; },
+      () => { this._promise = null; }
+    );
+    return run;
   }
 
   isFree() {
@@ -48,7 +46,9 @@ class AnalysisCache {
     this._locks = new Map();
     this._repoUrlIndex = new Map();
     this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0, evictions: 0 };
-    this._startSweeper();
+    // The sweeper is started lazily on first set() and stops itself when the
+    // cache empties, so an idle instance never keeps a live interval (and a
+    // garbage-collected instance cannot leak a timer through the closure).
   }
 
   /**
@@ -71,7 +71,10 @@ class AnalysisCache {
       .createHash('sha256')
       .update(
         files
-          .map(f => `${f.name}:${crypto.createHash('sha256').update(f.content).digest('hex')}`)
+          .map(f => {
+            const content = typeof f.content === 'string' ? f.content : String(f.content ?? '');
+            return `${f.name}:${crypto.createHash('sha256').update(content).digest('hex')}`;
+          })
           .sort()
           .join('|')
       )
@@ -157,6 +160,7 @@ class AnalysisCache {
       }
       this._repoUrlIndex.get(normalizedRepoUrl).add(key);
     }
+    this._startSweeper();
     const qualityLabel = options.isMock ? '⚠️ MOCK' : '💾';
     console.log(`${qualityLabel} Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions, ttl=${ttl}ms)`);
   }
@@ -245,7 +249,7 @@ class AnalysisCache {
     const size = this.cache.size;
     this.cache.clear();
     this._repoUrlIndex.clear();
-    this._startSweeper();
+    // No restart here: the sweeper starts lazily again on the next set().
     console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
   }
 
@@ -284,6 +288,12 @@ class AnalysisCache {
         }
       }
       this._cleanupIdleLocks();
+      if (this.cache.size === 0) {
+        // Nothing left to sweep — release the interval so idle instances
+        // (or instances being garbage-collected without clear()) cannot
+        // keep a live timer via the sweeper closure.
+        this._stopSweeper();
+      }
     }, intervalMs);
     if (this._sweeper.unref) this._sweeper.unref();
   }

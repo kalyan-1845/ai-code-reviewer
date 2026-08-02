@@ -59,6 +59,7 @@
         "reposage.apiKey": {
           "type": "string",
           "default": "",
+          "editPresentation": "password",
           "description": "API Key for RepoSage backend"
         }
       }
