@@ -47,7 +47,7 @@ async function run() {
         }
       }
     }
-    const maxTokensInput = parseInt(core.getInput('max-tokens') || '4096', 10);
+    const maxTokensInput = parseInt(core.getInput('max-tokens', 10) || '4096', 10);
     const maxTokens = Number.isFinite(maxTokensInput) ? maxTokensInput : 4096;
     const autoApprove = core.getInput('auto-approve')?.toLowerCase() === 'true';
 
@@ -149,7 +149,7 @@ async function run() {
     const { files: parsedFiles } = parseDiff(diff);
     console.log(`📁 Found ${parsedFiles.length} files in PR diff.`);
 
-    const MAX_REVIEW_FILES = parseInt(core.getInput('max-review-files') || process.env.MAX_REVIEW_FILES || '50', 10);
+    const MAX_REVIEW_FILES = parseInt(core.getInput('max-review-files', 10) || process.env.MAX_REVIEW_FILES || '50', 10);
     let totalReviewableFiles = 0;
     
     let packageContext = '';
