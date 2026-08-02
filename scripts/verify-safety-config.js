@@ -10,7 +10,7 @@ function readJSON(filePath) {
 }
 
 const config = readJSON(path.join(rootDir, 'shared-safety-config.json'));
-const configPhrases = [...config.dangerous_phrases].sort();
+const configPhrases = [...config.dangerous_phrases].sort((a, b) => a - b);
 
 const implementations = {
   'backend/shared/dangerousPhrases.js': path.join(rootDir, 'backend/shared/dangerousPhrases.js'),
@@ -32,7 +32,7 @@ for (const [name, filePath] of Object.entries(implementations)) {
       !p.includes('/') &&
       !p.includes('\\')
     )
-    .sort();
+    .sort((a, b) => a - b);
 
   const onlyInFile = filePhrases.filter(p => !configPhrases.includes(p));
   const onlyInConfig = configPhrases.filter(p => !filePhrases.includes(p));
