@@ -1875,6 +1875,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
     if (action === 'opened' || action === 'synchronize') {
       const pullNumber = payload.pull_request.number;
       const headSha = payload.pull_request.head.sha;
+      const baseSha = payload.pull_request.base.sha;
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
       const reviewKey = `${owner}/${repo}/#${pullNumber}`;
@@ -2126,7 +2127,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   let aiIgnorePatterns = [];
   try {
     const { data: ignoreFile } = await octokit.rest.repos.getContent({
-      owner, repo, path: '.ai-ignore', ref: headSha
+      owner, repo, path: '.ai-ignore', ref: baseSha
     });
     const ignoreContent = Buffer.from(ignoreFile.content, 'base64').toString('utf8');
     aiIgnorePatterns = ignoreContent.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')).map(globToRegex);
@@ -2202,11 +2203,11 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     try {
       let customRulesResponse;
       try {
-        customRulesResponse = await octokit.rest.repos.getContent({ owner, repo, path: '.ai-reviewer.yml', ref: headSha });
+        customRulesResponse = await octokit.rest.repos.getContent({ owner, repo, path: '.ai-reviewer.yml', ref: baseSha });
       } catch (err) {
         if (err.status === 404) {
           try {
-            customRulesResponse = await octokit.rest.repos.getContent({ owner, repo, path: '.github/ai-reviewer.md', ref: headSha });
+            customRulesResponse = await octokit.rest.repos.getContent({ owner, repo, path: '.github/ai-reviewer.md', ref: baseSha });
           } catch (err2) {
             // Not found
           }
@@ -2237,7 +2238,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
           owner,
           repo,
           path: '.ai-reviewer.yml',
-          ref: headSha
+          ref: baseSha
         });
         const content = Buffer.from(configFile.content, 'base64').toString('utf8');
         const config = yaml.load(content);
@@ -2483,6 +2484,10 @@ The PR diff was too large to fully review by the AI engine. Some files were **no
   } else {
     console.log('≡ƒÄë No code issues or recommendations found. Adding label and posting approval...');
 
+    if (filesToReview.length === 0) {
+      console.warn("All files ignored by .ai-ignore — refusing auto-approve");
+      return;
+    }
     try {
       await octokit.rest.issues.addLabels({
         owner,
