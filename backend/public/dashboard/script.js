@@ -1,7 +1,8 @@
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await fetch('/api/roi');
-        const data = await response.json();
+        if (!response.ok) throw new Error("Request failed");
+const data = await response.json();
         
         // Update hero metrics
         document.getElementById('total-prs').textContent = data.aggregated.totalPrsReviewed;
