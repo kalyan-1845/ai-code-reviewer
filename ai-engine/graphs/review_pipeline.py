@@ -10,7 +10,10 @@ def route_reviewer(state: AgentState) -> str:
     return "synthesizer"
 
 
-def build_graph():
+def build_review_pipeline():
+    """
+    Builds the review pipeline LangGraph workflow with pre-LLM secret scrubbing middleware.
+    """
     builder = StateGraph(AgentState)
 
     builder.add_node("chunker", chunker_node)
@@ -34,4 +37,3 @@ def build_graph():
     builder.add_edge("synthesizer", END)
 
     return builder.compile()
-
