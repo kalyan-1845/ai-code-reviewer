@@ -7,3 +7,6 @@ class AgentState(TypedDict):
     current_index: int
     micro_reviews: List[str]
     final_review: str
+    security_flag: bool
+    security_reason: str
+

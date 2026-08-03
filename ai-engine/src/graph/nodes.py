@@ -1,6 +1,27 @@
 from typing import List, Dict, Any
 from src.graph.state import AgentState
 
+try:
+    from services.security_firewall import scan_diff
+except ImportError:
+    from ai_engine.services.security_firewall import scan_diff
+
+
+def sanitizer_node(state: AgentState) -> dict:
+    raw_diff = state.get("raw_diff", "")
+    is_safe, reason = scan_diff(raw_diff)
+    if not is_safe:
+        return {
+            "security_flag": True,
+            "security_reason": reason,
+            "final_review": reason
+        }
+    return {
+        "security_flag": False,
+        "security_reason": ""
+    }
+
+
 
 def chunker_node(state: AgentState) -> dict:
     raw_diff = state.get("raw_diff", "")
