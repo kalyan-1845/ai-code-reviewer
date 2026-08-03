@@ -36,7 +36,9 @@ const persistChatHistory = (history: ChatMessage[]) => {
     for (let i = trimmed.length - 1; i >= 0; i--) {
       totalChars += trimmed[i].content.length;
       if (totalChars > MAX_CHAT_CHARS) {
-        trimmed = trimmed.slice(i + 1);
+        // Keep at least the newest message even when it alone exceeds the cap;
+        // otherwise a single oversized AI response would wipe the whole history.
+        trimmed = trimmed.slice(Math.min(i + 1, trimmed.length - 1));
         break;
       }
     }
