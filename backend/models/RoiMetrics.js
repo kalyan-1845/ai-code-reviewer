@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
 
 const roiMetricsSchema = new mongoose.Schema({
+  clientId: {
+    type: String,
+    default: 'system',
+    index: true,
+  },
   repoName: {
     type: String,
     required: true,
@@ -25,9 +30,9 @@ const roiMetricsSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Static method to upsert metrics for a repository
-roiMetricsSchema.statics.recordPrReview = async function (repoName, commentsCount) {
+roiMetricsSchema.statics.recordPrReview = async function (clientId, repoName, commentsCount) {
   return await this.findOneAndUpdate(
-    { repoName },
+    { clientId, repoName },
     {
       $inc: {
         totalPrsReviewed: 1,
@@ -38,10 +43,10 @@ roiMetricsSchema.statics.recordPrReview = async function (repoName, commentsCoun
   );
 };
 
-roiMetricsSchema.statics.recordAcceptedSuggestion = async function (repoName) {
+roiMetricsSchema.statics.recordAcceptedSuggestion = async function (clientId, repoName) {
   // Assume each accepted suggestion saves ~15 minutes of developer time
   return await this.findOneAndUpdate(
-    { repoName },
+    { clientId, repoName },
     {
       $inc: {
         acceptedSuggestions: 1,
