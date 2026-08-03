@@ -16,7 +16,8 @@ def test_agent_state_types():
         "chunks": [],
         "current_index": 0,
         "micro_reviews": [],
-        "final_review": ""
+        "final_review": "",
+        "ast_context": ""
     }
     assert state["raw_diff"].startswith("diff --git")
 
@@ -28,7 +29,8 @@ def test_chunker_node():
         "chunks": [],
         "current_index": 0,
         "micro_reviews": [],
-        "final_review": ""
+        "final_review": "",
+        "ast_context": ""
     }
     res = chunker_node(state)
     assert len(res["chunks"]) == 2
@@ -42,7 +44,8 @@ def test_reviewer_node():
         "chunks": ["chunk 1", "chunk 2"],
         "current_index": 0,
         "micro_reviews": [],
-        "final_review": ""
+        "final_review": "",
+        "ast_context": ""
     }
     res1 = reviewer_node(state)
     assert len(res1["micro_reviews"]) == 1
@@ -61,7 +64,8 @@ def test_synthesizer_node():
         "chunks": ["chunk 1"],
         "current_index": 1,
         "micro_reviews": ["Review 1", "Review 2"],
-        "final_review": ""
+        "final_review": "",
+        "ast_context": ""
     }
     res = synthesizer_node(state)
     assert res["final_review"] == "Review 1\n\nReview 2"
@@ -73,7 +77,8 @@ def test_route_reviewer():
         "chunks": ["chunk 1", "chunk 2"],
         "current_index": 0,
         "micro_reviews": [],
-        "final_review": ""
+        "final_review": "",
+        "ast_context": ""
     }
     assert route_reviewer(state1) == "reviewer"
 
@@ -82,7 +87,8 @@ def test_route_reviewer():
         "chunks": ["chunk 1", "chunk 2"],
         "current_index": 2,
         "micro_reviews": [],
-        "final_review": ""
+        "final_review": "",
+        "ast_context": ""
     }
     assert route_reviewer(state2) == "synthesizer"
 
@@ -94,9 +100,26 @@ def test_build_graph_execution():
         "chunks": [],
         "current_index": 0,
         "micro_reviews": [],
-        "final_review": ""
+        "final_review": "",
+        "ast_context": ""
     }
     output = graph.invoke(initial_state)
     assert "final_review" in output
     assert len(output["micro_reviews"]) == 2
     assert output["current_index"] == 2
+
+
+def test_graph_ast_context_resolution():
+    graph = build_graph()
+    initial_state = {
+        "raw_diff": "diff --git a/service.py b/service.py\n+def process():\n+    res = fetch_external_user()\n+    return res",
+        "chunks": [],
+        "current_index": 0,
+        "micro_reviews": [],
+        "final_review": "",
+        "ast_context": ""
+    }
+    output = graph.invoke(initial_state)
+    assert "ast_context" in output
+    assert "Mocked context for fetched dependency: fetch_external_user" in output["ast_context"]
+

@@ -7,3 +7,5 @@ class AgentState(TypedDict):
     current_index: int
     micro_reviews: List[str]
     final_review: str
+    ast_context: str
+
