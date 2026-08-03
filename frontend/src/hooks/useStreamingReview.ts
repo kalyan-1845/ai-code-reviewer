@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { getApiKey } from '../utils/api';
 
 // Backend base URL is provided at runtime by config.js (__RUNTIME_API_URL__) or
 // at build time via VITE_API_URL. Same-origin default; no hardcoded dev URL.
@@ -22,7 +23,7 @@ export const useStreamingReview = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': sessionStorage.getItem('reposage_api_key') || '',
+          'x-api-key': getApiKey() || '',
         },
         body: isRequestInit ? (payload as RequestInit).body : JSON.stringify(payload),
       });

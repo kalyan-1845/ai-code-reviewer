@@ -3,7 +3,11 @@
 // URLs) keeps the app working when frontend and backend are served together and
 // prevents a hardcoded dev URL from leaking into production bundles.
 const API_BASE_URL = (window as any).__RUNTIME_API_URL__ || import.meta.env.VITE_API_URL || "";
-const API_KEY_STORAGE_KEY = "reposage_api_key";
+// Keep the shared backend API key in memory only, for the lifetime of the
+// page (#3675). Never persist it in sessionStorage/localStorage: a plaintext
+// copy in script-readable storage is exfiltratable by any XSS or browser
+// extension, and the shared key unlocks every /api endpoint.
+let apiKey: string | null = null;
 let sessionRequest: Promise<void> | null = null;
 let csrfToken: string | null = null;
 
@@ -85,11 +89,8 @@ const ensureApiSession = async () => {
       credentials: "include",
     }).then(async (response) => {
       if (response.status === 401) {
-        let apiKey = sessionStorage.getItem(API_KEY_STORAGE_KEY);
-
         if (!apiKey) {
           apiKey = await showPasswordDialog();
-          sessionStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
         }
 
         const loginResponse = await fetch(`${API_BASE_URL}/api/session`, {
@@ -101,7 +102,7 @@ const ensureApiSession = async () => {
         });
 
         if (!loginResponse.ok) {
-          sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+          apiKey = null;
           throw new Error("Invalid backend API key.");
         }
         const loginData = await loginResponse.json();
@@ -128,10 +129,12 @@ const ensureApiSession = async () => {
 };
 
 export const clearApiKey = () => {
-  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+  apiKey = null;
   sessionRequest = null;
   csrfToken = null;
 };
+
+export const getApiKey = (): string | null => apiKey;
 
 const getCsrfToken = (): string | null => {
   if (csrfToken) return csrfToken;
