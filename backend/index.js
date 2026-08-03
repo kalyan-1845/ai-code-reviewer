@@ -1038,7 +1038,18 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
     const rejection = enforceSizeLimit(repoSizeBytes);
     if (rejection) return rejection;
   } else {
-    console.warn('No GITHUB_PAT configured ΓÇö skipping pre-clone size check. Set MAX_REPO_SIZE_MB to enforce limit at clone time.');
+    // Without GITHUB_PAT, still enforce the limit pre-clone via GitHub's
+    // unauthenticated API (#3672) so a huge/malicious repo cannot force a full
+    // clone before the cap is applied. When the anonymous lookup fails
+    // (rate-limited or non-GitHub repo), fall through to the clone-time blob
+    // budget and the post-clone size check.
+    try {
+      const repoSizeBytes = await verifyRepoSize(new Octokit());
+      const rejection = enforceSizeLimit(repoSizeBytes);
+      if (rejection) return rejection;
+    } catch (err) {
+      console.warn(`Could not verify repository size anonymously for ${owner}/${repoName} (${err.status ?? 'unknown'}). Falling back to clone-time size enforcement.`);
+    }
   }
 
   const uniqueId = crypto.randomUUID();
