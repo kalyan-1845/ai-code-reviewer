@@ -47,8 +47,19 @@ async function run() {
         }
       }
     }
-    const maxTokensInput = parseInt(core.getInput('max-tokens') || '4096', 10);
-    const maxTokens = Number.isFinite(maxTokensInput) && maxTokensInput > 0 ? maxTokensInput : 4096;
+    // llama-3.3-70b-versatile supports at most 128k output tokens. Clamp the
+    // input so an out-of-range value cannot cause silent cost blow-ups or hard
+    // Groq API failures, and surface feedback to the user.
+    const MAX_OUTPUT_TOKENS = 128 * 1024;
+    const maxTokensRaw = core.getInput('max-tokens') || '4096';
+    const maxTokensInput = parseInt(maxTokensRaw, 10);
+    let maxTokens = Number.isFinite(maxTokensInput) && maxTokensInput > 0 ? maxTokensInput : 4096;
+    if (maxTokens > MAX_OUTPUT_TOKENS) {
+      core.warning(`max-tokens=${maxTokens} exceeds the supported maximum of ${MAX_OUTPUT_TOKENS}; clamping to ${MAX_OUTPUT_TOKENS}.`);
+      maxTokens = MAX_OUTPUT_TOKENS;
+    } else if (!Number.isFinite(maxTokensInput) || maxTokensInput <= 0) {
+      core.warning(`Invalid max-tokens value "${maxTokensRaw}"; falling back to 4096.`);
+    }
     const autoApprove = core.getInput('auto-approve')?.toLowerCase() === 'true';
 
     const excludePatterns = excludePathsInput
