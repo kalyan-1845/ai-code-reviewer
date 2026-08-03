@@ -166,7 +166,13 @@ def filter_files_by_changes(
         return [], 0
     filtered = []
     for f in files:
-        name = getattr(f, "name", None) if not isinstance(f, dict) else f.get("name")
+        if isinstance(f, dict):
+            name = f.get("name")
+        else:
+            try:
+                name = f.name
+            except AttributeError:
+                name = None
         if name and name in changed_files:
             filtered.append(f)
     skipped = len(files) - len(filtered)
