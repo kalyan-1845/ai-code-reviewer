@@ -29,7 +29,8 @@ function validateChatParams(body) {
     return { status: 400, error: `No repository is currently active or ${hint}. Please analyze a repository first.` };
   }
 
-  temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
+  const parsedTemp = parseFloat(temperature);
+  temperature = Math.max(0, Math.min(2, Number.isNaN(parsedTemp) ? 0.7 : parsedTemp));
   maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
 
   return {
@@ -142,6 +143,16 @@ test('clamps chat temperature to the supported range', () => {
   assert.equal(validateChatParams({ message: 'hello', sessionId, temperature: -1 }).temperature, 0);
   assert.equal(validateChatParams({ message: 'hello', sessionId, temperature: 4 }).temperature, 2);
   assert.equal(validateChatParams({ message: 'hello', sessionId, temperature: 'bad' }).temperature, 0.7);
+
+  repoContexts.delete(sessionId);
+});
+
+test('allows temperature of exactly 0 without coercion to default', () => {
+  const sessionId = 'test-session-temp-zero';
+  repoContexts.set(sessionId, { files: ['file1.js'] });
+
+  const result = validateChatParams({ message: 'hello', sessionId, temperature: 0 });
+  assert.equal(result.temperature, 0);
 
   repoContexts.delete(sessionId);
 });

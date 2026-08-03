@@ -1,5 +1,6 @@
 import os
 import re
+from collections import deque
 from typing import List, Dict, Set, Any
 from .ast_chunker import ASTChunker
 
@@ -105,11 +106,11 @@ def _get_connected_components(graph: Dict[str, Set[str]]) -> List[List[str]]:
     for node in sorted(graph.keys()):
         if node not in visited:
             component = []
-            queue = [node]
+            queue = deque([node])
             visited.add(node)
             
             while queue:
-                curr = queue.pop(0)
+                curr = queue.popleft()
                 component.append(curr)
                 # Sort neighbors for determinism
                 for neighbor in sorted(graph[curr]):

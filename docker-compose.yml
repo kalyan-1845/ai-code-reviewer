@@ -2,8 +2,9 @@ services:
   chromadb:
     image: chromadb/chroma:1.5.9
     container_name: reposage-chromadb
-    ports:
-      - "8001:8000"
+    # ChromaDB is intentionally NOT published to the host. Only the ai-engine
+    # reaches it over the compose network (CHROMA_HOST=chromadb:8000), so the
+    # vector store API is not exposed to external clients on the host.
     volumes:
       - chroma_data:/chroma/chroma
     environment:
@@ -66,9 +67,9 @@ services:
       - AI_ENGINE_URL=http://ai-engine:8000
       - GITHUB_PAT=${GITHUB_PAT}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      - REPOSAGE_API_KEY=${REPOSAGE_API_KEY:-docker-dev-key}
+      - REPOSAGE_API_KEY=${REPOSAGE_API_KEY}
       - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
-      - SESSION_SECRET=${SESSION_SECRET:-reposage-docker-dev-secret-key-change-in-prod-long-enough}
+      - SESSION_SECRET=${SESSION_SECRET}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       - GIT_CLONE_TIMEOUT=${GIT_CLONE_TIMEOUT:-120000}
       - MAX_REPO_SIZE_MB=${MAX_REPO_SIZE_MB:-100}

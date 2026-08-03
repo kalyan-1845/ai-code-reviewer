@@ -61,7 +61,7 @@ function unmockFs() {
 // The test module re-imports with patched fs, so import AFTER mocking.
 // ---------------------------------------------------------------------------
 mockFs();
-const { recordAnalysis, getTrends } = await import('../utils/analyticsStore.js');
+const { recordAnalysis, getTrends, getPreviousMetrics } = await import('../utils/analyticsStore.js');
 unmockFs();
 
 test('analyticsStore: getTrends returns empty array when store does not exist', () => {
@@ -175,4 +175,46 @@ test('analyticsStore: getTrends falls back to backup when main store parse retur
   fs.readFileSync = origRead;
   // recoverFromBackup should be triggered and return backup content
   assert.ok(trends.length >= 0);
+});
+
+test('analyticsStore: getPreviousMetrics returns null for repo with no prior analysis', () => {
+  mockFs();
+  fakeStore = [
+    { repoName: 'other-repo', totalLines: 100, bugs: 1, security: 0, optimization: 0, styling: 0, filesCount: 5 },
+  ];
+  const result = getPreviousMetrics('nonexistent-repo');
+  unmockFs();
+  assert.strictEqual(result, null, 'should return null when repo has no records');
+});
+
+test('analyticsStore: getPreviousMetrics returns the most recent record for a given repo', () => {
+  mockFs();
+  fakeStore = [
+    { repoName: 'test-repo', totalLines: 50, bugs: 0, security: 0, optimization: 0, styling: 0, filesCount: 2 },
+    { repoName: 'other-repo', totalLines: 100, bugs: 1, security: 0, optimization: 0, styling: 0, filesCount: 5 },
+    { repoName: 'test-repo', totalLines: 80, bugs: 2, security: 1, optimization: 0, styling: 0, filesCount: 4 },
+  ];
+  const result = getPreviousMetrics('test-repo');
+  unmockFs();
+  // Should return the last occurrence (most recent)
+  assert.strictEqual(result.repoName, 'test-repo');
+  assert.strictEqual(result.totalLines, 80);
+  assert.strictEqual(result.bugs, 2);
+});
+
+test('analyticsStore: getPreviousMetrics returns null when store is empty', () => {
+  mockFs();
+  fakeStore = [];
+  const result = getPreviousMetrics('any-repo');
+  unmockFs();
+  assert.strictEqual(result, null, 'should return null for empty store');
+});
+
+test('analyticsStore: getPreviousMetrics returns null when store file does not exist', () => {
+  mockFs();
+  fakeStore = [];
+  readError = null;
+  const result = getPreviousMetrics('any-repo');
+  unmockFs();
+  assert.strictEqual(result, null, 'should return null when store does not exist');
 });

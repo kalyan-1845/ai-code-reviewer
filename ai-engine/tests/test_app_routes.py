@@ -1,5 +1,4 @@
 # Mock heavy dependencies before importing app
-import sys
 from unittest.mock import MagicMock, patch
 
 
@@ -31,16 +30,12 @@ class TestReadRoot:
 
 class TestInternalServiceAuthentication:
     def test_protected_route_rejects_missing_service_key(self, monkeypatch):
-        import sys
-        if "pytest" in sys.modules:
-            monkeypatch.delitem(sys.modules, "pytest")
+        monkeypatch.delenv("AI_ENGINE_AUTH_DISABLED", raising=False)
         response = TestClient(app).post("/api/rag/query", json={"question": "test"})
         assert response.status_code == 401
 
     def test_protected_route_rejects_invalid_service_key(self, monkeypatch):
-        import sys
-        if "pytest" in sys.modules:
-            monkeypatch.delitem(sys.modules, "pytest")
+        monkeypatch.delenv("AI_ENGINE_AUTH_DISABLED", raising=False)
         response = TestClient(
             app,
             headers={"x-api-key": "wrong-key"},

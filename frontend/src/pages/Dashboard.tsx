@@ -139,7 +139,7 @@ export interface AuditHistoryEntry {
 
 
 export default function Dashboard() {
-  const { reviewText, isStreaming, error: streamError } = useStreamingReview();
+  const { reviewText, isStreaming, isMock, error: streamError } = useStreamingReview();
   const [showSettings, setShowSettings] = useState(false);
   const handleCloseSettings = useCallback(() => setShowSettings(false), []);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1282,6 +1282,29 @@ export default function Dashboard() {
               <div>
                 <strong style={{ display: "block" }}>Streaming Error</strong>
                 <span>{streamError}</span>
+              </div>
+            </div>
+          )}
+
+          {isMock && (reviewText || isStreaming) && (
+            <div
+              style={{
+                background: "rgba(245, 158, 11, 0.1)",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                borderRadius: "8px",
+                padding: "14px 20px",
+                color: "#fbbf24",
+                fontSize: "13px",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                marginBottom: "20px",
+              }}
+            >
+              <AlertOctagon size={20} style={{ color: "#f59e0b" }} />
+              <div>
+                <strong style={{ display: "block" }}>Preview-Only Demo</strong>
+                <span>This streamed review is a demo stub, not real AI analysis.</span>
               </div>
             </div>
           )}

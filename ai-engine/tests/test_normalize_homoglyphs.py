@@ -68,3 +68,29 @@ class TestNormalizeHomoglyphs:
     def test_whitespace_preserved(self):
         result = normalize_homoglyphs('  \t\n  ')
         assert result == '  \t\n  '
+
+    def test_unicode_control_characters_are_preserved(self):
+        # Zero-width space (U+200B) and similar should pass through
+        # (they are not in the HOMOGLYPH_MAP)
+        result = normalize_homoglyphs('\u200bhello\u200b')
+        assert result == '\u200bhello\u200b'
+
+    def test_bidirectional_override_characters_preserved(self):
+        # RLO, LRI, etc. should pass through (not in HOMOGLYPH_MAP)
+        result = normalize_homoglyphs('\u202ehello\u202c')
+        assert result == '\u202ehello\u202c'
+
+    def test_performance_on_large_string(self):
+        # Strings of 10000+ characters should not degrade
+        large_str = ('a' * 5000) + '\u0430\u0435' + ('b' * 5000)
+        result = normalize_homoglyphs(large_str)
+        # Should complete without error and normalize homoglyphs
+        assert len(result) == len(large_str)
+        # Verify homoglyphs were normalized
+        assert '\u0430' not in result
+        assert '\u0435' not in result
+
+    def test_returns_string_for_all_whitespace_input(self):
+        result = normalize_homoglyphs('   \t\n   ')
+        assert result == '   \t\n   '
+        assert isinstance(result, str)

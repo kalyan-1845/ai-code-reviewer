@@ -14,7 +14,8 @@ const IPYTHON_MAGIC_PATTERNS = [
   /^[ \t]*%%writefile.*$/gm,
   /^[ \t]*%%sh$/gm,
   /^[ \t]*%%bash$/gm,
-  /^[ \t]*!.*$/gm,
+  // Shell escape: ! followed by command on the same line
+  /^[ \t]*![^\n]*$/gm,
 ];
 
 function stripMagicCommands(code) {

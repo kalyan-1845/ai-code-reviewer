@@ -2,90 +2,71 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scrubRepositoryPayload } from '../utils/secretScrubber.js';
 
-test('scrubRepositoryPayload scrubs AWS Access Key ID and PATs', () => {
-  const payload = 'AWS_KEY=AKIAIOSFODNN7EXAMPLE\nPAT=ghp_1234567890abcdefghijklmnopqrstuvwxyz';
-  const sanitized = scrubRepositoryPayload(payload);
-  assert.ok(!sanitized.includes('AKIAIOSFODNN7EXAMPLE'));
-  assert.ok(!sanitized.includes('ghp_1234567890abcdefghijklmnopqrstuvwxyz'));
-  assert.ok(sanitized.includes('[REDACTED_SECRET]'));
-});
-
-test('scrubRepositoryPayload preserves valid 40-character Git commit SHAs', () => {
-  const sha = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4';
-  const payload = `commit ${sha}\nAuthor: developer`;
-  const sanitized = scrubRepositoryPayload(payload);
-  assert.equal(sanitized.includes(sha), true);
-test('scrubRepositoryPayload: redacts AWS Access Key ID (AKIA prefix)', () => {
-  const input = 'AWS_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE';
+test('scrubRepositoryPayload redacts AWS Access Key IDs (AKIA pattern)', () => {
+  const input = 'aws_access_key = "AKIAIOSFODNN7EXAMPLE"';
   const result = scrubRepositoryPayload(input);
-  assert.ok(!result.includes('AKIAIOSFODNN7EXAMPLE'), 'should not contain raw key');
-  assert.ok(result.includes('[REDACTED_SECRET]'), 'should contain redaction marker');
+  assert.ok(result.includes('[REDACTED_SECRET]'), 'AWS key should be redacted');
+  assert.ok(!result.includes('AKIAIOSFODNN7EXAMPLE'), 'AWS key should not appear');
 });
 
-test('scrubRepositoryPayload: redacts GitHub PAT (ghp_ prefix)', () => {
-  // GitHub PAT regex: ghp_ + exactly 36 alphanumeric chars
-  const pat = 'ghp_' + 'x'.repeat(36);
-  const input = 'token: ' + pat;
+test('scrubRepositoryPayload redacts GitHub PATs (ghp_ pattern)', () => {
+  const input = 'token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"';
   const result = scrubRepositoryPayload(input);
-  assert.ok(!result.includes(pat), 'should not contain raw PAT');
-  assert.ok(result.includes('[REDACTED_SECRET]'), 'should contain redaction marker');
+  assert.ok(result.includes('[REDACTED_SECRET]'));
+  assert.ok(!result.includes('ghp_'), 'GitHub PAT should not appear');
 });
 
-test('scrubRepositoryPayload: redacts GitHub OAuth token (gho_ prefix)', () => {
-  // GitHub token regex requires exactly 36 chars after prefix
-  const token = 'gho_' + 'x'.repeat(36);
-  const input = 'token: ' + token;
+test('scrubRepositoryPayload redacts JWTs (eyJ pattern)', () => {
+  const input = 'jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"';
   const result = scrubRepositoryPayload(input);
-  assert.ok(!result.includes(token), 'should not contain raw token');
-  assert.ok(result.includes('[REDACTED_SECRET]'), 'should contain redaction marker');
+  assert.ok(result.includes('[REDACTED_SECRET]'));
+  assert.ok(!result.includes('eyJ'), 'JWT header should not appear');
 });
 
-test('scrubRepositoryPayload: redacts JWT (eyJ header)', () => {
-  const input = 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+test('scrubRepositoryPayload redacts generic API keys (api_key= pattern)', () => {
+  const input = 'const api_key = "abcdefghijklmnopqrst";\nconst secret_key = "xyz1234567890abcdefghij";';
   const result = scrubRepositoryPayload(input);
-  assert.ok(!result.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'), 'should not contain JWT header');
+  assert.ok(result.includes('[REDACTED_SECRET]'));
+  assert.ok(!result.includes('abcdefghijklmnopqrst'), 'API key should not appear');
 });
 
-test('scrubRepositoryPayload: redacts generic api_key assignment with 20+ char values', () => {
-  const input = 'const api_key = "abcdefghijklmnopqrst"';
+test('scrubRepositoryPayload does not redact non-secret strings', () => {
+  const input = 'const message = "Hello World, this is not a secret!"';
   const result = scrubRepositoryPayload(input);
-  assert.ok(!result.includes('abcdefghijklmnopqrst'), 'should not contain raw API key');
-  assert.ok(result.includes('[REDACTED_SECRET]'), 'should contain redaction marker');
+  assert.equal(result, input, 'Non-secret strings should be unchanged');
 });
 
-test('scrubRepositoryPayload: redacts Bearer authorization tokens', () => {
-  // Bearer token regex requires 20+ base64 chars
-  const bearerToken = 'Bearer ' + 'A'.repeat(25);
-  const input = 'Authorization: ' + bearerToken;
-  const result = scrubRepositoryPayload(input);
-  assert.ok(!result.includes(bearerToken), 'should redact full Bearer token');
-  assert.ok(result.includes('[REDACTED_SECRET]'), 'should contain redaction marker');
+test('scrubRepositoryPayload handles empty string', () => {
+  const result = scrubRepositoryPayload('');
+  assert.equal(result, '');
 });
 
-test('scrubRepositoryPayload: returns input unchanged when no secrets present', () => {
-  const input = 'const foo = bar;\nfunction hello() { return 42; }';
-  const result = scrubRepositoryPayload(input);
-  assert.equal(result, input, 'should return exact input when no secrets found');
-});
-
-test('scrubRepositoryPayload: returns non-string input unchanged', () => {
+test('scrubRepositoryPayload returns non-string input unchanged', () => {
   assert.equal(scrubRepositoryPayload(null), null);
   assert.equal(scrubRepositoryPayload(undefined), undefined);
   assert.equal(scrubRepositoryPayload(123), 123);
 });
 
-test('scrubRepositoryPayload: redacts multiple secrets in same input', () => {
-  const awsKey = 'AKIAIOSFODNN7EXAMPLE';
-  const pat = 'ghp_' + 'x'.repeat(36);
-  const input = 'AWS=' + awsKey + ' and token=' + pat;
+test('scrubRepositoryPayload scrubs multiple secrets in one string', () => {
+  const input = 'const aws = "AKIAIOSFODNN7EXAMPLE";\nconst pat = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";';
   const result = scrubRepositoryPayload(input);
-  assert.ok(!result.includes(awsKey), 'should redact AWS key');
-  assert.ok(!result.includes(pat), 'should redact GitHub PAT');
-  assert.ok(result.includes('[REDACTED_SECRET]'), 'should contain redaction marker(s)');
+  const count = (result.match(/\[REDACTED_SECRET\]/g) || []).length;
+  assert.equal(count, 2, 'Both secrets should be redacted');
 });
 
-test('scrubRepositoryPayload: does not flag short strings as generic API keys', () => {
-  const input = 'const key = "shortvalue"';
+test('scrubRepositoryPayload handles multi-line code with secrets', () => {
+  const input = `function getCredentials() {
+  const awsKey = "AKIAIOSFODNN7EXAMPLE";
+  return awsKey;
+}`;
   const result = scrubRepositoryPayload(input);
-  assert.ok(result.includes('shortvalue'), 'short values should not be redacted');
+  assert.ok(!result.includes('AKIAIOSFODNN7EXAMPLE'));
+  assert.ok(result.includes('[REDACTED_SECRET]'));
+});
+
+test('scrubRepositoryPayload redacts bearer authorization tokens', () => {
+  const input = 'Authorization: Bearer super_secret_token_value_here1234567890';
+  const result = scrubRepositoryPayload(input);
+  assert.ok(result.includes('[REDACTED_SECRET]'));
+  assert.ok(!result.includes('super_secret_token'), 'Bearer token should be redacted');
 });

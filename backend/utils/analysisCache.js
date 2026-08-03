@@ -46,6 +46,7 @@ class AnalysisCache {
     this.pending = new Map();
     this._locks = new Map();
     this._repoUrlIndex = new Map();
+    this._invalidatedKeys = new Set();
     this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0, evictions: 0 };
     // The sweeper is started lazily on first set() and stops itself when the
     // cache empties, so an idle instance never keeps a live interval (and a
@@ -190,22 +191,30 @@ class AnalysisCache {
         const pending = this.pending.get(key);
         if (pending) {
           this.stats.dedupSaves++;
-          return pending;
+          return pending.promise;
         }
 
         const promise = fetcher().then(result => {
           const cacheHint = (result && result._cacheHint) || {};
           const resultData = (result && result._data !== undefined) ? result._data : result;
           const isMock = cacheHint.isMock === true || result._mock === true;
-          this.set(key, resultData, { repoUrl, isMock });
           this.pending.delete(key);
+          // A repo-level invalidation may have raced with this in-flight fetch.
+          // If so, drop the result instead of re-caching it after invalidation.
+          if (this._invalidatedKeys.has(key)) {
+            this._invalidatedKeys.delete(key);
+            console.log(`🚫 Dropped in-flight result for invalidated key ${key.slice(0, 8)}...`);
+            return resultData;
+          }
+          this.set(key, resultData, { repoUrl, isMock });
           return resultData;
         }).catch(err => {
           this.pending.delete(key);
+          this._invalidatedKeys.delete(key);
           throw err;
         });
 
-        this.pending.set(key, promise);
+        this.pending.set(key, { promise, repoUrl });
         return promise;
       });
     } finally {
@@ -370,16 +379,28 @@ class AnalysisCache {
   invalidateByRepoUrl(repoUrl) {
     const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
     const keys = this._repoUrlIndex.get(normalized);
-    if (!keys || keys.size === 0) {
-      return 0;
-    }
     let removed = 0;
+    if (keys && keys.size > 0) {
       for (const key of keys) {
         if (this.cache.delete(key)) {
-        removed++;
+          removed++;
+        }
+      }
+      this._repoUrlIndex.delete(normalized);
+    }
+    // Also evict in-flight pending fetches for this repo URL so a subsequent
+    // /api/analyze does not reuse a stale dedup promise (or re-cache a result
+    // that raced with the invalidation).
+    for (const [key, entry] of this.pending) {
+      if (entry.repoUrl) {
+        const entryNormalized = entry.repoUrl.replace(/\/+$/, '').toLowerCase();
+        if (entryNormalized === normalized) {
+          this._invalidatedKeys.add(key);
+          this.pending.delete(key);
+          removed++;
+        }
       }
     }
-    this._repoUrlIndex.delete(normalized);
     if (removed > 0) {
       this.stats.evictions += removed;
       console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);

@@ -40,11 +40,11 @@ function scrubRepositoryPayload(codebaseString) {
     // earlier matches (or by previous rules).
     const source = sanitizedPayload;
     sanitizedPayload = source.replace(rule, (match, capturedGroup) => {
-      if (capturedGroup) {
+      if (typeof capturedGroup === 'string') {
         return match.replace(capturedGroup, '[REDACTED_SECRET]');
       }
       // Context check: only redact 40-char base64 strings on lines with secret keywords
-      if (!capturedGroup && match.length === 40 && /^[A-Za-z0-9\/+=]{40}$/.test(match)) {
+      if (match.length === 40 && /^[A-Za-z0-9\/+=]{40}$/.test(match)) {
         const lineMatch = source.match(new RegExp('^.*' + match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '.*$', 'm'));
         const line = lineMatch ? lineMatch[0] : '';
         if (!hasSecretContext(line)) {
