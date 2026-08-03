@@ -78,7 +78,7 @@ function showPasswordDialog(): Promise<string> {
   });
 }
 
-const ensureApiSession = async () => {
+export const ensureApiSession = async () => {
   if (!sessionRequest) {
     sessionRequest = fetch(`${API_BASE_URL}/api/session`, {
       method: "POST",
@@ -133,7 +133,7 @@ export const clearApiKey = () => {
   csrfToken = null;
 };
 
-const getCsrfToken = (): string | null => {
+export const getCsrfToken = (): string | null => {
   if (csrfToken) return csrfToken;
   const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]*)/);
   return match ? match[1] : null;

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { ensureApiSession, getCsrfToken } from '../utils/api';
 
 // Backend base URL is provided at runtime by config.js (__RUNTIME_API_URL__) or
 // at build time via VITE_API_URL. Same-origin default; no hardcoded dev URL.
@@ -17,13 +18,24 @@ export const useStreamingReview = () => {
     setIsMock(false);
 
     try {
+      // The streaming endpoint is covered by the global CSRF middleware.
+      // Ensure the session (cookie + CSRF token) exists and send the token so
+      // POST /api/review/stream does not fail with 403 for cookie-authenticated
+      // sessions.
+      await ensureApiSession();
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-api-key': sessionStorage.getItem('reposage_api_key') || '',
+      };
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
       const isRequestInit = 'method' in payload || 'body' in payload;
       const response = await fetch(`${API_BASE_URL}/api/review/stream`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': sessionStorage.getItem('reposage_api_key') || '',
-        },
+        credentials: 'include',
+        headers,
         body: isRequestInit ? (payload as RequestInit).body : JSON.stringify(payload),
       });
 
