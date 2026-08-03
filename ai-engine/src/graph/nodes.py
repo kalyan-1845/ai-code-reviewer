@@ -62,6 +62,7 @@ def reviewer_node(state: AgentState) -> dict:
     current_index = state.get("current_index", 0)
     micro_reviews = list(state.get("micro_reviews", []))
     ast_context = state.get("ast_context", "")
+    repository_context = state.get("repository_context", "")
 
     if current_index < len(chunks):
         chunk_content = chunks[current_index]
@@ -73,6 +74,8 @@ def reviewer_node(state: AgentState) -> dict:
         review = f"Micro-review for chunk {current_index + 1}/{len(chunks)}:\nAnalyzed snippet ({len(chunk_content)} chars). No critical flaws detected."
         if ast_context:
             review += f"\nAST Context: {ast_context}"
+        if repository_context:
+            review += f"\nRepository Context: {repository_context}"
         micro_reviews.append(review)
 
     return {
