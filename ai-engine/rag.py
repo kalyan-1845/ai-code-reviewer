@@ -184,8 +184,17 @@ def cleanup_stale_chunks(current_files: set, repo_url: Optional[str] = None, ten
         offset += len(metadatas)
     stale_paths = stored_paths - current_files
     removed_count = 0
-    for stale_path in stale_paths:
-        removed_count += delete_chunks_for_file(stale_path, repo_url=repo_url, **_tenant_kwargs(tenant_id))
+    if stale_paths:
+        stale_list = list(stale_paths)
+        batch_results = collection.get(
+            where={"source_file": {"$in": stale_list}},
+            include=["metadatas"]
+        )
+        metadatas_to_delete = batch_results.get("metadatas") or []
+        ids_to_delete = [m.get("chunk_id") for m in metadatas_to_delete if m and m.get("chunk_id")]
+        if ids_to_delete:
+            collection.delete(ids=ids_to_delete)
+            removed_count = len(ids_to_delete)
     return {
         "stale_paths": list(stale_paths),
         "removed_count": removed_count,
