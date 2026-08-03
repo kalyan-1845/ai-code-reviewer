@@ -300,3 +300,8 @@ h1, h2, h3, h4 {
   animation: spin 0.8s linear infinite;
 }
 
+button[data-quickfix-btn]:focus-visible {
+  outline: 2px solid rgba(234, 179, 8, 0.8);
+  outline-offset: 2px;
+}
+

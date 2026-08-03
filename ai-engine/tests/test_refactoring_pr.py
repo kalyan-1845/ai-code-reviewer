@@ -58,7 +58,8 @@ def test_analyze_creates_refactoring_pr(monkeypatch):
             "batchSize": 1,
             "githubToken": "fake-token",
             "headRef": "feature-branch",
-            "repositoryContext": {"owner": "test", "repo": "repo"}
+            "repositoryContext": {"owner": "test", "repo": "repo"},
+            "autoCreatePRs": True
         }
         response = client.post("/analyze", json=payload)
         
@@ -66,3 +67,80 @@ def test_analyze_creates_refactoring_pr(monkeypatch):
     data = response.json()
     assert "generated_pr_links" in data
     assert data["generated_pr_links"] == ["https://github.com/test/repo/pull/1"]
+
+
+async def _fake_analyze_completion(**kwargs):
+    return _make_fake_completion(json.dumps({
+        "fileReviews": {"a.py": {"bugs": [], "security": [], "optimization": [], "styling": [], "impact": [], "architecture": []}},
+        "refactoring_suggestions": [
+            {
+                "file_path": "a.py",
+                "refactored_content": "print('refactored')",
+                "pr_title": "Test Refactor",
+                "pr_body": "Test PR Body"
+            }
+        ]
+    }))
+
+
+def _analyze_payload(**overrides):
+    payload = {
+        "files": [{"name": "a.py", "content": "print(1)"}],
+        "batchSize": 1,
+        "githubToken": "fake-token",
+        "headRef": "feature-branch",
+        "repositoryContext": {"owner": "test", "repo": "repo"},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_analyze_does_not_create_pr_without_opt_in(monkeypatch):
+    """Providing a GitHub token alone must never trigger PR creation."""
+    monkeypatch.setattr(app_module, "groq_client", MagicMock())
+    monkeypatch.setattr(app_module, "AUTO_CREATE_REFACTORING_PRS", False)
+    monkeypatch.setattr(app_module, "_call_groq_with_timeout", _fake_analyze_completion)
+
+    mock_create_pr = AsyncMock(return_value="https://github.com/test/repo/pull/1")
+    monkeypatch.setattr(app_module, "_create_refactoring_pr", mock_create_pr)
+
+    response = client.post("/analyze", json=_analyze_payload())
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "generated_pr_links" not in data
+    mock_create_pr.assert_not_called()
+
+
+def test_analyze_creates_pr_when_request_opt_in_flag_set(monkeypatch):
+    """autoCreatePRs: true on the request is a valid explicit opt-in."""
+    monkeypatch.setattr(app_module, "groq_client", MagicMock())
+    monkeypatch.setattr(app_module, "AUTO_CREATE_REFACTORING_PRS", False)
+    monkeypatch.setattr(app_module, "_call_groq_with_timeout", _fake_analyze_completion)
+
+    mock_create_pr = AsyncMock(return_value="https://github.com/test/repo/pull/1")
+    monkeypatch.setattr(app_module, "_create_refactoring_pr", mock_create_pr)
+
+    response = client.post("/analyze", json=_analyze_payload(autoCreatePRs=True))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["generated_pr_links"] == ["https://github.com/test/repo/pull/1"]
+    mock_create_pr.assert_awaited_once()
+
+
+def test_analyze_creates_pr_when_server_env_flag_enabled(monkeypatch):
+    """AUTO_CREATE_REFACTORING_PRS=true allows PR creation without per-request flag."""
+    monkeypatch.setattr(app_module, "groq_client", MagicMock())
+    monkeypatch.setattr(app_module, "AUTO_CREATE_REFACTORING_PRS", True)
+    monkeypatch.setattr(app_module, "_call_groq_with_timeout", _fake_analyze_completion)
+
+    mock_create_pr = AsyncMock(return_value="https://github.com/test/repo/pull/1")
+    monkeypatch.setattr(app_module, "_create_refactoring_pr", mock_create_pr)
+
+    response = client.post("/analyze", json=_analyze_payload())
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["generated_pr_links"] == ["https://github.com/test/repo/pull/1"]
+    mock_create_pr.assert_awaited_once()

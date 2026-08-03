@@ -1,20 +1,24 @@
-const TOKEN_KEY = "sessionOwnerToken";
-const EXPIRY_KEY = "sessionOwnerTokenExpiry";
+// Session owner tokens authorize privileged session operations (issue creation,
+// audit continuation) against the backend. They must never be persisted to
+// localStorage: any injected script or XSS payload can read localStorage and
+// exfiltrate the token, and the value would survive long after the session
+// should have ended. Keeping it in memory only means the token is cleared when
+// the page is closed and cannot be read from disk.
+let sessionOwnerToken: string = "";
+let sessionOwnerTokenExpiry: number = 0;
 const TOKEN_TTL_MS = 60 * 60 * 1000;
 
 export function getSessionOwnerToken(): string {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (!token) return "";
-  const expiry = Number(localStorage.getItem(EXPIRY_KEY) ?? 0);
-  if (!Number.isFinite(expiry) || Date.now() >= expiry) {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(EXPIRY_KEY);
+  if (!sessionOwnerToken) return "";
+  if (!Number.isFinite(sessionOwnerTokenExpiry) || Date.now() >= sessionOwnerTokenExpiry) {
+    sessionOwnerToken = "";
+    sessionOwnerTokenExpiry = 0;
     return "";
   }
-  return token;
+  return sessionOwnerToken;
 }
 
 export function setSessionOwnerToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(EXPIRY_KEY, String(Date.now() + TOKEN_TTL_MS));
+  sessionOwnerToken = token;
+  sessionOwnerTokenExpiry = Date.now() + TOKEN_TTL_MS;
 }

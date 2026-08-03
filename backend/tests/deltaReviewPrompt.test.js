@@ -68,3 +68,56 @@ test('buildDeltaReviewPrompt contains the expert AI Code Reviewer role declarati
 });
 
 console.warn = originalWarn;
+
+test('buildDeltaReviewPrompt handles null input without throwing', () => {
+  assert.doesNotThrow(() => {
+    buildDeltaReviewPrompt(null);
+  });
+  const result = buildDeltaReviewPrompt(null);
+  assert.strictEqual(typeof result, 'string');
+});
+
+test('buildDeltaReviewPrompt handles undefined input without throwing', () => {
+  assert.doesNotThrow(() => {
+    buildDeltaReviewPrompt(undefined);
+  });
+});
+
+test('buildDeltaReviewPrompt handles diff with backtick characters', () => {
+  // Diff content containing backticks should be safely embedded
+  const diff = '+const greeting = `Hello, world!`;';
+  assert.doesNotThrow(() => {
+    buildDeltaReviewPrompt(diff);
+  });
+  const result = buildDeltaReviewPrompt(diff);
+  assert.ok(result.includes('+const greeting'), 'Added line should appear in prompt');
+});
+
+test('buildDeltaReviewPrompt handles diff with triple-backtick injection attempt', () => {
+  // Ensure triple backticks in diff content do not break the fence
+  const diff = '+const code = ```\ncode block\n```;';
+  assert.doesNotThrow(() => {
+    buildDeltaReviewPrompt(diff);
+  });
+  const result = buildDeltaReviewPrompt(diff);
+  assert.ok(result.includes('+const code'), 'Diff content should be included');
+});
+
+test('buildDeltaReviewPrompt handles very large diff without crashing', () => {
+  const largeLine = '+' + 'a'.repeat(500);
+  const largeDiff = Array.from({ length: 100 }, () => largeLine).join('\n');
+  assert.doesNotThrow(() => {
+    buildDeltaReviewPrompt(largeDiff);
+  });
+  const result = buildDeltaReviewPrompt(largeDiff);
+  assert.ok(result.length > 0, 'Result should be non-empty');
+  assert.ok(result.includes(largeLine), 'Large diff lines should be included');
+});
+
+test('buildDeltaReviewPrompt marks lines starting with plus for newly added code only', () => {
+  const result = buildDeltaReviewPrompt('+console.log(1)');
+  assert.ok(result.includes('focus') && result.includes('EXCLUSIVELY on the newly added code'));
+  assert.ok(result.includes('+console.log(1)'), 'Added line should be in prompt');
+});
+
+console.warn = originalWarn;

@@ -36,14 +36,27 @@ export const concurrencyThrottleMiddleware = (req, res, next) => {
 
   concurrentRequestsMap.set(clientId, currentCount + 1);
 
-  res.on('finish', () => {
+  // Release the slot exactly once when the request finishes. A client that
+  // disconnects, aborts, or times out never fires `finish`, so also listen for
+  // `close` / `aborted`; the guard flag prevents a request that both closes and
+  // finishes from being double-decremented. Without these handlers every
+  // aborted request would leave a permanent entry in concurrentRequestsMap
+  // (unbounded in-memory growth and stale elevated counts → false 429s).
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
     const newCount = (concurrentRequestsMap.get(clientId) || 1) - 1;
     if (newCount <= 0) {
       concurrentRequestsMap.delete(clientId);
     } else {
       concurrentRequestsMap.set(clientId, newCount);
     }
-  });
+  };
+
+  res.on('finish', release);
+  res.on('close', release);
+  req.on('aborted', release);
 
   next();
 };

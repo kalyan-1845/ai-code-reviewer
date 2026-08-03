@@ -107,7 +107,6 @@ class DedupStore {
     }
     const entry = this.memoryStore.get(key);
     if (!entry || !(entry.value instanceof Set)) return false;
-    if (!entry) return false;
     if (Date.now() > entry.expiresAt) {
       this.memoryStore.delete(key);
       return false;

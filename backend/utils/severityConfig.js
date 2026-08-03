@@ -42,21 +42,21 @@ function mergeWithDefaults(userConfig) {
 function categorizeFinding(finding) {
   if (!finding) return 'other';
   const message = (finding.description || finding.message || '').toLowerCase();
-  const ruleId = (finding.rule || finding.rule_id || '').toLowerCase();
+  const ruleId = String(finding.rule || finding.rule_id || '');
 
-  if (message.includes('security') || ruleId.includes('security') ||
+  if (message.includes('security') || ruleId.toLowerCase().includes('security') ||
       message.includes('injection') || message.includes('credential') ||
       message.includes('vulnerability')) {
     return 'security';
   }
 
-  if (message.includes('performance') || ruleId.includes('performance') ||
+  if (message.includes('performance') || ruleId.toLowerCase().includes('performance') ||
       message.includes('n+1') || message.includes('cache') ||
       message.includes('optimization')) {
     return 'performance';
   }
 
-  if (message.includes('style') || ruleId.includes('style') ||
+  if (message.includes('style') || ruleId.toLowerCase().includes('style') ||
       message.includes('formatting') || message.includes('comma')) {
     return 'style';
   }

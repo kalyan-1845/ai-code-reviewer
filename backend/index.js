@@ -72,6 +72,46 @@ const analysisCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS, 2, ANALYSIS_CACHE
 const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 
 // ---------------------------------------------------------------------------
+// AI engine base URL (#3622). The AI engine receives the internal
+// REPOSAGE_API_KEY header plus the full repository contents / diffs, so it must
+// never be reached over cleartext from a public host. There is intentionally NO
+// insecure http://localhost:8000 fallback: if AI_ENGINE_URL is missing, or uses
+// plaintext http for anything other than a loopback / internal Docker Compose
+// hostname, the server refuses to start instead of silently sending secrets in
+// the clear.
+// ---------------------------------------------------------------------------
+function resolveAiEngineUrl() {
+  const raw = (process.env.AI_ENGINE_URL || '').trim();
+  if (!raw) {
+    throw new Error('AI_ENGINE_URL is required. Refusing to start without a configured AI engine URL.');
+  }
+  const normalized = raw.replace(/\/+$/, '');
+  let parsed;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error(`AI_ENGINE_URL is not a valid URL: ${raw}`);
+  }
+  if (parsed.protocol !== 'https:') {
+    const host = parsed.hostname;
+    const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    const isInternalName = host.length > 0 && !host.includes('.') && !host.includes(':');
+    if (!isLoopback && !isInternalName) {
+      throw new Error(`AI_ENGINE_URL must use HTTPS, got cleartext "${raw}". Plaintext is only allowed for loopback or internal Docker Compose hostnames.`);
+    }
+  }
+  return normalized;
+}
+
+let AI_ENGINE_BASE_URL;
+try {
+  AI_ENGINE_BASE_URL = resolveAiEngineUrl();
+} catch (err) {
+  console.error(`FATAL: ${err.message}`);
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
 // Per-caller daily analysis budget (#3549). /api/analyze and /api/analyze-file
 // clone repos server-side and fan out one LLM call per batch, so an
 // unauthenticated-by-cookie key-holder can otherwise force unbounded clones
@@ -116,17 +156,20 @@ const MAX_FILES_PER_ANALYSIS = parseInt(process.env.MAX_FILES_PER_ANALYSIS || '1
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
 // rather than the internal proxy address.
-// Set TRUST_PROXY=false in .env to disable this when running without a proxy (e.g. local dev).
-const trustProxy = process.env.TRUST_PROXY !== 'false';
+// This is opt-in: it is enabled ONLY when TRUST_PROXY=true. Trusting X-Forwarded-For by
+// default lets anyone who can reach the app directly spoof req.ip and bypass rate limits.
+const trustProxy = process.env.TRUST_PROXY === 'true';
 if (trustProxy) {
   app.set('trust proxy', 1);
 }
 
-// NOTE: No custom keyGenerator is needed. With `trust proxy: 1` set above, Express
-// automatically resolves req.ip to the real client IP by stripping the known proxy
+// NOTE: No custom keyGenerator is needed. When `trust proxy: 1` is enabled (TRUST_PROXY=true),
+// Express automatically resolves req.ip to the real client IP by stripping the known proxy
 // hop from X-Forwarded-For. express-rate-limit defaults to req.ip, which is already
 // correct. A custom function that reads X-Forwarded-For directly would trust the
 // leftmost (client-controlled) value, allowing IP spoofing to bypass rate limits.
+// By default (no TRUST_PROXY), req.ip is the direct socket address, so rate limits
+// cannot be bypassed via spoofed headers.
 
 // Enable CORS with explicit origin
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173').split(',').map(s => s.trim());
@@ -183,6 +226,18 @@ const pdfExportLimiter = rateLimit({
   message: { error: 'Too many PDF export requests. Please slow down and retry after 1 minute.' }
 });
 
+// Strict limiter for cache invalidation — an unthrottled invalidate endpoint
+// is a cost-amplification lever (forces re-clones + LLM re-runs), so it gets
+// the same strict 10/min budget as the other expensive endpoints.
+const cacheInvalidateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
+  message: { error: 'Too many cache invalidation requests. Please slow down and retry after 1 minute.' }
+});
+
 // Parse cookies for CSRF token validation
 app.use(cookieParser());
 app.use('/dashboard', express.static(path.join(__dirname, 'public/dashboard')));
@@ -229,6 +284,17 @@ app.use((req, res, next) => {
 app.use(express.json({
   limit: process.env.JSON_BODY_LIMIT || '5mb',
 }));
+
+// Track in-flight requests so a fatal-error drain can wait for them to finish
+// before exiting (see the uncaughtException handler below).
+let activeRequests = 0;
+app.use((req, res, next) => {
+  activeRequests++;
+  const done = () => { activeRequests = Math.max(0, activeRequests - 1); };
+  res.on('finish', done);
+  res.on('close', done);
+  next();
+});
 
 // CSRF token endpoint: generates a random token and sets it as an httpOnly cookie.
 // The token is also returned in the JSON response body so the frontend can read
@@ -434,13 +500,50 @@ app.post('/api/session', requireApiKey, async (req, res) => {
   return res.json({ success: true, csrfToken, clientId: result.clientId });
 });
 
-// Logout endpoint ΓÇö clears session and CSRF token
+// Logout endpoint ΓÇö clears session and CSRF token, and revokes the
+// server-side Session document. Previously logout only cleared cookies/CSRF
+// tokens, leaving the sessionId + sessionOwnerToken pair valid for chat for
+// up to 24h even after the user logged out (issue #3553). The client is
+// expected to send sessionId + sessionOwnerToken (persisted in localStorage)
+// so the analyzed repository context is revoked server-side.
 app.post('/api/logout', requireApiKey, async (req, res) => {
   const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
   if (cookieToken) {
     await csrfTokenStore.delete(cookieToken);
     await csrfGraceTokenStore.delete(cookieToken);
   }
+
+  const { sessionId, sessionOwnerToken } = req.body || {};
+
+  // Revoke the server-side session if the caller supplies its credentials.
+  // The ownerToken is verified with a timing-safe comparison before the
+  // session is deleted, so one user cannot revoke another user's session.
+  if (sessionId) {
+    if (!isValidUuid(sessionId)) {
+      return res.status(400).json({ error: 'Invalid sessionId format.' });
+    }
+
+    const sessionDoc = await Session.findOne({ sessionId }).select('ownerToken').lean();
+    if (sessionDoc && sessionDoc.ownerToken) {
+      if (!sessionOwnerToken) {
+        console.warn(`ΓÜá∩╕Å Logout session revocation failed: session ${sessionId} missing sessionOwnerToken`);
+        return res.status(403).json({ error: 'Access denied: sessionOwnerToken is required to revoke this session.' });
+      }
+      const providedBuf = Buffer.from(String(sessionOwnerToken), 'utf8');
+      const storedBuf = Buffer.from(String(sessionDoc.ownerToken), 'utf8');
+      if (providedBuf.length !== storedBuf.length || !crypto.timingSafeEqual(providedBuf, storedBuf)) {
+        console.warn(`ΓÜá∩╕Å Logout session revocation denied: session ${sessionId} token does not match`);
+        return res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
+      }
+    }
+
+    // Delete (or expire) the session so context.files can no longer be
+    // retrieved via /api/chat. deleteMany is safe whether or not the
+    // session doc exists (e.g. already TTL-expired).
+    await Session.deleteMany({ sessionId });
+    console.log(`ΓÜá∩╕Å Revoked server-side session ${sessionId} on logout`);
+  }
+
   res.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
   res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
   return res.json({ success: true, message: 'Logged out successfully.' });
@@ -486,6 +589,8 @@ function cleanupTempRepos() {
     console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
   }
 }
+// Graceful shutdown used for SIGINT/SIGTERM — supervisors treat exit code 0
+// as an intentional stop, so this is the intended path.
 async function onShutdown() {
   cleanupTempRepos();
   cleanupTimers();
@@ -497,21 +602,49 @@ process.on('SIGINT', onShutdown);
 process.on('SIGTERM', onShutdown);
 process.on('exit', cleanupTempRepos);
 
-// Clean up temp_repos and timers on uncaught exceptions to prevent orphan temp folders
+// Best-effort cleanup for an unrecoverable error path. Unlike onShutdown, this
+// drains in-flight requests (up to a cap) and exits NON-zero so supervisors
+// (systemd/PM2/K8s) detect the crash and restart the service. We never exit 0
+// from an error path: a "clean" exit tells supervisors the stop was intended.
+async function handleFatalError(err) {
+  console.error('FATAL: terminating process due to uncaught error');
+  if (err && err.stack) {
+    console.error(err.stack);
+  }
+  const drainDeadline = Date.now() + 10_000;
+  while (activeRequests > 0 && Date.now() < drainDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (activeRequests > 0) {
+    console.error(`FATAL: ${activeRequests} request(s) still in-flight after drain timeout; exiting anyway`);
+  }
+  cleanupTempRepos();
+  cleanupTimers();
+  if (redisClient) {
+    try { await redisClient.quit(); } catch (e) { console.error('FATAL: failed to quit redis cleanly:', e.message); }
+  }
+  try { await closeDatabase(); } catch (e) { console.error('FATAL: failed to close database cleanly:', e.message); }
+  process.exit(1);
+}
+
+// An uncaught exception leaves process state unreliable — Node docs recommend
+// NOT continuing. Log, drain active requests, and exit non-zero for restart.
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
   if (err.stack) {
     console.error(err.stack);
   }
-  onShutdown();
+  handleFatalError(err);
 });
 
+// An unhandled rejection is normally recoverable: log it and keep the server
+// alive rather than tearing down every session, webhook, SSE stream, and
+// analysis because one promise failed.
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason instanceof Error ? reason.message : reason);
   if (reason instanceof Error && reason.stack) {
     console.error(reason.stack);
   }
-  onShutdown();
 });
 
 // Repository contexts for chat are now persisted in MongoDB via the Session model.
@@ -663,7 +796,7 @@ const AI_ENGINE_HEALTH_INTERVAL = 30000;
 let aiEngineHealthy = true;
 
 const aiEngineHealthTimer = registerTimer(setInterval(async () => {
-  const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
+  const baseUrl = (AI_ENGINE_BASE_URL).replace(/\/+$/, '');
   try {
     const resp = await fetchWithTimeout(`${baseUrl}/health`, { validate: false }, 5000);
     if (resp.ok && !aiEngineHealthy) {
@@ -801,7 +934,8 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
   // Enforce boundary limits for batchSize to prevent downstream parsing crashes
   batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
 
-  temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
+  const parsedTemp = parseFloat(temperature);
+  temperature = Math.max(0, Math.min(2, Number.isNaN(parsedTemp) ? 0.7 : parsedTemp));
 
   const AI_ENGINE_MAX_TOKENS = parseInt(process.env.AI_ENGINE_MAX_TOKENS, 10) || 32768;
   maxTokens = Math.max(1, Math.min(AI_ENGINE_MAX_TOKENS, parseInt(maxTokens, 10) || 2048));
@@ -1021,7 +1155,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
 
       // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
       // This is a perfect placeholder where contributors can connect the FastAPI server!
-      const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+      const aiEngineUrl = AI_ENGINE_BASE_URL;
       
       let reviewResult;
       const baseUrl = aiEngineUrl.replace(/\/+$/, '');
@@ -1072,7 +1206,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
 
         reviewResult = await analysisCache.getOrSet(cacheKey, async () => {
           // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
-        const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+        const aiEngineUrl = AI_ENGINE_BASE_URL;
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         try {
           const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
@@ -1171,6 +1305,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
             files: storedFiles,
             lastAccessedAt: new Date(),
             ownerToken: sessionOwnerToken,
+            clientId: req.clientId,
             csrfToken,
           });
           sessionPersisted = true;
@@ -1185,7 +1320,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, concurrencyThrot
       let ragStatus = 'skipped';
       if (!cacheHit) {
         try {
-          const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
+          const baseUrl = (AI_ENGINE_BASE_URL).replace(/\/+$/, '');
         const splitResp = await fetchWithTimeout(`${baseUrl}/api/rag/split`, {
           validate: false,
           method: 'POST',
@@ -1464,7 +1599,8 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, concurrency
     }
 
     batchSize = Math.max(1, Math.min(20, parseInt(batchSize, 10) || 5));
-    temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
+    const parsedTemp = parseFloat(temperature);
+  temperature = Math.max(0, Math.min(2, Number.isNaN(parsedTemp) ? 0.7 : parsedTemp));
     const AI_ENGINE_MAX_TOKENS = parseInt(process.env.AI_ENGINE_MAX_TOKENS, 10) || 32768;
     maxTokens = Math.max(1, Math.min(AI_ENGINE_MAX_TOKENS, parseInt(maxTokens, 10) || 2048));
 
@@ -1504,7 +1640,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, concurrency
       }
     }
 
-    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    const aiEngineUrl = AI_ENGINE_BASE_URL;
     const baseUrl = aiEngineUrl.replace(/\/+$/, '');
 
     let reviewResult;
@@ -1585,7 +1721,8 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
     model = chatNormalized;
   }
 
-  temperature = Math.max(0, Math.min(2, parseFloat(temperature) || 0.7));
+  const parsedTemp = parseFloat(temperature);
+  temperature = Math.max(0, Math.min(2, Number.isNaN(parsedTemp) ? 0.7 : parsedTemp));
   maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
 
   if (!message) {
@@ -1671,7 +1808,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
       // Extend TTL atomically with ownership check, inside the lock
       await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $max: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
 
-      const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+      const aiEngineUrl = AI_ENGINE_BASE_URL;
 
       try {
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
@@ -1740,7 +1877,7 @@ app.post('/api/rag/query', requireApiKey, async (req, res) => {
     return res.status(500).json({ error: 'RAG query failed: ownership check unavailable.' });
   }
 
-  const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+  const aiEngineUrl = AI_ENGINE_BASE_URL;
 
   try {
     const baseUrl = aiEngineUrl.replace(/\/+$/, '');
@@ -1789,6 +1926,28 @@ const webhookLimiter = rateLimit({
   store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
   message: { error: 'Too many webhook requests.' }
 });
+
+// Per-repository rate limit for the /ai-review manual trigger. The trigger
+// re-runs the full review pipeline, so an attacker commenting "/ai-review" on
+// many PRs (or repeatedly on one) must not be able to spam the shared PAT.
+const manualTriggerCounts = new Map(); // `${owner}/${repo}` -> { windowStart, count }
+const MANUAL_TRIGGER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const MANUAL_TRIGGER_MAX = 3;
+
+function consumeManualTrigger(owner, repo) {
+  const now = Date.now();
+  const key = `${owner}/${repo}`;
+  const entry = manualTriggerCounts.get(key);
+  if (!entry || now - entry.windowStart >= MANUAL_TRIGGER_WINDOW_MS) {
+    manualTriggerCounts.set(key, { windowStart: now, count: 1 });
+    return true;
+  }
+  if (entry.count >= MANUAL_TRIGGER_MAX) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
 
 app.get('/api/roi', requireApiKey, async (req, res) => {
   try {
@@ -1895,6 +2054,11 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
         const repo = payload.repository.name;
         const pullNumber = payload.issue.number;
         console.log(`Manual trigger /ai-review detected on PR #${pullNumber}`);
+
+        if (!consumeManualTrigger(owner, repo)) {
+          console.warn(`ΓÜá Manual /ai-review trigger limit reached for ${owner}/${repo}.`);
+          return res.json({ message: "Manual review trigger limit reached for this repository. Try again later." });
+        }
         
         try {
           const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
@@ -1935,7 +2099,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       console.log(`💬 Conversational AI trigger on PR #${pullNumber}, file: ${filePath}`);
       
       try {
-        const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+        const aiEngineUrl = AI_ENGINE_BASE_URL;
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         const aiResponse = await fetchWithTimeout(`${baseUrl}/chat-inline`, {
           validate: false,
@@ -2263,16 +2427,62 @@ app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimit
 });
 
 // ≡ƒƒó Route: Invalidate analysis cache by repo URL
-app.post('/api/cache/invalidate', requireApiKey, async (req, res) => {
+app.post('/api/cache/invalidate', requireApiKey, cacheInvalidateLimiter, async (req, res) => {
   const { repoUrl } = req.body;
   if (!repoUrl) {
     return res.status(400).json({ error: 'repoUrl is required.' });
+  }
+  const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
+  try {
+    const ownedSession = await Session.exists({
+      clientId: req.clientId,
+      repoUrl: { $regex: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/?$`, 'i') },
+    });
+    if (!ownedSession) {
+      return res.status(403).json({
+        error: 'You can only invalidate the cache for a repository you have analyzed with this client.',
+      });
+    }
+  } catch (err) {
+    console.error('⚠️ Cache invalidation ownership check failed:', err.message);
+    return res.status(500).json({ error: 'Failed to verify repository ownership.' });
   }
   const removed = analysisCache.invalidateByRepoUrl(repoUrl);
   res.json({ success: true, removed, stats: analysisCache.getStats() });
 });
 
 // Webhook review queueing uses ReviewQueue from reviewQueue.js (per-key mutex)
+
+// Hard cap on inline comments posted per review. The shared GITHUB_PAT is
+// shared across every repository, so unbounded comment volume on a single PR
+// would exhaust the token's GitHub API rate budget and DoS the bot globally.
+// GitHub also only allows 50 comments per review via the REST API.
+const MAX_COMMENTS_PER_REVIEW = 50;
+
+// Per-PR posting throttle with exponential backoff. After a failed review
+// post, subsequent attempts for the same PR are skipped until the backoff
+// window elapses, preventing rapid-fire retry loops under the shared PAT.
+const POSTING_BACKOFF_BASE_MS = 30 * 1000;
+const POSTING_BACKOFF_MAX_MS = 30 * 60 * 1000;
+const prPostingState = new Map(); // `${owner}/${repo}#${pull}` -> { nextAllowedAt, backoffMs }
+
+function isPrPostingBlocked(prKey, now = Date.now()) {
+  const state = prPostingState.get(prKey);
+  return !!(state && state.nextAllowedAt > now);
+}
+
+function recordPrPostingAttempt(prKey, failed, now = Date.now()) {
+  if (!failed) {
+    prPostingState.delete(prKey);
+    return;
+  }
+  const state = prPostingState.get(prKey) || { backoffMs: 0 };
+  const nextBackoff = Math.min(
+    POSTING_BACKOFF_MAX_MS,
+    Math.max(POSTING_BACKOFF_BASE_MS, state.backoffMs * 2 || POSTING_BACKOFF_BASE_MS)
+  );
+  prPostingState.set(prKey, { nextAllowedAt: now + nextBackoff, backoffMs: nextBackoff });
+}
 
 // Custom repository rules (.ai-reviewer.yml / .github/ai-reviewer.md) are
 // fetched from the PR head sha, which is attacker-controlled in fork PRs.
@@ -2352,6 +2562,12 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     return;
   }
 
+  // Review configuration must come from the PR's BASE branch (maintainer
+  // controlled) rather than the head SHA (fork/contributor controlled).
+  // Otherwise a PR author could commit a malicious .ai-ignore to skip all
+  // their files, or a malicious .ai-reviewer.yml to steer the AI review.
+  const configRef = pullRequest.base && (pullRequest.base.sha || pullRequest.base.ref);
+
   // Fetch .ai-ignore patterns once
   const excludePatternsInput = 'package-lock.json,yarn.lock,pnpm-lock.yaml,dist/**,build/**';
   const baseExcludePatterns = excludePatternsInput.split(',').map(p => p.trim()).filter(Boolean).map(globToRegex);
@@ -2359,7 +2575,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   let aiIgnorePatterns = [];
   try {
     const { data: ignoreFile } = await octokit.rest.repos.getContent({
-      owner, repo, path: '.ai-ignore', ref: headSha
+      owner, repo, path: '.ai-ignore', ref: configRef
     });
     const ignoreContent = Buffer.from(ignoreFile.content, 'base64').toString('utf8');
     aiIgnorePatterns = ignoreContent.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')).map(globToRegex);
@@ -2378,6 +2594,10 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   const commentsToPost = [];
   const filesToReview = [];
   const validChangedLines = new Map();
+  // Inline comments from the local scanners whose position is not part of the
+  // diff (or that fall outside the per-review cap) are dropped instead of being
+  // posted, so we never send GitHub API calls with invalid line locations.
+  let discardedLocalComments = 0;
 
   for (const file of parsedFiles) {
     // Check if file is supported
@@ -2391,6 +2611,11 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     // Run local secrets scanner
     const { findings: secretFindings, truncated: scanTruncated, totalChanges: scanTotal, skippedReason: scanReason } = scanSecretsInChanges(file.changes);
     secretFindings.forEach(f => {
+      const validLines = validChangedLines.get(file.path);
+      if (!validLines || !validLines.has(Number(f.line))) {
+        discardedLocalComments++;
+        return;
+      }
       commentsToPost.push({
         path: file.path,
         line: f.line,
@@ -2405,9 +2630,15 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     const fileContent = file.changes.map(c => c.content).join('\n');
     const injectionWarnings = scanFileContentForWarnings(fileContent);
     injectionWarnings.forEach(warning => {
+      const validLines = validChangedLines.get(file.path);
+      const injectionLine = file.changes[0]?.line || 1;
+      if (!validLines || !validLines.has(Number(injectionLine))) {
+        discardedLocalComments++;
+        return;
+      }
       commentsToPost.push({
         path: file.path,
-        line: file.changes[0]?.line || 1,
+        line: injectionLine,
         body: `<!-- RepoSage Review Comment -->\n⚠️ **Prompt Injection Warning:** ${warning}`
       });
     });
@@ -2424,6 +2655,10 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     });
   }
 
+  if (discardedLocalComments > 0) {
+    console.warn(`ΓÜá∩╕Å ${discardedLocalComments} local scanner comments dropped because their positions were not part of the diff`);
+  }
+
   // Track whether the AI engine was successfully queried
   let aiEngineQueried = false;
   let aiCommentsDiscarded = 0;
@@ -2435,11 +2670,11 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     try {
       let customRulesResponse;
       try {
-        customRulesResponse = await octokit.rest.repos.getContent({ owner, repo, path: '.ai-reviewer.yml', ref: headSha });
+        customRulesResponse = await octokit.rest.repos.getContent({ owner, repo, path: '.ai-reviewer.yml', ref: configRef });
       } catch (err) {
         if (err.status === 404) {
           try {
-            customRulesResponse = await octokit.rest.repos.getContent({ owner, repo, path: '.github/ai-reviewer.md', ref: headSha });
+            customRulesResponse = await octokit.rest.repos.getContent({ owner, repo, path: '.github/ai-reviewer.md', ref: configRef });
           } catch (err2) {
             // Not found
           }
@@ -2455,7 +2690,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     }
 
     console.log(`🧠 Querying AI engine for ${filesToReview.length} files...`);
-    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    const aiEngineUrl = AI_ENGINE_BASE_URL;
     
     try {
       // Look for .ai-reviewer.yml to check security mode
@@ -2470,7 +2705,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
           owner,
           repo,
           path: '.ai-reviewer.yml',
-          ref: headSha
+          ref: configRef
         });
         const content = Buffer.from(configFile.content, 'base64').toString('utf8');
         const config = yaml.load(content);
@@ -2562,7 +2797,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
 
   // PR Summary generation
   try {
-    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    const aiEngineUrl = AI_ENGINE_BASE_URL;
     const baseUrl = aiEngineUrl.replace(/\/+$/, '');
     
     // We truncate diff to max 15000 chars for summary
@@ -2609,6 +2844,19 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
   }
 
   // 3. Post consolidated review comment back to GitHub PR
+  const prKey = `${owner}/${repo}#${pullNumber}`;
+  if (isPrPostingBlocked(prKey)) {
+    console.warn(`⏳ Skipping review posting for ${prKey} — posting rate limit / backoff active.`);
+    return;
+  }
+
+  // Enforce the hard per-review comment cap. Anything beyond the cap is
+  // dropped so the number of GitHub API calls per event stays bounded.
+  if (commentsToPost.length > MAX_COMMENTS_PER_REVIEW) {
+    console.warn(`⚠️ Capping ${commentsToPost.length} comments to ${MAX_COMMENTS_PER_REVIEW} for PR #${pullNumber}.`);
+    commentsToPost.length = MAX_COMMENTS_PER_REVIEW;
+  }
+
   if (commentsToPost.length > 0) {
     console.log(`Γ£ì∩╕Å Posting PR Review with ${commentsToPost.length} inline comments...`);
 
@@ -2632,6 +2880,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
       
       const reviewEvent = 'COMMENT';
 
+      let batchPosted = false;
       try {
         const { data: createdReview } = await octokit.rest.pulls.createReview({
           owner,
@@ -2643,24 +2892,34 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
           comments: batch
         });
         postedReviewIds.push(createdReview.id);
+        batchPosted = true;
       } catch (reviewErr) {
-        console.warn(`⚠️ Batched review creation failed (${reviewErr.message}); retrying comments individually and skipping invalid ones.`);
-        for (const comment of batch) {
-          try {
-            const { data: singleReview } = await octokit.rest.pulls.createReview({
-              owner,
-              repo,
-              pull_number: pullNumber,
-              commit_id: headSha,
-              event: 'COMMENT',
-              body: `## 🛡️ RepoSage AI Code Review Audit Completed!\n\n${body}`,
-              comments: [comment]
-            });
-            postedReviewIds.push(singleReview.id);
-          } catch (commentErr) {
-            console.warn(`⚠️ Skipping invalid inline comment on ${comment.path}:${comment.line} — ${commentErr.message}`);
-          }
+        // Do NOT retry every comment as its own API call: on a batch failure
+        // that could multiply to 50 extra calls per batch under the shared
+        // PAT. Instead post a single fallback COMMENT review that lists the
+        // findings as text, and back off further posting attempts for this PR.
+        console.warn(`⚠️ Batched review creation failed (${reviewErr.message}); posting a single fallback review instead of per-comment retries.`);
+        try {
+          const fallbackBody =
+            `## 🛡️ RepoSage AI Code Review — Inline Comments Unavailable\n\n` +
+            `The bot could not post inline review comments on this batch (${batch.length} of ${commentsToPost.length} findings) because some positions were not part of the diff. The findings are listed below for manual review:\n\n` +
+            batch.map(c => `- **\`${c.path}:${c.line}\`**\n\n${c.body}`).join('\n\n');
+          const { data: fallbackReview } = await octokit.rest.pulls.createReview({
+            owner,
+            repo,
+            pull_number: pullNumber,
+            commit_id: headSha,
+            event: 'COMMENT',
+            body: fallbackBody
+          });
+          postedReviewIds.push(fallbackReview.id);
+        } catch (fallbackErr) {
+          console.warn(`⚠️ Fallback review also failed for PR #${pullNumber}: ${fallbackErr.message}`);
+          recordPrPostingAttempt(prKey, true);
         }
+      }
+      if (batchPosted) {
+        recordPrPostingAttempt(prKey, false);
       }
     }
     
@@ -2668,6 +2927,19 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     const repoName = `${owner}/${repo}`;
     await RoiMetrics.recordPrReview(repoName, commentsToPost.length).catch(e => console.error("ROI tracking error", e));
 
+  } else if (filesToReview.length === 0) {
+    // Every file in the diff was excluded or unsupported — no AI analysis
+    // actually happened, so we must NOT auto-approve or grant the label.
+    console.warn(`⚠️ No files were eligible for AI review on PR #${pullNumber} — refusing to auto-approve.`);
+    const { data: createdReview } = await octokit.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      commit_id: headSha,
+      event: 'COMMENT',
+      body: `## ⚠️ RepoSage AI Code Review — No Files Reviewed\n\nNo files in this PR were eligible for automated review (all changed files were excluded or unsupported), so no approval or label was granted.`
+    });
+    postedReviewIds.push(createdReview.id);
   } else if (aiCommentsDiscarded > 0) {
     console.warn(`ΓÜá∩╕Å ${aiCommentsDiscarded} AI comments were discarded due to line number mismatches ΓÇö posting COMMENT review instead of approving.`);
     const { data: createdReview } = await octokit.rest.pulls.createReview({
@@ -3264,26 +3536,18 @@ app.get("/api/review-history/compare/:id1/:id2", requireApiKey, async (req, res)
 });
 
 app.get('/health', (req, res) => {
+  // Liveness-only probe. Intentionally returns no internal state (database
+  // connectivity, run mode, circuit-breaker details) to avoid leaking
+  // deployment internals to unauthenticated callers.
   if (!serverReady) {
     return res.status(503).json({
       status: 'starting_up',
       timestamp: new Date().toISOString(),
-      database: isDatabaseConnected() ? 'connected' : 'disconnected',
       message: 'Server is still initializing. Please retry shortly.',
     });
   }
   res.json({
     status: 'ok',
-    timestamp: new Date().toISOString(),
-    database: isDatabaseConnected() ? 'connected' : 'disconnected',
-    mode: isDatabaseConnected() ? 'full' : 'degraded',
-    circuitBreaker: reviewQueue.getCircuitState(),
-  });
-});
-
-app.get('/api/health/circuit-breaker', (req, res) => {
-  res.json({
-    ...reviewQueue.getCircuitState(),
     timestamp: new Date().toISOString(),
   });
 });

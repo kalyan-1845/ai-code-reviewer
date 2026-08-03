@@ -1,16 +1,20 @@
 import { useState, useCallback } from 'react';
 
-const API_BASE_URL = (typeof __RUNTIME_API_URL__ !== 'undefined' ? __RUNTIME_API_URL__ : import.meta.env.VITE_API_URL) || 'http://localhost:5000';
+// Backend base URL is provided at runtime by config.js (__RUNTIME_API_URL__) or
+// at build time via VITE_API_URL. Same-origin default; no hardcoded dev URL.
+const API_BASE_URL = (typeof __RUNTIME_API_URL__ !== 'undefined' ? __RUNTIME_API_URL__ : import.meta.env.VITE_API_URL) || '';
 
 export const useStreamingReview = () => {
   const [reviewText, setReviewText] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
+  const [isMock, setIsMock] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const startStream = useCallback(async (payload: Record<string, unknown> | RequestInit) => {
     setReviewText('');
     setIsStreaming(true);
     setError(null);
+    setIsMock(false);
 
     try {
       const isRequestInit = 'method' in payload || 'body' in payload;
@@ -57,6 +61,9 @@ export const useStreamingReview = () => {
 
               try {
                 const parsed = JSON.parse(dataStr);
+                if (parsed._mock === true) {
+                  setIsMock(true);
+                }
                 if (parsed.text) {
                   setReviewText((prev) => prev + parsed.text);
                 } else if (parsed.error) {
@@ -78,5 +85,5 @@ export const useStreamingReview = () => {
     }
   }, []);
 
-  return { reviewText, isStreaming, error, startStream };
+  return { reviewText, isStreaming, isMock, error, startStream };
 };

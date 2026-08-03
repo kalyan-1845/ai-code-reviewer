@@ -2,7 +2,7 @@ export function detectNPlusOne(content, fileName = '') {
   if (typeof content !== 'string') return false;
 
   if (!/(for|while|\.map|\.forEach)/.test(content)) return false;
-  if (!/(\.find|\.query|\.execute|\.select|prisma\.)/.test(content)) return false;
+  if (!/(\.find|\.query|\.execute|\.select|\.insert|\.update|prisma\.)/.test(content)) return false;
 
   let inLoop = false;
   let braceDepth = 0;

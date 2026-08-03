@@ -1,4 +1,8 @@
-const API_BASE_URL = (window as any).__RUNTIME_API_URL__ || import.meta.env.VITE_API_URL || "http://localhost:5000";
+// Backend base URL is provided at runtime by config.js (__RUNTIME_API_URL__) or
+// at build time via VITE_API_URL. Defaulting to the same origin ("" => relative
+// URLs) keeps the app working when frontend and backend are served together and
+// prevents a hardcoded dev URL from leaking into production bundles.
+const API_BASE_URL = (window as any).__RUNTIME_API_URL__ || import.meta.env.VITE_API_URL || "";
 const API_KEY_STORAGE_KEY = "reposage_api_key";
 let sessionRequest: Promise<void> | null = null;
 let csrfToken: string | null = null;

@@ -27,6 +27,18 @@ function getSessionSecret() {
   return process.env.SESSION_SECRET;
 }
 
+// Publicly-known default secrets that used to be shipped by the docker deploy
+// path (docker-compose.yml fallbacks and .env.docker.example placeholders).
+// If any of these is used at startup, cookie forging and full API auth bypass
+// become trivial, so the process refuses to boot instead.
+const KNOWN_DEFAULT_SECRETS = [
+  'reposage-docker-dev-secret-key-change-in-prod-long-enough',
+  'reposage-docker-dev-key-change-in-prod',
+  'docker-dev-key',
+  'change-me-to-a-random-secret',
+  'change-me-to-a-random-api-key',
+];
+
 export function validateSessionSecret() {
   if (!process.env.SESSION_SECRET) {
     console.error('FATAL: SESSION_SECRET must be set independently of REPOSAGE_API_KEY');
@@ -35,6 +47,16 @@ export function validateSessionSecret() {
   if (process.env.SESSION_SECRET === process.env.REPOSAGE_API_KEY) {
     console.error('FATAL: SESSION_SECRET must not be the same as REPOSAGE_API_KEY');
     process.exit(1);
+  }
+  for (const knownDefault of KNOWN_DEFAULT_SECRETS) {
+    if (process.env.SESSION_SECRET === knownDefault) {
+      console.error(`FATAL: SESSION_SECRET is set to the publicly-known default '${knownDefault}'. Set a strong random SESSION_SECRET before deploying.`);
+      process.exit(1);
+    }
+    if (process.env.REPOSAGE_API_KEY === knownDefault) {
+      console.error(`FATAL: REPOSAGE_API_KEY is set to the publicly-known default '${knownDefault}'. Set a strong random REPOSAGE_API_KEY before deploying.`);
+      process.exit(1);
+    }
   }
 }
 
