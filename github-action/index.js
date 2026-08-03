@@ -154,7 +154,13 @@ async function run() {
     const { files: parsedFiles } = parseDiff(diff);
     console.log(`📁 Found ${parsedFiles.length} files in PR diff.`);
 
-    const MAX_REVIEW_FILES = parseInt(core.getInput('max-review-files') || process.env.MAX_REVIEW_FILES || '50', 10);
+    const maxReviewFilesInput = parseInt(core.getInput('max-review-files') || process.env.MAX_REVIEW_FILES || '50', 10);
+    // A non-numeric/<=0 value must not silently disable the cap (which would
+    // happen with NaN since `total > NaN` is always false). Fall back to 50.
+    const MAX_REVIEW_FILES = Number.isFinite(maxReviewFilesInput) && maxReviewFilesInput > 0 ? maxReviewFilesInput : 50;
+    if (!Number.isFinite(maxReviewFilesInput) || maxReviewFilesInput <= 0) {
+      core.warning(`Invalid max-review-files value "${core.getInput('max-review-files') || process.env.MAX_REVIEW_FILES}"; falling back to 50.`);
+    }
     // Per-file review limits: files larger than these are dropped from the AI
     // review payload. Any such file makes the review partial, so the PR must
     // never be auto-approved when a file was skipped for size.
