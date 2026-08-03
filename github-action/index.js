@@ -50,6 +50,10 @@ async function run() {
     const maxTokensInput = parseInt(core.getInput('max-tokens') || '4096', 10);
     const maxTokens = Number.isFinite(maxTokensInput) && maxTokensInput > 0 ? maxTokensInput : 4096;
     const autoApprove = core.getInput('auto-approve')?.toLowerCase() === 'true';
+    // DevSecOps mode: restrict the review prompt to OWASP Top 10 security issues.
+    const securityMode = core.getInput('security-mode')?.toLowerCase() === 'true';
+    // Silently drop NITPICK-level comments from the final review.
+    const muteNitpicks = core.getInput('mute-nitpicks')?.toLowerCase() === 'true';
 
     const excludePatterns = excludePathsInput
       .split(',')
@@ -288,9 +292,15 @@ async function run() {
           frameworkContext = '\nCRITICAL: This is a Svelte component. It contains HTML, CSS, and JavaScript/TypeScript in a single file. Do NOT flag valid Svelte syntax (like $: reactive statements or HTML tags) as JavaScript syntax errors. Consider Svelte reactivity rules.';
         }
 
+        const securityModeBlock = securityMode
+          ? `DEDICATED SECURITY MODE IS ACTIVE (DevSecOps).
+Hunt EXCLUSIVELY for real, exploitable vulnerabilities from the OWASP Top 10 (injection, broken authentication, broken access control, sensitive data exposure, XSS, security misconfiguration, insecure deserialization, component vulnerabilities, SSRF, etc.) that this diff introduces.
+Do NOT report general bugs, naming, or style issues. Only report issues with type "security", and only when you are confident the vulnerability is genuine and exploitable.`
+          : 'Identify any logical bugs, security threats (API key leaks, hardcoded credentials, SQL injection, null references), naming/style issues, or performance optimization opportunities.';
+
         const reviewPrompt = `You are a Senior Staff Engineer performing an automated Pull Request code review.
 Analyze the following code additions in the file "${file.path}". 
-Identify any logical bugs, security threats (API key leaks, hardcoded credentials, SQL injection, null references), naming/style issues, or performance optimization opportunities.${packageContext}
+${securityModeBlock}${packageContext}
 
 CRITICAL: When reviewing TypeScript files, recognize advanced and modern TypeScript features (like mapped types, conditional types, and deeply nested generics). Do NOT flag valid complex TypeScript as syntax errors. If you are not absolutely certain that a complex type definition is invalid, abstain from commenting on it to prevent false positives.
 
@@ -309,7 +319,7 @@ Format your JSON precisely as:
   "reviews": [
     {
       "line": 12,
-      "type": "bug | security | optimization | style",
+      "type": ${securityMode ? '"security"' : '"bug | security | optimization | style"'},
       "comment": "### 🐞 Bug Title\n\nClear, constructive description of the issue.\n\n#### 💡 Actionable Suggestion\n\`\`\`language\n// corrected code\n\`\`\`"
     }
   ]
@@ -382,6 +392,11 @@ If no issues are found, reply with: { "reviews": [] }`;
         if (issues.length > 0) {
           console.log(`✅ AI review returned ${issues.length} comments for ${file.path}`);
           for (const issue of issues) {
+            // Silently drop NITPICK-level comments when mute-nitpicks is enabled.
+            if (muteNitpicks && typeof issue.type === 'string' && issue.type.trim().toLowerCase() === 'nitpick') {
+              console.log(`🔇 Muting NITPICK comment for ${file.path} (line ${issue.line}).`);
+              continue;
+            }
             const issueLine = normalizeReviewLineNumber(issue.line);
             const changeExists = issueLine !== null && file.changes.some(c => c.line === issueLine);
             if (changeExists) {
