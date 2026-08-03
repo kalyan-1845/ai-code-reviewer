@@ -238,6 +238,19 @@ const cacheInvalidateLimiter = rateLimit({
   message: { error: 'Too many cache invalidation requests. Please slow down and retry after 1 minute.' }
 });
 
+// Per-IP rate limit for the public ROI dashboard endpoint so the raw metrics
+// cannot be scraped repeatedly (the endpoint stays public because the static
+// dashboard fetches it without an API key, but it no longer exposes the full
+// RoiMetrics collection to anonymous callers).
+const roiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
+  message: { error: 'Too many ROI dashboard requests. Please slow down and retry after 1 minute.' }
+});
+
 // Parse cookies for CSRF token validation
 app.use(cookieParser());
 app.use('/dashboard', express.static(path.join(__dirname, 'public/dashboard')));
@@ -1949,7 +1962,7 @@ function consumeManualTrigger(owner, repo) {
   return true;
 }
 
-app.get('/api/roi', async (req, res) => {
+app.get('/api/roi', roiLimiter, async (req, res) => {
   try {
     const metrics = await RoiMetrics.find({});
     
@@ -1972,8 +1985,17 @@ app.get('/api/roi', async (req, res) => {
 
     const timeSavedHours = (aggregated.timeSavedMinutes / 60).toFixed(1);
 
+    // Do not return the entire RoiMetrics collection (repository names + per-repo
+    // counters are sensitive tenant data). The public dashboard only renders the
+    // aggregated hero metrics and a top-10 chart, so limit the response to those
+    // exact fields and cap the list at the top 10 repos.
+    const topRepos = metrics
+      .map(m => ({ repoName: m.repoName, timeSavedMinutes: m.timeSavedMinutes }))
+      .sort((a, b) => b.timeSavedMinutes - a.timeSavedMinutes)
+      .slice(0, 10);
+
     res.json({
-      metrics,
+      metrics: topRepos,
       aggregated: {
         ...aggregated,
         acceptanceRate,
