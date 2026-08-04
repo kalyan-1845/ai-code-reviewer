@@ -45,17 +45,17 @@ mongoose.model = (name, schema) => {
     TestRoiMetrics.schema = realSchema;
 
     // Attach the static methods to the constructor
-    TestRoiMetrics.recordPrReview = async function (repoName, commentsCount) {
+    TestRoiMetrics.recordPrReview = async function (clientId, repoName, commentsCount) {
       return await this.findOneAndUpdate(
-        { repoName },
+        { clientId, repoName },
         { $inc: { totalPrsReviewed: 1, totalAiComments: commentsCount } },
         { new: true, upsert: true }
       );
     };
 
-    TestRoiMetrics.recordAcceptedSuggestion = async function (repoName) {
+    TestRoiMetrics.recordAcceptedSuggestion = async function (clientId, repoName) {
       return await this.findOneAndUpdate(
-        { repoName },
+        { clientId, repoName },
         { $inc: { acceptedSuggestions: 1, timeSavedMinutes: 15 } },
         { new: true, upsert: true }
       );
@@ -135,7 +135,7 @@ test('RoiMetrics has recordAcceptedSuggestion static method', () => {
 
 test('recordPrReview increments totalPrsReviewed and totalAiComments', async () => {
   mockRoiMetricsInstance = null; // reset
-  const result = await RoiMetrics.recordPrReview('incremental/repo', 7);
+  const result = await RoiMetrics.recordPrReview('test-client', 'incremental/repo', 7);
   assert.ok(result, 'recordPrReview should return a result');
   assert.equal(result.totalPrsReviewed, 1, 'totalPrsReviewed should be incremented by 1');
   assert.equal(result.totalAiComments, 7, 'totalAiComments should equal the provided count');
@@ -143,15 +143,15 @@ test('recordPrReview increments totalPrsReviewed and totalAiComments', async () 
 
 test('recordPrReview accumulates on subsequent calls', async () => {
   mockRoiMetricsInstance = null; // reset
-  await RoiMetrics.recordPrReview('accumulate/repo', 3);
-  const result = await RoiMetrics.recordPrReview('accumulate/repo', 4);
+  await RoiMetrics.recordPrReview('test-client', 'accumulate/repo', 3);
+  const result = await RoiMetrics.recordPrReview('test-client', 'accumulate/repo', 4);
   assert.equal(result.totalPrsReviewed, 2, 'totalPrsReviewed should accumulate');
   assert.equal(result.totalAiComments, 7, 'totalAiComments should accumulate');
 });
 
 test('recordAcceptedSuggestion increments acceptedSuggestions by 1 and timeSavedMinutes by 15', async () => {
   mockRoiMetricsInstance = null; // reset
-  const result = await RoiMetrics.recordAcceptedSuggestion('timesaved/repo');
+  const result = await RoiMetrics.recordAcceptedSuggestion('test-client', 'timesaved/repo');
   assert.ok(result, 'recordAcceptedSuggestion should return a result');
   assert.equal(result.acceptedSuggestions, 1, 'acceptedSuggestions should be incremented by 1');
   assert.equal(result.timeSavedMinutes, 15, 'timeSavedMinutes should be incremented by 15');
@@ -159,8 +159,8 @@ test('recordAcceptedSuggestion increments acceptedSuggestions by 1 and timeSaved
 
 test('recordAcceptedSuggestion accumulates on subsequent calls', async () => {
   mockRoiMetricsInstance = null; // reset
-  await RoiMetrics.recordAcceptedSuggestion('acc/repo');
-  const result = await RoiMetrics.recordAcceptedSuggestion('acc/repo');
+  await RoiMetrics.recordAcceptedSuggestion('test-client', 'acc/repo');
+  const result = await RoiMetrics.recordAcceptedSuggestion('test-client', 'acc/repo');
   assert.equal(result.acceptedSuggestions, 2, 'acceptedSuggestions should accumulate');
   assert.equal(result.timeSavedMinutes, 30, 'timeSavedMinutes should accumulate to 30');
 });

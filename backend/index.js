@@ -1767,7 +1767,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       const repoName = payload.repository?.full_name;
       if (repoName) {
         console.log(`Tracking resolved AI comment for ROI on ${repoName}`);
-        await RoiMetrics.recordAcceptedSuggestion(repoName).catch(e => console.error("ROI tracking error", e));
+        await RoiMetrics.recordAcceptedSuggestion('system', repoName).catch(e => console.error("ROI tracking error", e));
       }
     }
     
@@ -2384,7 +2384,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     
     // Log metrics for ROI Dashboard
     const repoName = `${owner}/${repo}`;
-    await RoiMetrics.recordPrReview(repoName, commentsToPost.length).catch(e => console.error("ROI tracking error", e));
+    await RoiMetrics.recordPrReview('system', repoName, commentsToPost.length).catch(e => console.error("ROI tracking error", e));
 
   } else if (aiCommentsDiscarded > 0) {
     console.warn(`ΓÜá∩╕Å ${aiCommentsDiscarded} AI comments were discarded due to line number mismatches ΓÇö posting COMMENT review instead of approving.`);
