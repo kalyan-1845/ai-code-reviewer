@@ -1327,13 +1327,27 @@ async def chat_with_repository(request: ChatRequest, x_client_id: str = Header(d
                 for i, c in enumerate(rag_chunks, 1):
                     meta = c.get("metadata", {})
                     source = meta.get("source_file", meta.get("fileName", "unknown"))
-                    chunk_parts.append(f"[Chunk {i} from {source}]\n{c['content']}")
+                    chunk_content = c.get("content", "")
+                    # Drop RAG chunks containing prompt-injection phrases, same as history/messages
+                    chunk_normalized = unicodedata.normalize("NFKC", chunk_content).lower()
+                    dangerous = False
+                    for phrase in DANGEROUS_PATTERNS:
+                        pattern = r"\s+".join(re.escape(w) for w in phrase.split())
+                        if re.search(pattern, chunk_normalized):
+                            dangerous = True
+                            break
+                    if dangerous:
+                        print(f"⚠️ Skipping RAG chunk {i} from {source}: prompt-injection phrase detected")
+                        continue
+                    # Sanitize chunk content the same way file contents are sanitized
+                    chunk_content = sanitize_file_content(chunk_content)
+                    chunk_parts.append(f"[Chunk {i} from {source}]\n{chunk_content}")
                     rag_sources.append({
                         "chunk_id": c.get("chunk_id"),
                         "source": source,
                         "metadata": meta,
                         "similarity_score": c.get("similarity_score"),
-                        "preview": c.get("content", "")[:300],
+                        "preview": chunk_content[:300],
                     })
                 rag_context = "\n\n".join(chunk_parts)
         except Exception as e:
