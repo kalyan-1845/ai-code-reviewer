@@ -23,6 +23,24 @@ class TestRunAgent:
         result = await _run_agent('Performance', 'sys', 'usr', caller)
         assert result == {}
 
+    @pytest.mark.asyncio
+    async def test_run_agent_reraises_for_synthesizer(self):
+        """Synthesizer exceptions must be re-raised, not swallowed."""
+        caller = AsyncMock(side_effect=RuntimeError('Synthesizer failed'))
+        try:
+            await _run_agent('Synthesizer', 'sys', 'usr', caller)
+            assert False, 'Expected RuntimeError to be raised'
+        except RuntimeError as e:
+            assert 'Synthesizer failed' in str(e)
+
+    @pytest.mark.asyncio
+    async def test_run_agent_non_synth_does_not_re_raise(self):
+        """Non-Synth agents should return empty dict on exception, not raise."""
+        for agent_name in ['Security', 'Performance', 'Style', 'Architecture']:
+            caller = AsyncMock(side_effect=RuntimeError('agent error'))
+            result = await _run_agent(agent_name, 'sys', 'usr', caller)
+            assert result == {}, f'{agent_name} should return {{}} on error'
+
 
 class TestRunBatchPipeline:
     """Tests for run_batch_pipeline async multi-agent dispatch."""
@@ -124,3 +142,77 @@ class TestRunBatchPipeline:
         )
         assert 'final' in result
         assert result['final'] == 'result'
+
+    @pytest.mark.asyncio
+    async def test_entropy_context_included_in_security_prompt_when_high_entropy_found(self):
+        """When detect_high_entropy_strings finds secrets, entropy context must be appended to the security prompt."""
+        captured_prompts = []
+
+        async def capture_caller(sys, usr):
+            captured_prompts.append(usr)
+            return {'fileReviews': {}}
+
+        # A high-entropy string (no real secret)
+        contents = 'def get_token():\n    return "xV9p$Lm#Q!zRt2Y&k8w@vCdE5g"'
+
+        await run_batch_pipeline(
+            company='TestCo',
+            language='python',
+            structure_text='.',
+            contents_text=contents,
+            is_first_batch=False,
+            base_prompt='base',
+            llm_caller=capture_caller,
+        )
+        # First call is to the Security agent
+        security_prompt = captured_prompts[0]
+        assert 'Entropy' in security_prompt or 'High Shannon Entropy' in security_prompt
+
+    @pytest.mark.asyncio
+    async def test_no_entropy_context_when_no_high_entropy_strings(self):
+        """When no high-entropy strings are found, the security prompt should not mention entropy."""
+        captured_prompts = []
+
+        async def capture_caller(sys, usr):
+            captured_prompts.append(usr)
+            return {'fileReviews': {}}
+
+        # Plain English text has low entropy
+        contents = 'def hello():\n    print("Hello, world!")\n    return True'
+
+        await run_batch_pipeline(
+            company='TestCo',
+            language='python',
+            structure_text='.',
+            contents_text=contents,
+            is_first_batch=False,
+            base_prompt='base',
+            llm_caller=capture_caller,
+        )
+        security_prompt = captured_prompts[0]
+        assert 'Potential Secrets' not in security_prompt
+
+    @pytest.mark.asyncio
+    async def test_entropy_context_only_appended_to_security_agent(self):
+        """Entropy context must only appear in the Security agent prompt, not other agents."""
+        captured_prompts = []
+
+        async def capture_caller(sys, usr):
+            captured_prompts.append(usr)
+            return {'fileReviews': {}}
+
+        contents = 'token = "xV9p$Lm#Q!zRt2Y&k8w@vCdE5g"'
+        await run_batch_pipeline(
+            company='TestCo',
+            language='python',
+            structure_text='.',
+            contents_text=contents,
+            is_first_batch=False,
+            base_prompt='base',
+            llm_caller=capture_caller,
+        )
+        # First 4 calls are sub-agents (Security, Performance, Style, Impact)
+        # Entropy should only be in the Security prompt (call index 0)
+        assert 'Entropy' in captured_prompts[0] or 'High Shannon Entropy' in captured_prompts[0]
+        for i in range(1, 4):
+            assert 'Potential Secrets' not in captured_prompts[i]
