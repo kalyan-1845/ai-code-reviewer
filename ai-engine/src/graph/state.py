@@ -17,3 +17,4 @@ class AgentState(TypedDict, total=False):
     has_leaked_secrets: bool
     security_alert: Optional[str]
     ast_context: str
+    is_cached: bool

@@ -7,6 +7,11 @@ try:
 except ImportError:
     from ai_engine.services.security_firewall import scan_diff
 
+try:
+    from services.cache_manager import compute_hash, get_cached_review, set_cached_review
+except ImportError:
+    from ai_engine.services.cache_manager import compute_hash, get_cached_review, set_cached_review
+
 
 def sanitizer_node(state: AgentState) -> dict:
     raw_diff = state.get("raw_diff", "")
@@ -62,6 +67,7 @@ def reviewer_node(state: AgentState) -> dict:
     current_index = state.get("current_index", 0)
     micro_reviews = list(state.get("micro_reviews", []))
     ast_context = state.get("ast_context", "")
+    is_cached = False
 
     if current_index < len(chunks):
         chunk_content = chunks[current_index]
@@ -69,17 +75,28 @@ def reviewer_node(state: AgentState) -> dict:
         if chunk_ast and chunk_ast not in ast_context:
             ast_context = f"{ast_context}\n{chunk_ast}" if ast_context else chunk_ast
 
-        # Simulated micro-review step for chunk
-        review = f"Micro-review for chunk {current_index + 1}/{len(chunks)}:\nAnalyzed snippet ({len(chunk_content)} chars). No critical flaws detected."
-        if ast_context:
-            review += f"\nAST Context: {ast_context}"
+        hash_key = compute_hash(chunk_content)
+        cached_review = get_cached_review(hash_key)
+
+        if cached_review is not None:
+            review = cached_review
+            is_cached = True
+        else:
+            is_cached = False
+            review = f"Micro-review for chunk {current_index + 1}/{len(chunks)}:\nAnalyzed snippet ({len(chunk_content)} chars). No critical flaws detected."
+            if ast_context:
+                review += f"\nAST Context: {ast_context}"
+            set_cached_review(hash_key, review)
+
         micro_reviews.append(review)
 
     return {
         "micro_reviews": micro_reviews,
         "current_index": current_index + 1,
-        "ast_context": ast_context
+        "ast_context": ast_context,
+        "is_cached": is_cached
     }
+
 
 
 def synthesizer_node(state: AgentState) -> dict:
