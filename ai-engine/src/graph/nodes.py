@@ -32,7 +32,7 @@ def chunker_node(state: AgentState) -> dict:
         for idx, c in enumerate(raw_chunks):
             if not c.strip():
                 continue
-            if idx == 0 and not raw_diff.startswith("diff --git "):
+            if idx == 0:
                 chunks.append(c)
             else:
                 chunks.append(f"diff --git {c}")
