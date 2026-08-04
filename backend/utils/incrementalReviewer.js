@@ -86,6 +86,18 @@ async function getChangedFiles(repoPath, baseRef = 'main') {
 }
 
 function getFilesToReview(currentFiles, previousCache) {
+  if (!previousCache) {
+    // Treat all files as changed when there is no previous cache
+    const currentCache = buildContentHashCache(currentFiles);
+    const filesToReview = currentFiles.filter(file => currentCache[file] !== null);
+    return {
+      filesToReview,
+      currentCache,
+      changedCount: filesToReview.length,
+      totalCount: currentFiles.length,
+    };
+  }
+
   const filesToReview = [];
   const currentCache = buildContentHashCache(currentFiles);
 
