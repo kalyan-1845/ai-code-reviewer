@@ -16,28 +16,35 @@ import { registerTimer } from './timerRegistry.js';
 class AsyncLock {
   constructor() {
     this._queue = Promise.resolve();
+    this._free = true;
   }
   async acquire(fn) {
+    // Mark the lock as busy so isFree() reports false while any caller is
+    // queued or running, not just the currently held operation.
+    this._free = false;
     // Serialize all callers through a promise chain. Each acquire()
     // waits for the previous operation to complete before executing.
     // The previous line is captured before chaining so concurrent callers
     // each get their own slot in the chain rather than all sharing one.
     const prev = this._queue;
     let release;
-    this._queue = new Promise(resolve => { release = resolve; });
+    const mySlot = new Promise(resolve => { release = resolve; });
+    this._queue = mySlot;
     await prev;
     try {
       return await fn();
     } finally {
       release();
+      // Only mark the lock free if no caller chained after us; otherwise a
+      // queued waiter is still pending and the lock must stay busy.
+      if (this._queue === mySlot) {
+        this._free = true;
+      }
     }
   }
 
   isFree() {
-    // After a lock is acquired, _queue is a new unresolved promise so
-    // isFree() returns false. It becomes a resolved promise when the
-    // held operation calls release(), allowing the next waiter to run.
-    return this._queue === Promise.resolve();
+    return this._free;
   }
 }
 
