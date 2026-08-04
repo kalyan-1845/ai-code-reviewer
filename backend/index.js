@@ -1191,6 +1191,7 @@ const prSummary = {
 };
 
       if (!reviewResult?._mock && !cacheHit) {
+        const totalLines = files.reduce((sum, f) => sum + ((f.content.match(/\n/g)?.length ?? 0) + 1), 0);
         if (isDatabaseConnected()) {
           try {
             await Analytics.create({
@@ -1213,10 +1214,10 @@ const prSummary = {
             });
           } catch (dbErr) {
             console.warn('MongoDB analytics write failed, falling back to file:', dbErr.message);
-            await recordFileAnalytics({ repoName, totalLines: files.length, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch(() => {});
+            await recordFileAnalytics({ repoName, totalLines, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch(() => {});
           }
         } else {
-          await recordFileAnalytics({ repoName, totalLines: files.length, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch(() => {});
+          await recordFileAnalytics({ repoName, totalLines, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch(() => {});
         }
       }
 
