@@ -4,21 +4,23 @@
 // exfiltrate the token, and the value would survive long after the session
 // should have ended. Keeping it in memory only means the token is cleared when
 // the page is closed and cannot be read from disk.
+//
+// The backend extends the session's absoluteExpiry to 24 hours on every
+// privileged access.  The frontend now defers TTL enforcement entirely to the
+// backend: the token is invalidated only when it is explicitly cleared, or when
+// the backend returns a 401 (at which point the caller must call
+// clearSessionOwnerToken).  This eliminates the window where a valid backend
+// session becomes inaccessible because the in-memory copy expired.
 let sessionOwnerToken: string = "";
-let sessionOwnerTokenExpiry: number = 0;
-const TOKEN_TTL_MS = 60 * 60 * 1000;
 
 export function getSessionOwnerToken(): string {
-  if (!sessionOwnerToken) return "";
-  if (!Number.isFinite(sessionOwnerTokenExpiry) || Date.now() >= sessionOwnerTokenExpiry) {
-    sessionOwnerToken = "";
-    sessionOwnerTokenExpiry = 0;
-    return "";
-  }
   return sessionOwnerToken;
 }
 
 export function setSessionOwnerToken(token: string): void {
   sessionOwnerToken = token;
-  sessionOwnerTokenExpiry = Date.now() + TOKEN_TTL_MS;
+}
+
+export function clearSessionOwnerToken(): void {
+  sessionOwnerToken = "";
 }
