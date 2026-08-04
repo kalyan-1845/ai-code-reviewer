@@ -48,15 +48,12 @@ class TestPromptStrings:
 
     @pytest.mark.parametrize("name,prompt", list(PROMPTS.items()))
     def test_prompt_contains_structure_text_placeholder(self, name, prompt):
-        # TEST_GENERATION_AGENT_PROMPT does not use {structure_text} — it focuses only on file changes
-        if name == "TEST_GENERATION_AGENT_PROMPT":
-            pytest.skip(f"{name} intentionally does not use {{structure_text}}")
         assert "{structure_text}" in prompt, f"{name} missing {{structure_text}} placeholder"
 
     @pytest.mark.parametrize("name,prompt", list(PROMPTS.items()))
     def test_prompt_contains_contents_text_placeholder(self, name, prompt):
-        # TEST_GENERATION_AGENT_PROMPT and SYNTHESIZER_AGENT_PROMPT do not use {contents_text}
-        if name in ("TEST_GENERATION_AGENT_PROMPT", "SYNTHESIZER_AGENT_PROMPT"):
+        # SYNTHESIZER_AGENT_PROMPT does not use {contents_text}
+        if name == "SYNTHESIZER_AGENT_PROMPT":
             pytest.skip(f"{name} intentionally does not use {{contents_text}}")
         assert "{contents_text}" in prompt, f"{name} missing {{contents_text}} placeholder"
 
@@ -106,14 +103,17 @@ class TestPromptSubstitution:
         assert len(result) > 0
 
     def test_test_generation_prompt_substitution(self):
-        # TEST_GENERATION_AGENT_PROMPT uses {company} and {language} only
         result = TEST_GENERATION_AGENT_PROMPT.format(
             company="AcmeCorp",
             language="English",
+            structure_text="src/",
+            contents_text="print('hello')",
         )
         assert isinstance(result, str)
         assert len(result) > 0
         assert "AcmeCorp" in result
+        assert "src/" in result
+        assert "print('hello')" in result
 
     def test_architecture_prompt_substitution(self):
         result = ARCHITECTURE_AGENT_PROMPT.format(
@@ -161,3 +161,31 @@ class TestSynthesizerPromptHasAgentFindings:
 class TestHistoricalBugPromptHasHistoricalContext:
     def test_historical_bug_prompt_contains_historical_bugs_context_placeholder(self):
         assert "{historical_bugs_context}" in HISTORICAL_BUG_AGENT_PROMPT
+
+
+class TestRunBatchPipelinePrompts:
+    """Every prompt used by run_batch_pipeline must render with the kwargs the
+    pipeline supplies and must actually embed the repository content."""
+
+    def test_all_pipeline_prompts_format_and_embed_repository_content(self):
+        kwargs = {
+            "company": "AcmeCorp",
+            "language": "English",
+            "structure_text": "src/\nlib/\n",
+            "contents_text": "def helper(): pass",
+            "historical_bugs_context": "No historical bugs found.",
+        }
+        prompts = [
+            SECURITY_AGENT_PROMPT,
+            PERFORMANCE_AGENT_PROMPT,
+            STYLE_AGENT_PROMPT,
+            IMPACT_ANALYSIS_AGENT_PROMPT,
+            TEST_GENERATION_AGENT_PROMPT,
+            ARCHITECTURE_AGENT_PROMPT,
+            HISTORICAL_BUG_AGENT_PROMPT,
+        ]
+        for prompt in prompts:
+            rendered = prompt.format(**kwargs)
+            assert "AcmeCorp" in rendered
+            assert "src/" in rendered
+            assert "def helper(): pass" in rendered
