@@ -156,6 +156,67 @@ enum Status {
     assert add_chunk["metadata"]["end_line"] == 12
 
 
+def test_generate_chunk_id_deterministic():
+    """Verify that generate_chunk_id produces a 16-character hex string."""
+    chunk_id = extractor.generate_chunk_id("src/app.py", 0)
+    assert len(chunk_id) == 16
+    assert all(c in "0123456789abcdef" for c in chunk_id)
+
+    # Same input must produce same output (deterministic)
+    chunk_id2 = extractor.generate_chunk_id("src/app.py", 0)
+    assert chunk_id == chunk_id2
+
+    # Different index must produce different output
+    chunk_id3 = extractor.generate_chunk_id("src/app.py", 1)
+    assert chunk_id != chunk_id3
+
+    # Different path must produce different output
+    chunk_id4 = extractor.generate_chunk_id("src/utils.py", 0)
+    assert chunk_id != chunk_id4
+
+
+def test_find_matching_brace_simple():
+    """Verify find_matching_brace finds the matching closing brace for simple blocks."""
+    content = "function foo() { return 1; }"
+    # Position right after the opening '{'
+    pos = content.index('{') + 1
+    end = extractor.find_matching_brace(content, pos)
+    assert content[end] == '}'
+    assert end == len(content) - 2  # '}' before final ')'
+
+
+def test_find_matching_brace_nested():
+    """Verify find_matching_brace handles nested braces correctly."""
+    content = "function outer() { const x = 1; function inner() { return x; } return inner(); }"
+    pos = content.index('{') + 1
+    end = extractor.find_matching_brace(content, pos)
+    assert content[end] == '}'
+
+
+def test_find_matching_brace_with_comments():
+    """Verify find_matching_brace ignores braces inside comments."""
+    content = "// } this is a comment\nfunction foo() { return 1; }"
+    pos = content.index('{') + 1
+    end = extractor.find_matching_brace(content, pos)
+    assert content[end] == '}'
+
+
+def test_find_matching_brace_with_string_literals():
+    """Verify find_matching_brace ignores braces inside string literals."""
+    content = 'function foo() { const s = "} brace in string"; return s; }'
+    pos = content.index('{') + 1
+    end = extractor.find_matching_brace(content, pos)
+    assert content[end] == '}'
+
+
+def test_find_matching_brace_template_literal():
+    """Verify find_matching_brace handles template literals with braces."""
+    content = "function foo() { const s = `} brace in template`; return s; }"
+    pos = content.index('{') + 1
+    end = extractor.find_matching_brace(content, pos)
+    assert content[end] == '}'
+
+
 def test_api_extract_endpoint():
     """Verify endpoint routing and schemas via the FastAPI TestClient."""
     payload = {
