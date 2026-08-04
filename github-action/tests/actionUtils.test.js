@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { globToRegex, cleanAndParseJSON, normalizeReviewLineNumber } from '../utils/actionUtils.js';
+import { globToRegex, cleanAndParseJSON, normalizeReviewLineNumber, sanitizeMarkdownCodeBlocks } from '../utils/actionUtils.js';
 
 // ---------------------------------------------------------------------------
 // globToRegex
@@ -124,4 +124,57 @@ test('normalizeReviewLineNumber rejects invalid line values', () => {
   assert.equal(normalizeReviewLineNumber(0), null);
   assert.equal(normalizeReviewLineNumber(-1), null);
   assert.equal(normalizeReviewLineNumber(1.5), null);
+});
+
+// ---------------------------------------------------------------------------
+// sanitizeMarkdownCodeBlocks
+// ---------------------------------------------------------------------------
+
+test('sanitizeMarkdownCodeBlocks returns input unchanged when backticks are balanced', () => {
+  const input = 'Hello world\n```\ncode\n```\nDone';
+  assert.equal(sanitizeMarkdownCodeBlocks(input), input);
+});
+
+test('sanitizeMarkdownCodeBlocks appends closing fence when only one opening fence exists', () => {
+  const input = 'Here is some code\n```\nconst x = 1';
+  const result = sanitizeMarkdownCodeBlocks(input);
+  assert.equal(result.endsWith('```'), true);
+  assert.ok(result.indexOf('```') < result.lastIndexOf('```'));
+});
+
+test('sanitizeMarkdownCodeBlocks appends closing fence for odd backtick count', () => {
+  const input = '```\nsingle\n```\n```\ndouble\n```\n```';
+  const result = sanitizeMarkdownCodeBlocks(input);
+  const count = (result.match(/```/g) || []).length;
+  assert.equal(count % 2, 0, 'total backtick count should be even');
+});
+
+test('sanitizeMarkdownCodeBlocks handles input already ending with newline', () => {
+  const input = 'Code block\n```\nconst x = 1\n';
+  const result = sanitizeMarkdownCodeBlocks(input);
+  assert.ok(result.endsWith('```\n') || result.endsWith('```'));
+});
+
+test('sanitizeMarkdownCodeBlocks does not add extra fence when already even', () => {
+  const input = 'Text\n```\ncode\n```\nmore text';
+  const result = sanitizeMarkdownCodeBlocks(input);
+  assert.equal(result, input);
+});
+
+test('sanitizeMarkdownCodeBlocks returns non-string inputs unchanged', () => {
+  assert.equal(sanitizeMarkdownCodeBlocks(null), null);
+  assert.equal(sanitizeMarkdownCodeBlocks(undefined), undefined);
+  assert.equal(sanitizeMarkdownCodeBlocks(123), 123);
+  // Objects are returned as-is (not stringified)
+  assert.deepStrictEqual(sanitizeMarkdownCodeBlocks({}), {});
+});
+
+test('sanitizeMarkdownCodeBlocks handles empty string', () => {
+  const result = sanitizeMarkdownCodeBlocks('');
+  assert.equal(result, '');
+});
+
+test('sanitizeMarkdownCodeBlocks handles string with no backticks', () => {
+  const input = 'Just plain text with no code blocks';
+  assert.equal(sanitizeMarkdownCodeBlocks(input), input);
 });
