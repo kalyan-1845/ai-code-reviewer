@@ -746,6 +746,10 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
     model = fallbackModel;
   }
 
+  if (model !== undefined && typeof model !== 'string') {
+    return res.status(400).json({ error: 'model must be a string.' });
+  }
+
   const normalizedModel = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
   if (!normalizedModel) {
     model = fallbackModel;
@@ -1314,6 +1318,10 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysis
       model = fallbackModel;
     }
 
+    if (model !== undefined && typeof model !== 'string') {
+      return res.status(400).json({ error: 'model must be a string.' });
+    }
+
     const normalizedModel = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
     if (!normalizedModel) {
       model = fallbackModel;
@@ -1408,6 +1416,10 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysis
 // ≡ƒƒó Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async (req, res) => {
   let { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
+
+  if (model !== undefined && typeof model !== 'string') {
+    return res.status(400).json({ error: 'model must be a string.' });
+  }
 
   const chatNormalized = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
   if (!chatNormalized) {
