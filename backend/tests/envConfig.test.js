@@ -59,3 +59,75 @@ test('MAX_CLONE_SIZE_MB is not excessively large', () => {
 test('GIT_CLONE_TIMEOUT and MAX_CLONE_SIZE_MB are distinct values', () => {
   assert.notStrictEqual(mod.GIT_CLONE_TIMEOUT, mod.MAX_CLONE_SIZE_MB);
 });
+
+test('parsePositiveInt is exported', () => {
+  assert.ok('parsePositiveInt' in mod, 'parsePositiveInt should be exported');
+  assert.strictEqual(typeof mod.parsePositiveInt, 'function');
+});
+
+test('parsePositiveInt returns value when valid positive integer', () => {
+  const result = mod.parsePositiveInt('42', 'TEST', 99);
+  assert.strictEqual(result, 42);
+});
+
+test('parsePositiveInt returns default when value is undefined', () => {
+  const result = mod.parsePositiveInt(undefined, 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns default when value is null', () => {
+  const result = mod.parsePositiveInt(null, 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns default when value is zero', () => {
+  const result = mod.parsePositiveInt('0', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns default when value is negative', () => {
+  const result = mod.parsePositiveInt('-10', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns default when value is not a number string', () => {
+  const result = mod.parsePositiveInt('abc', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns default when value is NaN string', () => {
+  const result = mod.parsePositiveInt('NaN', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns default when value is Infinity', () => {
+  const result = mod.parsePositiveInt('Infinity', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns default when value is float string', () => {
+  const result = mod.parsePositiveInt('3.14', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns integer from integer string', () => {
+  const result = mod.parsePositiveInt('12345', 'TEST', 99);
+  assert.strictEqual(result, 12345);
+  assert.strictEqual(Number.isInteger(result), true);
+});
+
+test('parsePositiveInt ignores leading/trailing whitespace in string', () => {
+  const result = mod.parsePositiveInt('  42  ', 'TEST', 99);
+  assert.strictEqual(result, 42);
+});
+
+test('parsePositiveInt handles whitespace-only string as invalid', () => {
+  const result = mod.parsePositiveInt('   ', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt default is returned when no value given', () => {
+  const result = mod.parsePositiveInt('', 'TEST', 77);
+  // Empty string parseInt returns NaN, which fails Number.isFinite check
+  assert.strictEqual(result, 77);
+});
