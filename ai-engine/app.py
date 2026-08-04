@@ -704,6 +704,19 @@ class ChatRequest(BaseModel):
     @model_validator(mode="after")
     def _check_total_content(self):
         _validate_total_content_size(self.files)
+        if self.history:
+            total_history_chars = 0
+            for h in self.history:
+                content = h.get("content", "") if isinstance(h, dict) else ""
+                if len(content) > MAX_MESSAGE_LENGTH:
+                    raise ValueError(
+                        f"History message too long. Maximum length is {MAX_MESSAGE_LENGTH} characters."
+                    )
+                total_history_chars += len(content)
+            if total_history_chars > MAX_TOTAL_CONTENT_CHARS:
+                raise ValueError(
+                    f"Total size of chat history exceeds the allowed limit of {MAX_TOTAL_CONTENT_CHARS} characters"
+                )
         return self
 
 # 🟢 Route: Root Check
