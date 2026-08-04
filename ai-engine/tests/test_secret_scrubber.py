@@ -27,6 +27,14 @@ def test_rsa_private_key_masked():
     assert "RSA_PRIVATE_KEY" in secrets
 
 
+def test_rsa_private_key_no_end_marker_fully_redacted():
+    content = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA..."
+    sanitized, secrets = scrub_secrets(content)
+    assert "[REDACTED_PRIVATE_KEY]" in sanitized
+    assert "MIIEowIBAAKCAQEA" not in sanitized
+    assert "RSA_PRIVATE_KEY" in secrets
+
+
 def test_clean_code_diff_unmodified():
     diff = "diff --git a/main.py b/main.py\n+def add(a, b):\n+    return a + b"
     sanitized, secrets = scrub_secrets(diff)

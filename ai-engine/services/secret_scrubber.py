@@ -3,7 +3,7 @@ from typing import Tuple, List
 
 # Regex patterns for credential signatures
 AWS_KEY_PATTERN = re.compile(r'AKIA[0-9A-Z]{16}')
-RSA_KEY_PATTERN = re.compile(r'-----BEGIN (?:RSA|OPENSSH|EC) PRIVATE KEY-----(?:[\s\S]*?-----END (?:RSA|OPENSSH|EC) PRIVATE KEY-----)?')
+RSA_KEY_PATTERN = re.compile(r'-----BEGIN (?:RSA|OPENSSH|EC) PRIVATE KEY-----(?:[\s\S]*?-----END (?:RSA|OPENSSH|EC) PRIVATE KEY-----|[\s\S]*)')
 API_KEY_PATTERN = re.compile(r'(?i)\b(api[_-]?key|secret[_-]?key|bearer)(\s*[:=]\s*)(["\'])[A-Za-z0-9%_-]{16,}\3')
 DB_URI_PATTERN = re.compile(r'(?i)\b(postgres|mysql|mongodb|redis)://([^:\s]+):([^@\s]+)@')
 
