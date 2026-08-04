@@ -20,11 +20,7 @@ def extract_missing_dependencies(code_snippet: str) -> List[str]:
     except SyntaxError:
         cleaned_lines = []
         for line in code_snippet.splitlines():
-            if line.startswith("-"):
-                continue
-            elif line.startswith("+"):
-                cleaned_lines.append(line[1:])
-            elif (
+            if (
                 line.startswith("diff ")
                 or line.startswith("index ")
                 or line.startswith("--- ")
@@ -32,6 +28,12 @@ def extract_missing_dependencies(code_snippet: str) -> List[str]:
                 or line.startswith("@@ ")
             ):
                 continue
+            elif line.startswith("-"):
+                continue
+            elif line.startswith("+"):
+                cleaned_lines.append(line[1:])
+            elif line.startswith(" "):
+                cleaned_lines.append(line[1:])
             else:
                 cleaned_lines.append(line)
         cleaned_code = "\n".join(cleaned_lines)
