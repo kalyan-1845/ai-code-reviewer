@@ -909,6 +909,12 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
           reviewResult._mock = false;
         } else {
           throw new Error('AI engine responded with error');
+        }
+      } catch (err) {
+        console.warn('⚠️ FastAPI engine error, falling back...');
+      }
+
+      if (!reviewResult) {
       console.log(`≡ƒôü Found ${files.length} valid source files. Checking cache...`);
 
       // 1.3. Scan files for prompt injection patterns
@@ -938,7 +944,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
         console.log(`🎯 Using cached analysis result for this repository and configuration`);
       }
 
-      let reviewResult = await analysisCache.getOrSet(cacheKey, async () => {
+      reviewResult = await analysisCache.getOrSet(cacheKey, async () => {
         // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
         const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
@@ -972,6 +978,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
           return mockRes;
         }
       }, repoUrl);
+      }
 
       // 3. Inject Regex-based Secret Detections & Complexity Metrics into the analysis result (always run)
       if (reviewResult && reviewResult.fileReviews) {
