@@ -139,7 +139,7 @@ export interface AuditHistoryEntry {
 
 
 export default function Dashboard() {
-  const { reviewText, isStreaming, isMock, error: streamError, startStream, resetStream } = useStreamingReview();
+  const { reviewText, isStreaming, isMock, error: streamError, startStream, abortStream } = useStreamingReview();
   const streamPreviewDisabled = streamError === 'HTTP error! Status: 404';
   const [showSettings, setShowSettings] = useState(false);
   const handleCloseSettings = useCallback(() => setShowSettings(false), []);
@@ -957,7 +957,7 @@ export default function Dashboard() {
       setApiError(errMsg);
     } finally {
       setIsLoading(false);
-      resetStream();
+      abortStream();
     }
   };
 

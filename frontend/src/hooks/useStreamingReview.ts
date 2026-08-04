@@ -107,6 +107,13 @@ export const useStreamingReview = () => {
     }
   }, []);
 
+  /** Aborts the in-flight request without clearing accumulated review text. */
+  const abortStream = useCallback(() => {
+    abortRef.current?.abort();
+    // intentionally leave abortRef and reviewText intact — the caller
+    // (Dashboard) shows the accumulated text even after completion.
+  }, []);
+
   const resetStream = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -116,5 +123,5 @@ export const useStreamingReview = () => {
     setError(null);
   }, []);
 
-  return { reviewText, isStreaming, isMock, error, startStream, resetStream };
+  return { reviewText, isStreaming, isMock, error, startStream, abortStream, resetStream };
 };
