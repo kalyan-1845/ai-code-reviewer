@@ -46,6 +46,56 @@ test('isSafeUrl validates basic URL safety', async () => {
   assert.equal(publicResult.valid, true);
 });
 
+test('urlValidator: isValidRepoUrl rejects URLs with username, password, search, hash, or invalid path', () => {
+  // Rejects URLs with username
+  assert.equal(isValidRepoUrl('https://user@github.com/owner/repo'), false);
+  // Rejects URLs with password
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo?token=abc'), false);
+  // Rejects URLs with query string
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo?q=1'), false);
+  // Rejects URLs with hash fragment
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo#readme'), false);
+  // Rejects URLs with double slash in path
+  assert.equal(isValidRepoUrl('https://github.com/owner//repo'), false);
+  // Rejects URLs with leading hyphen in segment
+  assert.equal(isValidRepoUrl('https://github.com/-owner/repo'), false);
+  assert.equal(isValidRepoUrl('https://github.com/owner/-repo'), false);
+  // Rejects URLs with double-hyphen in segment
+  assert.equal(isValidRepoUrl('https://github.com/owner--repo/repo'), false);
+  // Rejects URLs with invalid characters in segment
+  assert.equal(isValidRepoUrl('https://github.com/own er/repo'), false);
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo!'), false);
+  // Rejects URLs with whitespace
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo\n'), false);
+  // Rejects URLs with control characters
+  assert.equal(isValidRepoUrl('https://github.com/owner\x00/repo'), false);
+  // Rejects null/undefined/empty
+  assert.equal(isValidRepoUrl(null), false);
+  assert.equal(isValidRepoUrl(undefined), false);
+  assert.equal(isValidRepoUrl(''), false);
+  assert.equal(isValidRepoUrl(123), false);
+});
+
+test('urlValidator: parseRepoUrl extracts owner and repo from valid URLs', () => {
+  const result1 = parseRepoUrl('https://github.com/owner/repo');
+  assert.equal(result1.owner, 'owner');
+  assert.equal(result1.repo, 'repo');
+
+  const result2 = parseRepoUrl('https://github.com/owner/repo.git');
+  assert.equal(result2.owner, 'owner');
+  assert.equal(result2.repo, 'repo');
+
+  const result3 = parseRepoUrl('https://github.com/org-name/repo_name');
+  assert.equal(result3.owner, 'org-name');
+  assert.equal(result3.repo, 'repo_name');
+
+  // Invalid URLs return null
+  assert.equal(parseRepoUrl('https://gitlab.com/owner/repo'), null);
+  assert.equal(parseRepoUrl('https://github.com/owner'), null);
+  assert.equal(parseRepoUrl(null), null);
+  assert.equal(parseRepoUrl(''), null);
+});
+
 test('isSafeUrl rejects domains resolving to at least one private IP (DNS round-robin / multi-IP)', async (t) => {
   const dns = await import('node:dns');
   
