@@ -42,7 +42,8 @@ export function globToRegex(pattern) {
 
 /**
  * Safely parses JSON from an LLM response text, stripping markdown code fences.
- * Returns {reviews: []} on parse failure instead of throwing.
+ * Returns the PARSE_FAILED sentinel on parse failure so callers can distinguish
+ * a null result from a genuine parse error.
  */
 export function cleanAndParseJSON(responseText) {
   try {
@@ -54,7 +55,7 @@ export function cleanAndParseJSON(responseText) {
     }
     return JSON.parse(cleaned);
   } catch {
-    return null;
+    return { reviews: [], _parseFailed: true };
   }
 }
 
