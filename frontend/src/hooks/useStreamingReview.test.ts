@@ -183,4 +183,50 @@ describe('useStreamingReview', () => {
     const options = mockFetch.mock.calls[0][1];
     expect(options.headers['x-api-key']).toBe('test-api-key-123');
   });
+
+  it('resetStream clears state and aborts an in-flight stream', async () => {
+    let abortSignal: AbortSignal | undefined;
+    mockFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/api/session')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ csrfToken: 'csrf-token' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        );
+      }
+      abortSignal = init?.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        const onAbort = () => {
+          const error = new Error('The operation was aborted.');
+          error.name = 'AbortError';
+          reject(error);
+        };
+        if (abortSignal?.aborted) {
+          onAbort();
+        } else {
+          abortSignal?.addEventListener('abort', onAbort, { once: true });
+        }
+      });
+    });
+
+    const { result } = renderHook(() => useStreamingReview());
+
+    await act(async () => {
+      result.current.startStream({ repoUrl: 'https://github.com/test/repo' });
+    });
+    await waitFor(() => {
+      expect(result.current.isStreaming).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.resetStream();
+    });
+
+    expect(result.current.reviewText).toBe('');
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.isMock).toBe(false);
+    expect(result.current.error).toBe(null);
+    expect(abortSignal?.aborted).toBe(true);
+  });
 });

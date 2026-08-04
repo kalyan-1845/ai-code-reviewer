@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { getApiKey, ensureApiSession, getCsrfToken } from '../utils/api';
 
 // Backend base URL is provided at runtime by config.js (__RUNTIME_API_URL__) or
@@ -10,8 +10,12 @@ export const useStreamingReview = () => {
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [isMock, setIsMock] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const startStream = useCallback(async (payload: Record<string, unknown> | RequestInit) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setReviewText('');
     setIsStreaming(true);
     setError(null);
@@ -36,6 +40,7 @@ export const useStreamingReview = () => {
         method: 'POST',
         credentials: 'include',
         headers,
+        signal: controller.signal,
         body: isRequestInit ? (payload as RequestInit).body : JSON.stringify(payload),
       });
 
@@ -91,11 +96,25 @@ export const useStreamingReview = () => {
         }
       }
     } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') {
+        return;
+      }
       setError(err instanceof Error ? err.message : 'An error occurred while streaming.');
     } finally {
-      setIsStreaming(false);
+      if (abortRef.current === controller) {
+        setIsStreaming(false);
+      }
     }
   }, []);
 
-  return { reviewText, isStreaming, isMock, error, startStream };
+  const resetStream = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setReviewText('');
+    setIsStreaming(false);
+    setIsMock(false);
+    setError(null);
+  }, []);
+
+  return { reviewText, isStreaming, isMock, error, startStream, resetStream };
 };

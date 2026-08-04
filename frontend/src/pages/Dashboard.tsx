@@ -139,7 +139,8 @@ export interface AuditHistoryEntry {
 
 
 export default function Dashboard() {
-  const { reviewText, isStreaming, isMock, error: streamError } = useStreamingReview();
+  const { reviewText, isStreaming, isMock, error: streamError, startStream, resetStream } = useStreamingReview();
+  const streamPreviewDisabled = streamError === 'HTTP error! Status: 404';
   const [showSettings, setShowSettings] = useState(false);
   const handleCloseSettings = useCallback(() => setShowSettings(false), []);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -895,6 +896,16 @@ export default function Dashboard() {
 
     try {
       const aiSettings = getSavedAiSettings();
+      startStream({
+        repoUrl,
+        company,
+        language,
+        model: selectedModel,
+        temperature: aiSettings.temperature ?? 0.7,
+        maxTokens: aiSettings.maxTokens ?? 2048,
+        systemPrompt: aiSettings.systemPrompt ?? "",
+        batchSize: aiSettings.batchSize ?? 5,
+      });
       const response = await apiFetch("/api/analyze", {
         method: "POST",
         body: JSON.stringify({
@@ -946,6 +957,7 @@ export default function Dashboard() {
       setApiError(errMsg);
     } finally {
       setIsLoading(false);
+      resetStream();
     }
   };
 
@@ -1263,7 +1275,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {streamError && (
+          {streamError && !streamPreviewDisabled && (
             <div
               style={{
                 background: "rgba(239, 68, 68, 0.1)",
