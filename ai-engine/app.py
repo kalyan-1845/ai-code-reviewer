@@ -721,9 +721,13 @@ def health_check():
 
 # 🟢 Route: Analyze Code Files and Generate Reviews & README
 def _merge_review(combined, file_path, review, batch_idx, review_config=None):
+    if review is None or not isinstance(review, dict):
+        return
     for category in ["bugs", "security", "optimization", "styling", "impact", "tests", "architecture", "historical_bugs"]:
         kept_items = []
         for item in review.get(category, []):
+            if not isinstance(item, dict):
+                continue
             if "suggestion" in item:
                 item["suggestion"] = sanitize_ai_output(item["suggestion"])
             if "description" in item:
@@ -1128,6 +1132,8 @@ You must obey the JSON output format above."""
                 reviews = batch_result["fileReviews"]
                 if isinstance(reviews, list):
                     for entry in reviews:
+                        if not isinstance(entry, dict):
+                            continue
                         file_path = entry.get("filePath", "unknown")
                         review = {k: entry.get(k, []) for k in ("bugs", "security", "optimization", "styling", "impact", "tests", "architecture", "historical_bugs")}
                         review = _escape_review_backticks(review)
