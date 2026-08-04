@@ -15,9 +15,12 @@ def chunker_node(state: AgentState) -> dict:
             else:
                 chunks.append(f"diff --git {c}")
     else:
-        lines = raw_diff.splitlines(keepends=True)
-        chunk_size = 100
-        chunks = ["".join(lines[i:i + chunk_size]) for i in range(0, len(lines), chunk_size)] if lines else [raw_diff]
+        if not raw_diff.strip():
+            chunks = []
+        else:
+            lines = raw_diff.splitlines(keepends=True)
+            chunk_size = 100
+            chunks = ["".join(lines[i:i + chunk_size]) for i in range(0, len(lines), chunk_size)]
 
     return {
         "chunks": chunks,
