@@ -1946,7 +1946,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
 
 // ≡ƒƒó Route: Create GitHub Issue automatically for Code Reviews
 app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimiter, async (req, res) => {
-  const { repoUrl, title, body, labels = [] } = req.body;
+  const { repoUrl, title, body, labels = [], sessionId, sessionOwnerToken } = req.body;
   const token = process.env.GITHUB_PAT;
 
   if (!token) {
@@ -1977,6 +1977,37 @@ app.post('/api/issues/create', requireApiKey, requireJsonContentType, issueLimit
   const parsed = parseRepoUrl(repoUrl);
   const owner = parsed.owner;
   const repo = parsed.repo;
+
+  // Verify session ownership to prevent IDOR (mirrors /api/chat).
+  // The caller must provide the correct sessionOwnerToken that was set during session creation.
+  let context;
+  try {
+    context = await Session.findOne({ sessionId });
+  } catch (sessionErr) {
+    console.warn('ΓÜá∩╕Å Failed to retrieve session from MongoDB:', sessionErr.message);
+  }
+  if (!context) {
+    return res.status(400).json({ error: 'No repository is currently active or session expired or not found. Please analyze a repository first.' });
+  }
+  if (context.ownerToken) {
+    if (!sessionOwnerToken) {
+      console.warn(`ΓÜá∩╕Å Session ownership validation failed: session ${sessionId} missing sessionOwnerToken in request`);
+      return res.status(403).json({ error: 'Access denied: sessionOwnerToken is required.' });
+    }
+    const sessionDoc = await Session.findById(context._id).select('ownerToken').lean();
+    if (!sessionDoc || !sessionDoc.ownerToken) {
+      console.warn(`ΓÜá∩╕Å Session ownership validation failed: session ${sessionId} missing ownerToken in database`);
+      return res.status(403).json({ error: 'Access denied: session not found or missing owner token.' });
+    }
+    const providedBuf = Buffer.from(String(sessionOwnerToken), 'utf8');
+    const storedBuf = Buffer.from(String(sessionDoc.ownerToken), 'utf8');
+    if (providedBuf.length !== storedBuf.length || !crypto.timingSafeEqual(providedBuf, storedBuf)) {
+      console.warn(`ΓÜá∩╕Å Session ownership mismatch: session ${sessionId} token does not match`);
+      return res.status(403).json({ error: 'Access denied: this session does not belong to you.' });
+    }
+  } else {
+    return res.status(403).json({ error: 'Access denied: session has no ownership token.' });
+  }
 
   try {
     const octokit = new Octokit({ auth: token });
