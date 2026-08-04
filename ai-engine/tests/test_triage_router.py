@@ -86,3 +86,33 @@ def test_workflow_core_logic_full_review():
     assert output["is_trivial"] is False
     assert "final_review" in output
     assert "LGTM - Trivial Change Bypassed Heavy Review" not in output["final_review"]
+
+
+def test_trivial_approval_node_returns_correct_review_message():
+    """trivial_approval_node should return the correct LGTM message."""
+    result = trivial_approval_node({})
+    assert "final_review" in result
+    assert result["final_review"] == "LGTM - Trivial Change Bypassed Heavy Review"
+
+
+def test_trivial_approval_node_ignores_input_state():
+    """trivial_approval_node should return the same result regardless of input state."""
+    state1: AgentState = {"modified_files": ["README.md"]}
+    state2: AgentState = {"modified_files": ["docs/guide.md"], "commit_messages": ["docs: update"]}
+    state3: AgentState = {}
+    r1 = trivial_approval_node(state1)
+    r2 = trivial_approval_node(state2)
+    r3 = trivial_approval_node(state3)
+    assert r1 == r2 == r3
+
+
+def test_trivial_approval_node_returns_dict():
+    """trivial_approval_node should return a dict."""
+    result = trivial_approval_node({})
+    assert isinstance(result, dict)
+
+
+def test_trivial_approval_node_only_sets_final_review():
+    """trivial_approval_node should only set the final_review key."""
+    result = trivial_approval_node({"some_key": "some_value"})
+    assert result == {"final_review": "LGTM - Trivial Change Bypassed Heavy Review"}
