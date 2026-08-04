@@ -52,13 +52,16 @@ def sanitize_repository_path(url: str, working_dir: str) -> str:
     return clone_path
 
 
-def get_changed_files_from_git(base: str, head: str) -> Set[str]:
+def get_changed_files_from_git(base: str, head: str, cwd: str | None = None) -> Set[str]:
     """
     Get list of changed files using git diff.
 
     Args:
         base: Base branch or commit (e.g., "main", "origin/main")
         head: Head branch or commit (e.g., "feat/fix", "HEAD")
+        cwd: Working directory to run git in. When None, the engine's own
+            working directory is used (which is only correct if the engine is
+            launched from inside a checkout of the analyzed repository).
 
     Returns:
         Set of changed file paths
@@ -71,7 +74,8 @@ def get_changed_files_from_git(base: str, head: str) -> Set[str]:
             capture_output=True,
             text=True,
             check=True,
-            timeout=10
+            timeout=10,
+            cwd=cwd
         )
         changed_files = {f.strip() for f in result.stdout.splitlines() if f.strip()}
         return changed_files

@@ -27,7 +27,7 @@ import vectorstore
 import extractor
 from embeddings import is_fallback_active
 from config_loader import load_config_from_files, ConfigValidationError, CONFIG_FILENAME
-from diff_helper import get_changed_files_from_git, filter_files_by_changes, format_diff_header
+from diff_helper import get_changed_files_from_git, filter_files_by_changes, format_diff_header, sanitize_repository_path
 from utils.dependency_graph import smart_batch_files
 from agents.pipeline import run_batch_pipeline
 
@@ -846,6 +846,22 @@ def _bound_llm_batches(files, batch_size, max_calls=None):
             )
     return batches, truncated
 
+def _resolve_repo_checkout(repo_url: str | None) -> str | None:
+    """Return the local git checkout path for a repo URL, or None if unavailable."""
+    if not repo_url:
+        return None
+    checkouts_dir = os.environ.get("AI_ENGINE_CHECKOUTS_DIR")
+    if not checkouts_dir:
+        return None
+    try:
+        clone_path = sanitize_repository_path(repo_url, checkouts_dir)
+    except ValueError:
+        return None
+    if os.path.isdir(os.path.join(clone_path, ".git")):
+        return clone_path
+    return None
+
+
 @app.post("/analyze")
 async def analyze_repository(request: AnalyzeRequest):
     if not groq_client:
@@ -894,13 +910,21 @@ async def analyze_repository(request: AnalyzeRequest):
     diff_mode_header = ""
     num_skipped = 0
     if request.diffOnly and request.baseRef and request.headRef:
-        changed_files = get_changed_files_from_git(request.baseRef, request.headRef)
-        if changed_files:
-            files, num_skipped = filter_files_by_changes(files, changed_files)
-            diff_mode_header = format_diff_header(len(files), num_skipped, request.baseRef, request.headRef)
-            print(f"🔍 {diff_mode_header}")
-        else:
-            print("⚠️  Diff mode requested but no changed files found. Analyzing all files.")
+        repo_checkout = _resolve_repo_checkout(request.repoUrl)
+        if not repo_checkout:
+            raise HTTPException(
+                status_code=400,
+                detail="Diff mode requested but no local git checkout of the target repository is available, so changed files cannot be computed. Run the engine from a clone of the repository or set AI_ENGINE_CHECKOUTS_DIR to the directory containing the clone, or disable diffOnly."
+            )
+        changed_files = get_changed_files_from_git(request.baseRef, request.headRef, cwd=repo_checkout)
+        if not changed_files:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Diff mode requested but no changed files were found between {request.baseRef} and {request.headRef} in the checkout at {repo_checkout}."
+            )
+        files, num_skipped = filter_files_by_changes(files, changed_files)
+        diff_mode_header = format_diff_header(len(files), num_skipped, request.baseRef, request.headRef)
+        print(f"🔍 {diff_mode_header}")
 
     # 1.5. Filter out binary, compiled, and minified files
     binary_filtered_files = [f for f in files if not _is_binary_or_minified(f.name)]
