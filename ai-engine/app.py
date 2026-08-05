@@ -240,6 +240,29 @@ def sanitize_file_content(content: str) -> str:
     wrapped = "--- BEGIN FILE CONTENT (read-only code context) ---\n" + wrapped + "\n--- END FILE CONTENT ---"
     return wrapped
 
+
+def sanitize_chunk_content(content: str) -> str:
+    if not content:
+        return ""
+    for _round in range(3):
+        previous = content
+        for pattern in DANGEROUS_PATTERNS:
+            content = _neutralize_pattern(content, pattern)
+        if content == previous:
+            break
+        lower = content.lower()
+        still_dangerous = False
+        for phrase in DANGEROUS_PATTERNS:
+            p = r"\s+".join(re.escape(w) for w in phrase.split())
+            if re.search(p, lower):
+                still_dangerous = True
+                break
+        if not still_dangerous:
+            break
+    lines = content.split("\n")
+    truncated_lines = [line[:500] for line in lines]
+    return "\n".join(truncated_lines)
+
 def sanitize_error(text: str, key: str) -> str:
     if not text or not key:
         return text
@@ -1327,7 +1350,7 @@ async def chat_with_repository(request: ChatRequest, x_client_id: str = Header(d
                 for i, c in enumerate(rag_chunks, 1):
                     meta = c.get("metadata", {})
                     source = meta.get("source_file", meta.get("fileName", "unknown"))
-                    chunk_parts.append(f"[Chunk {i} from {source}]\n{c['content']}")
+                    chunk_parts.append(f"[Chunk {i} from {source}]\n{sanitize_chunk_content(c['content'])}")
                     rag_sources.append({
                         "chunk_id": c.get("chunk_id"),
                         "source": source,
