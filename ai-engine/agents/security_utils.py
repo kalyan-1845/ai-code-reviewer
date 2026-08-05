@@ -20,8 +20,9 @@ def detect_high_entropy_strings(text: str, threshold: float = 4.5, min_length: i
     if not text:
         return []
         
-    # Match double or single quoted strings
-    pattern = r'(["\'])(.*?)\1'
+    # Match double or single quoted strings, honoring escape sequences so a
+    # quote that is escaped (e.g. \") does not terminate the match early.
+    pattern = r'(["\'])((?:\\.|(?!\1).)*)\1'
     matches = re.findall(pattern, text)
     
     high_entropy_strings = []
