@@ -4,11 +4,9 @@ import Groq from 'groq-sdk';
 import { parseDiff } from './utils/diffParser.js';
 import { scanSecretsInChanges } from './utils/secretsScanner.js';
 import { globToRegex } from './utils/globToRegex.js';
-import { cleanAndParseJSON, normalizeReviewLineNumber } from './utils/actionUtils.js';
+import { cleanAndParseJSON, isParseFailed, normalizeReviewLineNumber } from './utils/actionUtils.js';
 import { GitHubProvider } from './providers/GitHubProvider.js';
 import { GitLabProvider } from './providers/GitLabProvider.js';
-
-const PARSE_FAILED = { reviews: [], _parseFailed: true };
 
 
 
@@ -276,15 +274,15 @@ If no issues are found, reply with: { "reviews": [] }`;
           });
 
         const content = completion.choices[0].message.content;
-        let parsed = cleanAndParseJSON(content);
-        successfulReviewsCount++;
-        
-        if (parsed?._parseFailed) {
+        const parsed = cleanAndParseJSON(content);
+
+        if (isParseFailed(parsed)) {
           failedReviewsCount++;
-          successfulReviewsCount--;
           core.error(`❌ LLM response for ${file.path} could not be parsed. Skipping file. Raw response logged.`);
+          console.log(`Raw LLM response for ${file.path}: ${content}`);
           return;
         }
+        successfulReviewsCount++;
 
         let issues = [];
         if (Array.isArray(parsed)) {
