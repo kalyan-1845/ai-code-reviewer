@@ -32,13 +32,25 @@ describe("sessionToken in-memory storage", () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
+  it("keeps the token after 60 minutes (backend session is 24h)", async () => {
+    vi.useFakeTimers();
+    const { setSessionOwnerToken, getSessionOwnerToken } = await import("./sessionToken");
+    setSessionOwnerToken("tok-long-lived");
+    expect(getSessionOwnerToken()).toBe("tok-long-lived");
+
+    // The old 60-minute client TTL used to expire here while the backend
+    // session was still alive, permanently 403ing privileged calls.
+    vi.advanceTimersByTime(60 * 60 * 1000);
+    expect(getSessionOwnerToken()).toBe("tok-long-lived");
+  });
+
   it("drops the token after the TTL window expires", async () => {
     vi.useFakeTimers();
     const { setSessionOwnerToken, getSessionOwnerToken } = await import("./sessionToken");
     setSessionOwnerToken("tok-expiring");
     expect(getSessionOwnerToken()).toBe("tok-expiring");
 
-    vi.advanceTimersByTime(60 * 60 * 1000 + 1);
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000 + 1);
     expect(getSessionOwnerToken()).toBe("");
   });
 

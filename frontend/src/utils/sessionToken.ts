@@ -6,7 +6,12 @@
 // the page is closed and cannot be read from disk.
 let sessionOwnerToken: string = "";
 let sessionOwnerTokenExpiry: number = 0;
-const TOKEN_TTL_MS = 60 * 60 * 1000;
+// Must match the backend session lifetime: the Session document is created with
+// a 24h absoluteExpiry and every privileged chat/audit access extends it to 24h
+// from now (backend/models/Session.js, backend/index.js). A shorter client TTL
+// (previously 60min) expires the in-memory token while the backend session is
+// still alive, permanently 403ing privileged calls with no recovery path.
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export function getSessionOwnerToken(): string {
   if (!sessionOwnerToken) return "";
