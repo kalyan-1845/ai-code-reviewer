@@ -254,3 +254,84 @@ class TestGetChangedFilesFromGithubPrErrorHandling:
             assert result == set()
         finally:
             diff_helper.requests.get = original_get
+
+
+class TestSanitizeRepositoryPath:
+    """Tests for sanitize_repository_path function."""
+
+    def test_valid_https_url(self, tmp_path):
+        """Valid HTTPS URL should return the cloned path."""
+        from diff_helper import sanitize_repository_path
+        url = "https://github.com/example/my-repo.git"
+        result = sanitize_repository_path(url, str(tmp_path))
+        assert result == str(tmp_path / "my-repo")
+
+    def test_valid_git_ssh_url(self, tmp_path):
+        """Valid SSH-style git URL should return the cloned path."""
+        from diff_helper import sanitize_repository_path
+        url = "git@github.com:example/my-repo.git"
+        result = sanitize_repository_path(url, str(tmp_path))
+        assert result == str(tmp_path / "my-repo")
+
+    def test_valid_url_without_git_suffix(self, tmp_path):
+        """URL without .git suffix should still extract repo name correctly."""
+        from diff_helper import sanitize_repository_path
+        url = "https://github.com/example/my-repo"
+        result = sanitize_repository_path(url, str(tmp_path))
+        assert result == str(tmp_path / "my-repo")
+
+    def test_valid_url_with_slash_suffix(self, tmp_path):
+        """URL ending with trailing slash should be handled."""
+        from diff_helper import sanitize_repository_path
+        url = "https://github.com/example/my-repo/"
+        result = sanitize_repository_path(url, str(tmp_path))
+        assert result == str(tmp_path / "my-repo")
+
+    def test_rejects_traversal_in_repo_name(self, tmp_path):
+        """URL where repo name itself contains .. should raise ValueError."""
+        from diff_helper import sanitize_repository_path
+        import pytest
+        url = "https://github.com/example/../.."
+        with pytest.raises(ValueError, match="Invalid repository name"):
+            sanitize_repository_path(url, str(tmp_path))
+
+    def test_rejects_empty_repo_name(self, tmp_path):
+        """URL with no extractable repo name should raise ValueError."""
+        from diff_helper import sanitize_repository_path
+        import pytest
+        url = "https://github.com/"
+        with pytest.raises(ValueError, match="Invalid repository name"):
+            sanitize_repository_path(url, str(tmp_path))
+
+    def test_rejects_invalid_characters_in_repo_name(self, tmp_path):
+        """Repo name with shell metacharacters should raise ValueError."""
+        from diff_helper import sanitize_repository_path
+        import pytest
+        url = "https://github.com/example/repo;rm+-rf"
+        with pytest.raises(ValueError, match="invalid characters"):
+            sanitize_repository_path(url, str(tmp_path))
+
+    def test_rejects_repo_name_with_spaces(self, tmp_path):
+        """Repo name with spaces should raise ValueError."""
+        from diff_helper import sanitize_repository_path
+        import pytest
+        url = "https://github.com/example/my repo"
+        with pytest.raises(ValueError, match="invalid characters"):
+            sanitize_repository_path(url, str(tmp_path))
+
+    def test_returns_clone_path_within_working_dir(self, tmp_path):
+        """sanitize_repository_path returns a path within the working directory."""
+        from diff_helper import sanitize_repository_path
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        url = "https://github.com/example/normal-repo"
+        result = sanitize_repository_path(url, str(work_dir))
+        assert result == str(work_dir / "normal-repo")
+
+    def test_returns_clone_path_not_resolved_path(self, tmp_path):
+        """sanitize_repository_path returns the joined path, not the resolved path."""
+        from diff_helper import sanitize_repository_path
+        import os
+        url = "https://github.com/example/my-repo.git"
+        result = sanitize_repository_path(url, str(tmp_path))
+        assert result == os.path.join(str(tmp_path), "my-repo")

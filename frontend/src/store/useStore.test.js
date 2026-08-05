@@ -7,6 +7,20 @@ const mockAnalysisResult = {
   analysis: { fileReviews: {} }
 };
 
+const mockLocalStorage = (() => {
+  let store = {};
+  return {
+    getItem: (key) => store[key] || null,
+    setItem: (key, value) => { store[key] = value.toString(); },
+    clear: () => { store = {}; },
+    removeItem: (key) => { delete store[key]; }
+  };
+})();
+
+Object.defineProperty(global, 'localStorage', {
+  value: mockLocalStorage,
+});
+
 describe('useStore', () => {
   beforeEach(() => {
     useStore.setState({
@@ -78,6 +92,35 @@ describe('useStore', () => {
       expect(history).toHaveLength(2);
       expect(history[0].content).toEqual('first');
       expect(history[1].content).toEqual('second');
+    });
+
+    it('keeps the newest message when a single message exceeds the char cap', () => {
+      // Regression test for #3667: an oversized AI response (alone exceeding
+      // MAX_CHAT_CHARS) used to wipe the whole persisted history because
+      // trimmed.slice(i + 1) with i === trimmed.length - 1 returns [].
+      const oversized = 'x'.repeat(51000);
+      const history = [
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: oversized }
+      ];
+      useStore.getState().setChatHistory(history);
+
+      const saved = JSON.parse(localStorage.getItem('reposage_chat_history') || '[]');
+      expect(saved.length).toBeGreaterThan(0);
+      expect(saved[saved.length - 1].content).toEqual(oversized);
+    });
+
+    it('trims older messages to respect the char cap but keeps history non-empty', () => {
+      const big = 'y'.repeat(30000);
+      const history = [
+        { role: 'user', content: big },
+        { role: 'assistant', content: big }
+      ];
+      useStore.getState().setChatHistory(history);
+
+      const saved = JSON.parse(localStorage.getItem('reposage_chat_history') || '[]');
+      expect(saved.length).toBe(1);
+      expect(saved[0].content).toEqual(big);
     });
   });
 

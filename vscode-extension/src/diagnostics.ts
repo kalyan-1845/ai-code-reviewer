@@ -28,9 +28,10 @@ export class RepoSageDiagnostics {
     response: BackendResponse,
     targetFile: string
   ): void {
-    this._collection.clear();
-
     const uri = vscode.Uri.file(targetFile);
+    // Remove only this file's previous diagnostics; clear() would wipe
+    // diagnostics for every other reviewed file.
+    this._collection.delete(uri);
 
     const fileReview = response.analysis?.fileReviews?.[targetFile];
     if (!fileReview) {

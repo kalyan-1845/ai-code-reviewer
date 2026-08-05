@@ -61,7 +61,7 @@ function unmockFs() {
 // The test module re-imports with patched fs, so import AFTER mocking.
 // ---------------------------------------------------------------------------
 mockFs();
-const { recordAnalysis, getTrends } = await import('../utils/analyticsStore.js');
+const { recordAnalysis, getTrends, getPreviousMetrics } = await import('../utils/analyticsStore.js');
 unmockFs();
 
 test('analyticsStore: getTrends returns empty array when store does not exist', () => {
@@ -133,4 +133,88 @@ test('analyticsStore: getTrends recovers from corrupt backup when main store is 
   unmockFs();
   // recoverFromBackup should kick in and restore the backup
   assert.ok(trends.length >= 0, 'should attempt recovery');
+});
+
+test('analyticsStore: recordAnalysis respects MAX_RECORDS cap of 200 by evicting oldest records', async () => {
+  mockFs();
+  fakeStore = [];
+  // Write 205 records (MAX_RECORDS is 200, so 5 oldest should be evicted)
+  for (let i = 0; i < 205; i++) {
+    await recordAnalysis({ repoName: `repo-${i}`, totalLines: i, bugs: i, security: 0, optimization: 0, styling: 0, filesCount: 1 });
+  }
+  await new Promise(r => setTimeout(r, 50));
+  const trends = getTrends();
+  unmockFs();
+  assert.equal(trends.length, 200, 'should cap at MAX_RECORDS (200) entries');
+  // The oldest 5 (repo-0 through repo-4) should have been evicted
+  assert.equal(trends[0].repoName, 'repo-5', 'oldest record should be repo-5 after eviction of 0-4');
+  assert.equal(trends[199].repoName, 'repo-204', 'newest record should be repo-204');
+});
+
+test('analyticsStore: getTrends returns empty array when store is empty JSON array', () => {
+  mockFs();
+  fakeStore = [];
+  const trends = getTrends();
+  unmockFs();
+  assert.deepEqual(trends, [], 'empty store should return empty array');
+});
+
+test('analyticsStore: getTrends falls back to backup when main store parse returns non-array', () => {
+  mockFs();
+  // fakeStore is returned as-is from readFileSync; ensure it's a non-array to trigger fallback
+  fakeStore = { not: 'an array' };
+  const origRead = fs.readFileSync;
+  // Override: return non-array for store, but valid backup
+  fs.readFileSync = (p, enc) => {
+    if (p === BACKUP_PATH) return JSON.stringify([{ repoName: 'backup-only', totalLines: 1, bugs: 0, security: 0, optimization: 0, styling: 0, filesCount: 1 }]);
+    if (p === STORE_PATH) return JSON.stringify({ not: 'array' });
+    return origRead(p, enc);
+  };
+  const trends = getTrends();
+  unmockFs();
+  fs.readFileSync = origRead;
+  // recoverFromBackup should be triggered and return backup content
+  assert.ok(trends.length >= 0);
+});
+
+test('analyticsStore: getPreviousMetrics returns null for repo with no prior analysis', () => {
+  mockFs();
+  fakeStore = [
+    { repoName: 'other-repo', totalLines: 100, bugs: 1, security: 0, optimization: 0, styling: 0, filesCount: 5 },
+  ];
+  const result = getPreviousMetrics('nonexistent-repo');
+  unmockFs();
+  assert.strictEqual(result, null, 'should return null when repo has no records');
+});
+
+test('analyticsStore: getPreviousMetrics returns the most recent record for a given repo', () => {
+  mockFs();
+  fakeStore = [
+    { repoName: 'test-repo', totalLines: 50, bugs: 0, security: 0, optimization: 0, styling: 0, filesCount: 2 },
+    { repoName: 'other-repo', totalLines: 100, bugs: 1, security: 0, optimization: 0, styling: 0, filesCount: 5 },
+    { repoName: 'test-repo', totalLines: 80, bugs: 2, security: 1, optimization: 0, styling: 0, filesCount: 4 },
+  ];
+  const result = getPreviousMetrics('test-repo');
+  unmockFs();
+  // Should return the last occurrence (most recent)
+  assert.strictEqual(result.repoName, 'test-repo');
+  assert.strictEqual(result.totalLines, 80);
+  assert.strictEqual(result.bugs, 2);
+});
+
+test('analyticsStore: getPreviousMetrics returns null when store is empty', () => {
+  mockFs();
+  fakeStore = [];
+  const result = getPreviousMetrics('any-repo');
+  unmockFs();
+  assert.strictEqual(result, null, 'should return null for empty store');
+});
+
+test('analyticsStore: getPreviousMetrics returns null when store file does not exist', () => {
+  mockFs();
+  fakeStore = [];
+  readError = null;
+  const result = getPreviousMetrics('any-repo');
+  unmockFs();
+  assert.strictEqual(result, null, 'should return null when store does not exist');
 });

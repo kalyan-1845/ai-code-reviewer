@@ -83,17 +83,44 @@ class ConfigLoader:
         return self.config.get_rule_severity(rule_name, default)
 
 
+def _validate_ignore_paths(ignore_paths: List[str]) -> None:
+    """
+    Prevent malicious repositories from using ignore_paths to exclude critical
+    security/configuration files that must be reviewed. Raises ConfigValidationError
+    if patterns attempt to ignore files required for a thorough security review.
+    """
+    critical_patterns = {
+        ".codereviewer.yml",
+        ".github",
+        "requirements.txt",
+        "package.json",
+        "setup.py",
+        "setup.cfg",
+        "pyproject.toml",
+        "Gemfile",
+        "Cargo.toml",
+        "pom.xml",
+    }
+
+    for pattern in ignore_paths:
+        pattern_lower = pattern.lower()
+        for critical in critical_patterns:
+            critical_lower = critical.lower()
+            if critical_lower in pattern_lower:
+                raise ConfigValidationError(
+                    f"Cannot ignore critical file '{critical}' via pattern '{pattern}'. "
+                    f"Security-relevant configuration and dependency files must always be reviewed."
+                )
+
+
 def _normalize_yaml_bool_severities(rules: Dict[str, Any]) -> None:
-    """
-    YAML 1.1 (which PyYAML's safe_load follows) treats the unquoted scalar
-    `off` as the boolean False (and `on`/`yes`/`no` similarly), so
-    `severity: off` in a real .codereviewer.yml parses as
-    {"severity": False}, not the string "off". Normalize that back to the
-    string authors actually wrote, in place, before validation.
-    """
     for rule_settings in rules.values():
-        if isinstance(rule_settings, dict) and rule_settings.get("severity") is False:
-            rule_settings["severity"] = "off"
+        if isinstance(rule_settings, dict):
+            sev = rule_settings.get("severity")
+            if sev is False:
+                rule_settings["severity"] = "off"
+            elif sev is True:
+                rule_settings["severity"] = "error"
 
 
 def _validate_raw_config(raw: Dict[str, Any]) -> None:
@@ -119,6 +146,8 @@ def _validate_raw_config(raw: Dict[str, Any]) -> None:
     ignore_paths = raw.get("ignore_paths") or []
     if not isinstance(ignore_paths, list) or not all(isinstance(p, str) for p in ignore_paths):
         raise ConfigValidationError("'ignore_paths' must be a list of glob string patterns.")
+
+    _validate_ignore_paths(ignore_paths)
 
     languages = raw.get("languages") or {}
     if not isinstance(languages, dict):

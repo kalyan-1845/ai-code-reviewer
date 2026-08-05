@@ -17,21 +17,13 @@ const LOCK_MAX_DELAY_MS = 1000;
 let storeLock = Promise.resolve();
 
 async function acquireLock() {
-  for (let attempt = 0; attempt < LOCK_MAX_RETRIES; attempt++) {
-    const prev = storeLock;
-    let release;
-    const next = new Promise(resolve => { release = resolve; });
-    if (storeLock === prev) {
-      storeLock = next;
-      return release;
-    }
-    const delay = Math.min(
-      LOCK_BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 50,
-      LOCK_MAX_DELAY_MS
-    );
-    await new Promise(resolve => setTimeout(resolve, delay));
-  }
-  throw new Error(`Could not acquire analytics store lock after ${LOCK_MAX_RETRIES} attempts`);
+  const prev = storeLock;
+  let release;
+  storeLock = new Promise(resolve => { release = resolve; });
+  const next = new Promise(resolve => { release = resolve; });
+  storeLock = next;
+  await prev;
+  return release;
 }
 
 function readStore() {
@@ -102,6 +94,9 @@ export async function recordAnalysis(record) {
             optimization: record.optimization || 0,
             styling: record.styling || 0,
             filesCount: record.filesCount || 0,
+            cyclomaticComplexity: record.cyclomaticComplexity || 0,
+            halsteadComplexity: record.halsteadComplexity || 0,
+            complexityScore: record.complexityScore || 0,
         });
 
         const trimmed = records.slice(-MAX_RECORDS);
@@ -113,4 +108,14 @@ export async function recordAnalysis(record) {
 
 export function getTrends() {
     return readStore();
+}
+
+export function getPreviousMetrics(repoName) {
+    const records = readStore();
+    for (let i = records.length - 1; i >= 0; i--) {
+        if (records[i].repoName === repoName) {
+            return records[i];
+        }
+    }
+    return null;
 }

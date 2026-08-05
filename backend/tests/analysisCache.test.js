@@ -303,6 +303,85 @@ test('AnalysisCache: setMaxEntries does nothing if cache is already below new li
   assert.equal(cache.cache.size, 1, 'Single entry should remain');
 });
 
+test('AnalysisCache: sliding TTL for mock entries uses mockTtlMs', () => {
+  const cache = new AnalysisCache(3600000, 2, 5000); // ttlMs = 1 hour, mockTtlMs = 5 seconds
+  const key = 'mock-key';
+  
+  cache.set(key, { data: 'mock' }, { isMock: true });
+  
+  const entryBefore = cache.cache.get(key);
+  const originalExpiresAt = entryBefore.expiresAt;
+  
+  // Trigger cache hit
+  cache.get(key);
+  
+  const entryAfter = cache.cache.get(key);
+  const diff = entryAfter.expiresAt - originalExpiresAt;
+  
+  // Since we did cache get immediately, the new expiresAt should be approximately
+  // now + mockTtlMs. The difference from originalExpiresAt should be minimal (close to 0)
+  // rather than ~3600000ms (which would happen if it used ttlMs).
+  assert.ok(diff < 1000, `Sliding window extended mock TTL by too much: ${diff}ms`);
+});
+
+test('AnalysisCache: invalidateByRepoUrl evicts in-flight pending fetches for the same repo URL', () => {
+  const cache = new AnalysisCache();
+  const repo = 'https://github.com/owner/repo';
+  const key1 = cache.generateKey(repo, [{ name: 'a.js', content: 'a' }]);
+  const key2 = cache.generateKey(repo, [{ name: 'b.js', content: 'b' }]);
+  cache.set(key1, { data: 1 }, { repoUrl: repo });
+  cache.set(key2, { data: 2 }, { repoUrl: repo });
+
+  // Manually add a pending fetch for the same repo
+  const pendingKey = 'pending-123';
+  cache.pending.set(pendingKey, { repoUrl: repo, promise: Promise.resolve({ data: 3 }) });
+
+  assert.equal(cache.pending.has(pendingKey), true);
+
+  const removed = cache.invalidateByRepoUrl(repo);
+
+  assert.equal(removed, 3, 'Should evict 2 cache entries plus 1 pending fetch');
+  assert.equal(cache.cache.size, 0);
+  assert.equal(cache.pending.has(pendingKey), false, 'Pending fetch should be evicted');
+});
+
+test('AnalysisCache: invalidateByRepoUrl does not evict pending fetches for other repos', () => {
+  const cache = new AnalysisCache();
+  const repo1 = 'https://github.com/owner/repo1';
+  const repo2 = 'https://github.com/owner/repo2';
+  const key1 = cache.generateKey(repo1, [{ name: 'a.js', content: 'a' }]);
+  cache.set(key1, { data: 1 }, { repoUrl: repo1 });
+
+  const pendingKey = 'pending-456';
+  cache.pending.set(pendingKey, { repoUrl: repo2, promise: Promise.resolve({ data: 2 }) });
+
+  const removed = cache.invalidateByRepoUrl(repo1);
+
+  assert.equal(removed, 1, 'Should only evict the cache entry for repo1');
+  assert.equal(cache.pending.has(pendingKey), true, 'Pending fetch for repo2 should remain');
+});
+
+test('AnalysisCache: invalidate removes key from _repoUrlIndex when entry has a repoUrl', () => {
+  const cache = new AnalysisCache();
+  const repo = 'https://github.com/owner/repo';
+  const key1 = cache.generateKey(repo, [{ name: 'a.js', content: 'a' }]);
+  const key2 = cache.generateKey(repo, [{ name: 'b.js', content: 'b' }]);
+  cache.set(key1, { data: 1 }, { repoUrl: repo });
+  cache.set(key2, { data: 2 }, { repoUrl: repo });
+
+  // Both keys tracked in the repoUrl Set
+  const repoSet = cache._repoUrlIndex.get(repo);
+  assert.equal(repoSet.has(key1), true);
+  assert.equal(repoSet.has(key2), true);
+
+  const removed = cache.invalidate(key1);
+
+  assert.equal(removed, true);
+  assert.equal(cache.cache.size, 1);
+  assert.equal(repoSet.has(key1), false, 'key1 should be removed from _repoUrlIndex Set');
+  assert.equal(repoSet.has(key2), true, 'key2 should remain in _repoUrlIndex Set');
+});
+
 test('AnalysisCache: sweeper evicts expired keys from _repoUrlIndex and cleans empty Sets', async () => {
   const cache = new AnalysisCache(20); // 20ms TTL
   const repo = 'https://github.com/owner/repo-sweeper';

@@ -12,7 +12,7 @@ export function escapeHtml(text: string): string {
 function sanitizeHtml(html: string): string {
   return html
     .replace(/javascript\s*:/gi, "blocked:")
-    .replace(/on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "data-blocked")
+    .replace(/(<[^>]*?)\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "$1 data-blocked")
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
     .replace(/<iframe\b[^>]*>/gi, "")
     .replace(/<\/iframe>/gi, "")
@@ -20,6 +20,7 @@ function sanitizeHtml(html: string): string {
     .replace(/<\/embed>/gi, "")
     .replace(/<object\b[^>]*>/gi, "")
     .replace(/<\/object>/gi, "");
+}
 
 function escapeHtmlPreserveBackticks(text: string): string {
   return text

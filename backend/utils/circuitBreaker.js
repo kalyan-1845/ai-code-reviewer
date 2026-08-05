@@ -34,6 +34,7 @@ export class CircuitBreaker {
       if (now - this._lastFailureTime >= this._cooldownMs) {
         this._state = STATES.HALF_OPEN;
         this._halfOpenRequests = 0;
+        this._successCount = 0;
       } else {
         throw new CircuitBreakerOpenError(
           `Circuit breaker is OPEN. Cooldown remaining: ${Math.ceil((this._cooldownMs - (now - this._lastFailureTime)) / 1000)}s`
@@ -41,13 +42,15 @@ export class CircuitBreaker {
       }
     }
 
-    if (this._state === STATES.HALF_OPEN && this._halfOpenRequests >= this._halfOpenMaxRequests) {
-      throw new CircuitBreakerOpenError(
-        `Circuit breaker is HALF_OPEN and max test requests (${this._halfOpenMaxRequests}) reached`
-      );
-    }
-
+    // HALF_OPEN admission: check and reserve in the same synchronous block
+    // (no awaits in between). Concurrent callers therefore cannot observe a
+    // stale counter and overshoot halfOpenMaxRequests.
     if (this._state === STATES.HALF_OPEN) {
+      if (this._halfOpenRequests >= this._halfOpenMaxRequests) {
+        throw new CircuitBreakerOpenError(
+          `Circuit breaker is HALF_OPEN and max test requests (${this._halfOpenMaxRequests}) reached`
+        );
+      }
       this._halfOpenRequests++;
     }
 
@@ -56,6 +59,9 @@ export class CircuitBreaker {
       timeoutId = setTimeout(() => {
         reject(new Error('Circuit breaker timeout'));
       }, this._timeoutMs);
+      if (timeoutId && typeof timeoutId.unref === 'function') {
+        timeoutId.unref();
+      }
     });
 
     try {
@@ -74,9 +80,11 @@ export class CircuitBreaker {
     this._failureCount = 0;
     this._successCount++;
     if (this._state === STATES.HALF_OPEN) {
+      this._halfOpenRequests = Math.max(0, this._halfOpenRequests - 1);
       if (this._successCount >= this._halfOpenMaxRequests) {
         this._state = STATES.CLOSED;
         this._halfOpenRequests = 0;
+        this._successCount = 0;
       }
     } else {
       this._halfOpenRequests = 0;
@@ -88,6 +96,7 @@ export class CircuitBreaker {
     this._successCount = 0;
     this._lastFailureTime = Date.now();
     if (this._state === STATES.HALF_OPEN) {
+      this._halfOpenRequests = Math.max(0, this._halfOpenRequests - 1);
       this._state = STATES.OPEN;
     } else if (this._failureCount >= this._failureThreshold) {
       this._state = STATES.OPEN;
