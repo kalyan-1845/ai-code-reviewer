@@ -16,18 +16,18 @@ def _load():
     global _vectors
     try:
         if os.path.exists(VECTORS_FILE):
-            with open(VECTORS_FILE, "r") as f:
+            with open(VECTORS_FILE, "r", encoding="utf-8") as f:
                 _vectors = json.load(f)
         else:
             _vectors = []
-    except (json.JSONDecodeError, IOError) as exc:
+    except (json.JSONDecodeError, IOError, UnicodeDecodeError) as exc:
         print(f"WARNING: Failed to load vectors from {VECTORS_FILE}: {exc}. Resetting to empty.")
         _vectors = []
 
 
 def _save():
     tmp = VECTORS_FILE + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(_vectors, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
