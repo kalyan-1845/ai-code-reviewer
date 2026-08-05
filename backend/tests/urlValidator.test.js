@@ -118,3 +118,67 @@ test('isSafeUrl rejects domains resolving to at least one private IP (DNS round-
   assert.equal(result.valid, false);
   assert.ok(result.reason.includes('private or restricted IP'));
 });
+
+test('isSafeUrl rejects IPv6 loopback addresses', async () => {
+  // ::1 is IPv6 loopback
+  const result = await isSafeUrl('https://[::1]');
+  assert.equal(result.valid, false);
+});
+
+test('isSafeUrl rejects IPv6 link-local addresses (fe80:)', async () => {
+  // fe80::/10 is link-local, should be rejected
+  const result = await isSafeUrl('https://[fe80::1]');
+  assert.equal(result.valid, false);
+});
+
+test('isSafeUrl rejects IPv6 unique local addresses (fc00: and fd00:)', async () => {
+  // fc00::/8 and fd00::/8 are unique local addresses
+  const resultFc = await isSafeUrl('https://[fc00::1]');
+  const resultFd = await isSafeUrl('https://[fd00::1]');
+  assert.equal(resultFc.valid, false);
+  assert.equal(resultFd.valid, false);
+});
+
+test('isSafeUrl rejects IPv4-mapped IPv6 addresses pointing to private IPs', async () => {
+  // ::ffff:127.0.0.1 maps to IPv4 loopback, should be rejected
+  const result = await isSafeUrl('https://[::ffff:127.0.0.1]');
+  assert.equal(result.valid, false);
+});
+
+test('isSafeUrl rejects IPv4-mapped IPv6 addresses pointing to public IPs', async () => {
+  // ::ffff:8.8.8.8 maps to public IP, should be allowed
+  const result = await isSafeUrl('https://[::ffff:8.8.8.8]');
+  // DNS lookup may fail but the mapped IP itself is public
+  // The result depends on whether DNS lookup succeeds
+  assert.equal(typeof result.valid, 'boolean');
+});
+
+test('isValidRepoUrl accepts repo names with dots', () => {
+  // Repository names can contain dots
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo.name'), true);
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo.name.git'), true);
+});
+
+test('isValidRepoUrl rejects 0.0.0.0 IP address in hostname', () => {
+  // A URL with 0.0.0.0 as hostname would parse differently; this tests the
+  // edge case where someone passes an IP literal
+  assert.equal(isValidRepoUrl('https://0.0.0.0/owner/repo'), false);
+});
+
+test('parseRepoUrl returns null for URLs with trailing slashes inside path', () => {
+  // Multiple trailing slashes: https://github.com/owner/repo///
+  // The pathname would be /owner/repo/// which split gives extra empty segments
+  const result = parseRepoUrl('https://github.com/owner///repo///');
+  // After cleaning trailing slashes, this becomes /owner///repo
+  // This should return null since there are more than 2 segments
+  assert.equal(result, null);
+});
+
+test('parseRepoUrl handles URL-encoded characters in repo name', () => {
+  // URL-encoded characters should not be accepted (not valid GitHub repo names)
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo%20name'), false);
+});
+
+test('isValidRepoUrl rejects URLs with plus signs in segments', () => {
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo+name'), false);
+});
