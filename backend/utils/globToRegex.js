@@ -1,4 +1,5 @@
 export function globToRegex(pattern) {
+  if (!pattern || typeof pattern !== 'string') return /^$/;
   let regexStr = '^';
   let i = 0;
   const escapeRegex = (ch) => ch.replace(/[\\^$+?.()|[\]{}]/g, '\\$&');
