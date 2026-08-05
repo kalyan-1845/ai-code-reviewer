@@ -32,7 +32,6 @@ for (const [name, filePath] of Object.entries(implementations)) {
       !p.includes('/') &&
       !p.includes('\\')
     )
-    .filter(p => configPhrases.includes(p) || configPhrases.some(cp => cp === p))
     .sort();
 
   const onlyInFile = filePhrases.filter(p => !configPhrases.includes(p));

@@ -143,3 +143,63 @@ test('getFileContentHash returns null for unreadable files', async () => {
   const hash = getFileContentHash('/nonexistent/path/to/file.js');
   assert.equal(hash, null, 'unreadable file should return null');
 });
+
+test('getFilesToReview returns empty review list when no files exist', async () => {
+  const result = getFilesToReview([], {});
+  assert.equal(result.filesToReview.length, 0, 'empty files list should produce no review items');
+  assert.equal(result.changedCount, 0);
+  assert.equal(result.totalCount, 0);
+});
+
+test('getFilesToReview marks all files as changed when previousCache is null', async () => {
+  await withTempDir(async (tmpDir) => {
+    const file = path.join(tmpDir, 'new.js');
+    await fs.promises.writeFile(file, 'brand-new-content');
+
+    const result = getFilesToReview([file], null);
+
+    assert.ok(result.filesToReview.includes(file), 'all files should be marked for review when no previous cache');
+    assert.equal(result.changedCount, 1);
+    assert.equal(result.totalCount, 1);
+  });
+});
+
+test('getFilesToReview marks all files as changed when previousCache is empty object', async () => {
+  await withTempDir(async (tmpDir) => {
+    const file = path.join(tmpDir, 'all-new.js');
+    await fs.promises.writeFile(file, 'content');
+
+    const result = getFilesToReview([file], {});
+
+    assert.ok(result.filesToReview.includes(file), 'empty previousCache should mark file as changed');
+    assert.equal(result.changedCount, 1);
+    assert.equal(result.totalCount, 1);
+  });
+});
+
+test('getFilesToReview does not include files removed from disk in the review list', async () => {
+  await withTempDir(async (tmpDir) => {
+    const file = path.join(tmpDir, 'deleted.js');
+    await fs.promises.writeFile(file, 'old-content');
+    const hash = buildContentHashCache([file])[file];
+
+    // Delete the file before calling getFilesToReview
+    await fs.promises.unlink(file);
+
+    const result = getFilesToReview([file], { [file]: hash });
+
+    assert.ok(!result.filesToReview.includes(file), 'deleted file should not be in review list');
+  });
+});
+
+test('getFilesToReview sets currentCache in returned summary', async () => {
+  await withTempDir(async (tmpDir) => {
+    const file = path.join(tmpDir, 'unchanged.js');
+    await fs.promises.writeFile(file, 'same-content');
+    const currentHash = buildContentHashCache([file])[file];
+
+    const result = getFilesToReview([file], { [file]: currentHash });
+
+    assert.equal(result.currentCache[file], currentHash, 'currentCache should be populated');
+  });
+});

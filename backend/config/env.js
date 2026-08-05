@@ -1,4 +1,4 @@
-function parsePositiveInt(value, name, defaultVal) {
+export function parsePositiveInt(value, name, defaultVal) {
   const num = parseInt(value, 10);
   if (Number.isFinite(num) && num > 0) return num;
   if (value !== undefined) {

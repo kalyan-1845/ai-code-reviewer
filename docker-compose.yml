@@ -1,16 +1,17 @@
 services:
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9
     container_name: reposage-chromadb
-    ports:
-      - "8001:8000"
+    # ChromaDB is intentionally NOT published to the host. Only the ai-engine
+    # reaches it over the compose network (CHROMA_HOST=chromadb:8000), so the
+    # vector store API is not exposed to external clients on the host.
     volumes:
       - chroma_data:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY:-FALSE}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "wget", "--spider", "http://localhost:8000/api/v1/heartbeat"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,26 +23,29 @@ services:
       context: ./ai-engine
       dockerfile: Dockerfile.dev
     container_name: reposage-ai-engine
-    ports:
-      - "8000:8000"
+    # The engine is intentionally NOT published to the host. It is reached only
+    # by the backend over the compose network (AI_ENGINE_URL=http://ai-engine:8000),
+    # so external clients cannot bypass the backend's rate limiting / auth by
+    # connecting directly to port 8000.
     volumes:
       - ./ai-engine:/usr/src/app
       - /usr/src/app/__pycache__
     environment:
       - PORT=8000
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - REPOSAGE_API_KEY=${REPOSAGE_API_KEY}
       - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       - CHROMA_HOST=${CHROMA_HOST:-chromadb}
       - CHROMA_PORT=${CHROMA_PORT:-8000}
       - CHROMA_COLLECTION=${CHROMA_COLLECTION:-reposage_code_chunks}
     env_file:
-      - .env.docker
+      - .env.docker.example
     depends_on:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:8000/health"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -61,14 +65,16 @@ services:
     environment:
       - PORT=5000
       - AI_ENGINE_URL=http://ai-engine:8000
-      - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
       - GITHUB_PAT=${GITHUB_PAT}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - REPOSAGE_API_KEY=${REPOSAGE_API_KEY}
+      - AI_ENGINE_API_KEY=${AI_ENGINE_API_KEY}
+      - SESSION_SECRET=${SESSION_SECRET}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       - GIT_CLONE_TIMEOUT=${GIT_CLONE_TIMEOUT:-120000}
       - MAX_REPO_SIZE_MB=${MAX_REPO_SIZE_MB:-100}
     env_file:
-      - .env.docker
+      - .env.docker.example
     depends_on:
       ai-engine:
         condition: service_healthy
@@ -93,10 +99,16 @@ services:
     environment:
       - VITE_API_URL=http://localhost:5000
     env_file:
-      - .env.docker
+      - .env.docker.example
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: always
 
 volumes:

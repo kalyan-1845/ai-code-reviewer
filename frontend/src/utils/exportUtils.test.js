@@ -15,7 +15,7 @@ describe('generateMarkdownReport', () => {
   });
 
   it('shows no issues message when fileReviews is null', () => {
-    const report = generateMarkdownReport('test-repo', null as any);
+    const report = generateMarkdownReport('test-repo', null);
     expect(report).toContain('No issues found');
   });
 

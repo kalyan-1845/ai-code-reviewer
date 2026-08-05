@@ -34,10 +34,14 @@ function makeFakeRedis() {
   };
 }
 
-test('reviewTrackerKey builds a stable, namespaced key', () => {
+test('reviewTrackerKey builds a stable, namespaced key and sanitizes input', () => {
   assert.equal(
     reviewTrackerKey('acme', 'widgets', 42),
     'webhook:lastReview:acme/widgets/#42'
+  );
+  assert.equal(
+    reviewTrackerKey('acme:bad', 'widgets\r\n', '42:injected'),
+    'webhook:lastReview:acmebad/widgets/#42'
   );
 });
 

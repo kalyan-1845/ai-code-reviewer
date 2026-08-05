@@ -115,10 +115,17 @@ const AnalyticsTrendsChart: React.FC = () => {
         );
     }
 
+    // Coerce series values to safe numbers so a missing/undefined aggregation
+    // for a given day does not turn maxValue into NaN and corrupt the chart.
+    const seriesValue = (t: TrendPoint, key: typeof SERIES[number]['key']): number => {
+        const v = Number(t[key]);
+        return Number.isFinite(v) ? v : 0;
+    };
+
     // Find the max value across all series for scaling the Y axis
     const maxValue = Math.max(
         1,
-        ...trends.flatMap((t) => SERIES.map((s) => t[s.key]))
+        ...trends.flatMap((t) => SERIES.map((s) => seriesValue(t, s.key)))
     );
 
     const innerWidth = CHART_WIDTH - PADDING * 2;
@@ -131,7 +138,7 @@ const AnalyticsTrendsChart: React.FC = () => {
 
     const buildPath = (key: typeof SERIES[number]['key']) =>
         trends
-            .map((t, i) => `${i === 0 ? 'M' : 'L'} ${getX(i).toFixed(1)} ${getY(t[key]).toFixed(1)}`)
+            .map((t, i) => `${i === 0 ? 'M' : 'L'} ${getX(i).toFixed(1)} ${getY(seriesValue(t, key)).toFixed(1)}`)
             .join(' ');
 
     const formatDate = (iso: string) => {
@@ -249,11 +256,11 @@ const AnalyticsTrendsChart: React.FC = () => {
                             <circle
                                 key={`${s.key}-${i}`}
                                 cx={getX(i)}
-                                cy={getY(t[s.key])}
+                                cy={getY(seriesValue(t, s.key))}
                                 r={2.5}
                                 fill={s.color}
                             >
-                                <title>{`${s.label}: ${t[s.key]} (${formatDate(t.date)})`}</title>
+                                <title>{`${s.label}: ${seriesValue(t, s.key)} (${formatDate(t.date)})`}</title>
                             </circle>
                         ))
                     )}

@@ -5,6 +5,8 @@ import { parseDiff } from './utils/diffParser.js';
 import { scanSecretsInChanges } from './utils/secretsScanner.js';
 import { globToRegex } from './utils/globToRegex.js';
 import { cleanAndParseJSON, normalizeReviewLineNumber } from './utils/actionUtils.js';
+import { GitHubProvider } from './providers/GitHubProvider.js';
+import { GitLabProvider } from './providers/GitLabProvider.js';
 
 const PARSE_FAILED = { reviews: [], _parseFailed: true };
 
@@ -82,6 +84,12 @@ async function run() {
       return;
     }
 
+    const isDraft = github.context.payload?.pull_request?.draft;
+    if (isDraft) {
+      console.log('Skipping draft pull request. The review will run when the PR is marked as ready for review.');
+      return;
+    }
+
     console.log(`🚀 Starting RepoSage AI PR Review for PR #${pullNumber} in ${owner}/${repo}`);
 
     const headSha = github.context.payload.pull_request?.head?.sha;
@@ -112,6 +120,21 @@ async function run() {
     if (!diff) {
       core.warning('⚠️ No diff content found for this Pull Request.');
       return;
+    }
+    
+    // Fetch existing PR review comments to avoid duplicates
+    let existingComments = [];
+    try {
+      const response = await octokit.rest.pulls.listReviewComments({
+        owner,
+        repo,
+        pull_number: pullNumber,
+        per_page: 100
+      });
+      existingComments = response.data;
+      console.log(`💬 Found ${existingComments.length} existing review comments.`);
+    } catch (err) {
+      console.warn(`⚠️ Could not fetch existing comments: ${err.message}`);
     }
 
     // 5. Parse Diff
@@ -194,16 +217,19 @@ async function run() {
         const { findings: localSecretIssues, truncated: scanTruncated, totalChanges: scanTotal, skippedReason: scanReason } = scanSecretsInChanges(file.changes);
         for (const issue of localSecretIssues) {
           const bodyText = `<!-- RepoSage Review Comment -->\n${issue.comment}`;
-          batchComments.push({
-            path: file.path,
-            line: issue.line,
-            body: bodyText
-          });
-          commentsToPost.push({
-            path: file.path,
-            line: issue.line,
-            body: bodyText
-          });
+          const alreadyPostedOnPR = existingComments.some(c => c.path === file.path && c.line === issue.line && c.body === bodyText);
+          if (!alreadyPostedOnPR) {
+            batchComments.push({
+              path: file.path,
+              line: issue.line,
+              body: bodyText
+            });
+            commentsToPost.push({
+              path: file.path,
+              line: issue.line,
+              body: bodyText
+            });
+          }
         }
         if (scanTruncated) {
           incompleteSecretScan = true;
@@ -240,7 +266,10 @@ If no issues are found, reply with: { "reviews": [] }`;
         try {
           const completion = await groq.chat.completions.create({
             model: 'llama-3.3-70b-versatile',
-            messages: [{ role: 'user', content: reviewPrompt }],
+            messages: [
+              { role: 'system', content: 'You are a code reviewer. Always output valid JSON matching the schema { "reviews": [{"line": int, "type": "bug|security|optimization|style", "comment": "string"}] }.' },
+              { role: 'user', content: reviewPrompt }
+            ],
             temperature: 0.2,
             max_tokens: maxTokens,
             response_format: { type: 'json_object' },
@@ -254,7 +283,7 @@ If no issues are found, reply with: { "reviews": [] }`;
           failedReviewsCount++;
           successfulReviewsCount--;
           core.error(`❌ LLM response for ${file.path} could not be parsed. Skipping file. Raw response logged.`);
-          continue;
+          return;
         }
 
         let issues = [];
@@ -267,47 +296,38 @@ If no issues are found, reply with: { "reviews": [] }`;
               break;
             }
           }
-          let parsed = cleanAndParseJSON(content);
-          successfulReviewsCount++;
-          reviewedFilesCount++;
+        }
+        reviewedFilesCount++;
 
-          let issues = [];
-          if (Array.isArray(parsed)) {
-            issues = parsed;
-          } else if (parsed && typeof parsed === 'object') {
-            for (const key of Object.keys(parsed)) {
-              if (Array.isArray(parsed[key])) {
-                issues = parsed[key];
-                break;
+        if (issues.length > 0) {
+          console.log(`✅ AI review returned ${issues.length} comments for ${file.path}`);
+          for (const issue of issues) {
+            const issueLine = normalizeReviewLineNumber(issue.line);
+            const changeExists = issueLine !== null && file.changes.some(c => c.line === issueLine);
+            if (changeExists) {
+              const bodyText = `<!-- RepoSage Review Comment -->\n${issue.comment}`;
+              const alreadyFlagged = batchComments.some(c => c.path === file.path && c.line === issueLine && c.body === bodyText);
+              const alreadyPostedOnPR = existingComments.some(c => c.path === file.path && c.line === issueLine && c.body === bodyText);
+              
+              if (!alreadyFlagged && !alreadyPostedOnPR) {
+                batchComments.push({
+                  path: file.path,
+                  line: issueLine,
+                  body: bodyText
+                });
+                commentsToPost.push({
+                  path: file.path,
+                  line: issueLine,
+                  body: bodyText
+                });
+              } else if (alreadyPostedOnPR) {
+                console.log(`⏭️ Skipping duplicate AI comment for ${file.path} on line ${issueLine}.`);
               }
+            } else {
+              console.warn(`⚠️ AI suggested line ${issue.line} which is outside the PR changes for ${file.path}. Skipping.`);
             }
           }
-
-          if (issues.length > 0) {
-            console.log(`✅ AI review returned ${issues.length} comments for ${file.path}`);
-            for (const issue of issues) {
-              const issueLine = normalizeReviewLineNumber(issue.line);
-              const changeExists = issueLine !== null && file.changes.some(c => c.line === issueLine);
-              if (changeExists) {
-                const bodyText = `<!-- RepoSage Review Comment -->\n${issue.comment}`;
-                const alreadyFlagged = batchComments.some(c => c.path === file.path && c.line === issueLine && c.body === bodyText);
-                if (!alreadyFlagged) {
-                  batchComments.push({
-                    path: file.path,
-                    line: issueLine,
-                    body: bodyText
-                  });
-                  commentsToPost.push({
-                    path: file.path,
-                    line: issueLine,
-                    body: bodyText
-                  });
-                }
-              } else {
-                console.warn(`⚠️ AI suggested line ${issue.line} which is outside the PR changes for ${file.path}. Skipping.`);
-              }
-            }
-          } else {
+        } else {
             const hasReviewsArray = parsed && typeof parsed === 'object' && Array.isArray(parsed.reviews);
             if (!hasReviewsArray) {
               emptyOrUnparseable = true;

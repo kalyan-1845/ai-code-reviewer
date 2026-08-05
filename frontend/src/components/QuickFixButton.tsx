@@ -30,6 +30,7 @@ export function QuickFixButton({ text, onApply }: { text: string; onApply: (text
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-haspopup="menu"
+        data-quickfix-btn
         style={{
           border: 'none',
           borderRadius: '6px',

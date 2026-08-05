@@ -8,7 +8,7 @@ import {
 
 test('severityToGitHubLevel maps known severities correctly', () => {
   assert.equal(severityToGitHubLevel('error'), 'failure');
-  assert.equal(severityToGitHubLevel('warning'), 'neutral');
+  assert.equal(severityToGitHubLevel('warning'), 'warning');
   assert.equal(severityToGitHubLevel('info'), 'notice');
 });
 
@@ -42,7 +42,7 @@ test('formatAnnotations transforms findings to GitHub annotation shape', () => {
   assert.equal(annotations[0].path, 'src/index.js');
   assert.equal(annotations[0].start_line, 10);
   assert.equal(annotations[0].end_line, 10);
-  assert.equal(annotations[0].annotation_level, 'neutral');
+  assert.equal(annotations[0].annotation_level, 'warning');
   assert.equal(annotations[0].message, 'Unused variable');
   assert.equal(annotations[0].title, 'no-unused-vars');
 
@@ -65,7 +65,7 @@ test('formatAnnotations handles missing optional fields in findings', () => {
     },
   ];
   const annotations = formatAnnotations(findings);
-  assert.equal(annotations[0].title, undefined);
+  assert.equal(annotations[0].title, 'unknown-rule');
   assert.equal(annotations[0].annotation_level, 'failure');
 });
 
@@ -117,4 +117,18 @@ test('batchAnnotations handles array smaller than batch size', () => {
   const batches = batchAnnotations(annotations);
   assert.equal(batches.length, 1);
   assert.equal(batches[0].length, 1);
+});
+
+test('formatAnnotations defaults invalid or non-positive line numbers to 1', () => {
+  const findings = [
+    { file: 'file.js', line: 0, message: 'Zero line', severity: 'info' },
+    { file: 'file.js', line: -5, message: 'Negative line', severity: 'info' },
+    { file: 'file.js', line: null, message: 'Null line', severity: 'info' },
+    { file: 'file.js', line: 'not-a-number', message: 'String line', severity: 'info' },
+  ];
+  const annotations = formatAnnotations(findings);
+  assert.equal(annotations[0].start_line, 1);
+  assert.equal(annotations[1].start_line, 1);
+  assert.equal(annotations[2].start_line, 1);
+  assert.equal(annotations[3].start_line, 1);
 });

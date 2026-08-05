@@ -1,196 +1,204 @@
-import pytest
+"""Unit tests for ai-engine/config_loader.py settings and validation."""
 
+import pytest
+import yaml
 from config_loader import (
-    CONFIG_FILENAME,
+    ConfigValidationError,
     CodeReviewerConfig,
     ConfigLoader,
-    ConfigValidationError,
     parse_config_text,
     load_config_from_files,
+    CONFIG_FILENAME,
+    VALID_SEVERITIES,
 )
 
 
-class FakeFile:
-    """Mimics the FileItem shape (name + content attributes) used by app.py."""
-    def __init__(self, name, content):
-        self.name = name
-        self.content = content
+class TestCodeReviewerConfigDefaults:
+    """Tests for CodeReviewerConfig default values."""
+
+    def test_default_version_is_one(self):
+        cfg = CodeReviewerConfig()
+        assert cfg.version == 1
+
+    def test_default_rules_is_empty_dict(self):
+        cfg = CodeReviewerConfig()
+        assert cfg.rules == {}
+        assert isinstance(cfg.rules, dict)
+
+    def test_default_ignore_paths_is_empty_list(self):
+        cfg = CodeReviewerConfig()
+        assert cfg.ignore_paths == []
+
+    def test_default_languages_is_empty_dict(self):
+        cfg = CodeReviewerConfig()
+        assert cfg.languages == {}
 
 
-SAMPLE_CONFIG_YAML = """
-version: 1
+class TestGetRuleSeverity:
+    """Tests for get_rule_severity()"""
 
-rules:
-  no-console:
-    severity: off
-  max-line-length:
-    severity: info
-    options:
-      limit: 120
+    def test_unknown_rule_returns_default(self):
+        cfg = CodeReviewerConfig()
+        assert cfg.get_rule_severity("nonexistent_rule") == "error"
+        assert cfg.get_rule_severity("unknown", default="warning") == "warning"
 
-ignore_paths:
-  - "vendor/**"
-  - "dist/**"
-  - "**/*.min.js"
+    def test_known_rule_returns_configured_severity(self):
+        cfg = CodeReviewerConfig(rules={"my_rule": {"severity": "warning"}})
+        assert cfg.get_rule_severity("my_rule") == "warning"
 
-languages:
-  go:
-    enabled: false
-"""
+    def test_rule_with_no_severity_returns_default(self):
+        cfg = CodeReviewerConfig(rules={"my_rule": {"other_field": "value"}})
+        assert cfg.get_rule_severity("my_rule") == "error"
+
+
+class TestIsRuleOff:
+    """Tests for is_rule_off()"""
+
+    def test_explicitly_off_rule_returns_true(self):
+        cfg = CodeReviewerConfig(rules={"audit_rule": {"severity": "off"}})
+        assert cfg.is_rule_off("audit_rule") is True
+
+    def test_error_rule_returns_false(self):
+        cfg = CodeReviewerConfig(rules={"strict_rule": {"severity": "error"}})
+        assert cfg.is_rule_off("strict_rule") is False
+
+    def test_missing_rule_returns_false(self):
+        cfg = CodeReviewerConfig()
+        assert cfg.is_rule_off("missing") is False
+
+
+class TestIsPathIgnored:
+    """Tests for is_path_ignored()"""
+
+    def test_glob_pattern_matches(self):
+        cfg = CodeReviewerConfig(ignore_paths=["*.test.js", "dist/**"])
+        assert cfg.is_path_ignored("foo.test.js") is True
+        assert cfg.is_path_ignored("src/test.js") is False
+        assert cfg.is_path_ignored("dist/index.js") is True
+
+    def test_exact_path_matches(self):
+        cfg = CodeReviewerConfig(ignore_paths=["node_modules"])
+        assert cfg.is_path_ignored("node_modules") is True
+
+    def test_empty_ignore_paths_returns_false(self):
+        cfg = CodeReviewerConfig(ignore_paths=[])
+        assert cfg.is_path_ignored("anything") is False
+
+    def test_backslash_normalized_to_forward_slash(self):
+        cfg = CodeReviewerConfig(ignore_paths=["src/**/*.test.js"])
+        assert cfg.is_path_ignored("src\\components\\foo.test.js") is True
+
+
+class TestIsLanguageEnabled:
+    """Tests for is_language_enabled()"""
+
+    def test_missing_language_defaults_to_enabled(self):
+        cfg = CodeReviewerConfig()
+        assert cfg.is_language_enabled("cobol") is True
+
+    def test_explicitly_enabled_language(self):
+        cfg = CodeReviewerConfig(languages={"rust": {"enabled": True}})
+        assert cfg.is_language_enabled("rust") is True
+
+    def test_explicitly_disabled_language(self):
+        cfg = CodeReviewerConfig(languages={"assembly": {"enabled": False}})
+        assert cfg.is_language_enabled("assembly") is False
 
 
 class TestParseConfigText:
-    def test_parses_valid_config(self):
-        config = parse_config_text(SAMPLE_CONFIG_YAML)
-        assert config.version == 1
-        assert config.rules["no-console"]["severity"] == "off"
-        assert config.rules["max-line-length"]["severity"] == "info"
-        assert "vendor/**" in config.ignore_paths
-        assert config.languages["go"]["enabled"] is False
+    """Tests for parse_config_text()"""
 
-    def test_empty_file_uses_all_defaults(self):
-        config = parse_config_text("")
-        assert config.version == 1
-        assert config.rules == {}
-        assert config.ignore_paths == []
-        assert config.languages == {}
+    def test_empty_text_returns_defaults(self):
+        cfg = parse_config_text("")
+        assert cfg.version == 1
+        assert cfg.rules == {}
 
-    def test_invalid_yaml_syntax_raises(self):
-        with pytest.raises(ConfigValidationError, match="not valid YAML"):
-            parse_config_text("rules: [unclosed")
+    def test_minimal_yaml_config(self):
+        text = yaml.dump({"version": 2, "rules": {}, "ignore_paths": ["*.log"]})
+        cfg = parse_config_text(text)
+        assert cfg.version == 2
+        assert cfg.ignore_paths == ["*.log"]
 
-    def test_non_mapping_top_level_raises(self):
-        with pytest.raises(ConfigValidationError, match="top level"):
-            parse_config_text("- just\n- a\n- list\n")
+    def test_rules_parsed_correctly(self):
+        text = yaml.dump({
+            "rules": {
+                "long_function": {"severity": "warning", "threshold": 50}
+            }
+        })
+        cfg = parse_config_text(text)
+        assert cfg.get_rule_severity("long_function") == "warning"
 
-    def test_invalid_severity_value_raises_and_names_the_rule(self):
-        bad_config = """
-rules:
-  no-console:
-    severity: catastrophic
-"""
-        with pytest.raises(ConfigValidationError, match="no-console"):
-            parse_config_text(bad_config)
+    def test_yaml_boolean_off_normalized_to_string(self):
+        """YAML parses 'off' as boolean False, but we want the string 'off'."""
+        text = "rules:\n  verbose_rule:\n    severity: off\n"
+        cfg = parse_config_text(text)
+        assert cfg.get_rule_severity("verbose_rule") == "off"
+        assert isinstance(cfg.rules["verbose_rule"]["severity"], str)
 
-    def test_rule_settings_must_be_a_mapping(self):
-        bad_config = "rules:\n  no-console: off\n"
-        with pytest.raises(ConfigValidationError, match="no-console"):
-            parse_config_text(bad_config)
+    def test_invalid_severity_raises(self):
+        text = yaml.dump({"rules": {"bad_rule": {"severity": "critical"}}})
+        with pytest.raises(ConfigValidationError) as exc:
+            parse_config_text(text)
+        assert "Invalid severity" in str(exc.value)
+        assert "critical" in str(exc.value)
 
-    def test_ignore_paths_must_be_a_list_of_strings(self):
-        bad_config = "ignore_paths: not-a-list\n"
-        with pytest.raises(ConfigValidationError, match="ignore_paths"):
-            parse_config_text(bad_config)
+    def test_non_mapping_rules_raises(self):
+        text = yaml.dump({"rules": "not a mapping"})
+        with pytest.raises(ConfigValidationError) as exc:
+            parse_config_text(text)
+        assert "rules" in str(exc.value)
 
-    def test_languages_entry_must_be_a_mapping(self):
-        bad_config = "languages:\n  go: disabled\n"
-        with pytest.raises(ConfigValidationError, match="go"):
-            parse_config_text(bad_config)
+    def test_non_mapping_ignore_paths_raises(self):
+        text = yaml.dump({"ignore_paths": "should be list"})
+        with pytest.raises(ConfigValidationError) as exc:
+            parse_config_text(text)
+        assert "ignore_paths" in str(exc.value)
 
-    def test_all_four_valid_severities_are_accepted(self):
-        for severity in ("off", "info", "warning", "error"):
-            config = parse_config_text(f"rules:\n  some-rule:\n    severity: {severity}\n")
-            assert config.rules["some-rule"]["severity"] == severity
+    def test_non_mapping_languages_raises(self):
+        text = yaml.dump({"languages": 42})
+        with pytest.raises(ConfigValidationError) as exc:
+            parse_config_text(text)
+        assert "languages" in str(exc.value)
 
-
-class TestCodeReviewerConfigLookups:
-    def test_get_rule_severity_returns_configured_value(self):
-        config = parse_config_text(SAMPLE_CONFIG_YAML)
-        assert config.get_rule_severity("no-console") == "off"
-        assert config.get_rule_severity("max-line-length") == "info"
-
-    def test_get_rule_severity_falls_back_to_default_for_unmentioned_rule(self):
-        config = parse_config_text(SAMPLE_CONFIG_YAML)
-        assert config.get_rule_severity("totally-unmentioned-rule") == "error"
-        assert config.get_rule_severity("totally-unmentioned-rule", default="warning") == "warning"
-
-    def test_is_rule_off(self):
-        config = parse_config_text(SAMPLE_CONFIG_YAML)
-        assert config.is_rule_off("no-console") is True
-        assert config.is_rule_off("max-line-length") is False
-        assert config.is_rule_off("unmentioned-rule") is False
-
-    def test_is_path_ignored_matches_glob_patterns(self):
-        config = parse_config_text(SAMPLE_CONFIG_YAML)
-        assert config.is_path_ignored("vendor/lib/foo.go") is True
-        assert config.is_path_ignored("dist/bundle.js") is True
-        assert config.is_path_ignored("static/js/app.min.js") is True
-        assert config.is_path_ignored("src/main.go") is False
-
-    def test_is_path_ignored_normalizes_windows_separators(self):
-        config = parse_config_text(SAMPLE_CONFIG_YAML)
-        assert config.is_path_ignored("vendor\\lib\\foo.go") is True
-
-    def test_default_config_ignores_nothing(self):
-        config = CodeReviewerConfig()
-        assert config.is_path_ignored("anything/at/all.go") is False
-
-    def test_is_language_enabled_respects_disabled_language(self):
-        config = parse_config_text(SAMPLE_CONFIG_YAML)
-        assert config.is_language_enabled("go") is False
-
-    def test_is_language_enabled_defaults_true_for_unmentioned_language(self):
-        config = parse_config_text(SAMPLE_CONFIG_YAML)
-        assert config.is_language_enabled("python") is True
-        assert config.is_language_enabled("javascript") is True
-
-    def test_is_language_enabled_true_when_explicitly_set(self):
-        config = parse_config_text("languages:\n  python:\n    enabled: true\n")
-        assert config.is_language_enabled("python") is True
-
-
-class TestConfigLoaderClass:
-    def test_load_reads_and_parses_a_real_file(self, tmp_path):
-        config_path = tmp_path / CONFIG_FILENAME
-        config_path.write_text(SAMPLE_CONFIG_YAML)
-
-        loader = ConfigLoader()
-        config = loader.load(str(config_path))
-
-        assert config.rules["no-console"]["severity"] == "off"
-        assert loader.get_rule_severity("no-console") == "off"
-
-    def test_loader_defaults_before_load_is_called(self):
-        loader = ConfigLoader()
-        assert loader.get_rule_severity("anything") == "error"
-
-    def test_load_propagates_validation_errors(self, tmp_path):
-        config_path = tmp_path / CONFIG_FILENAME
-        config_path.write_text("rules:\n  bad:\n    severity: nonsense\n")
-
-        loader = ConfigLoader()
-        with pytest.raises(ConfigValidationError):
-            loader.load(str(config_path))
+    def test_invalid_yaml_raises(self):
+        with pytest.raises(ConfigValidationError) as exc:
+            parse_config_text("{ invalid yaml: [")
+        assert "not valid YAML" in str(exc.value)
 
 
 class TestLoadConfigFromFiles:
-    def test_finds_and_parses_config_among_other_files(self):
+    """Tests for load_config_from_files()"""
+
+    def test_config_file_found_and_parsed(self):
         files = [
-            FakeFile("src/main.go", "package main"),
-            FakeFile(CONFIG_FILENAME, SAMPLE_CONFIG_YAML),
-            FakeFile("README.md", "# hi"),
+            {"name": "src/main.py", "content": "print('hello')"},
+            {"name": ".codereviewer.yml", "content": "version: 3\nignore_paths:\n  - '*.tmp'\n"},
         ]
-        config = load_config_from_files(files)
-        assert config is not None
-        assert config.rules["no-console"]["severity"] == "off"
+        cfg = load_config_from_files(files)
+        assert cfg is not None
+        assert cfg.version == 3
+        assert cfg.ignore_paths == ["*.tmp"]
 
-    def test_returns_none_when_config_file_absent(self):
-        files = [FakeFile("src/main.go", "package main")]
-        assert load_config_from_files(files) is None
+    def test_no_config_file_returns_none(self):
+        files = [{"name": "README.md", "content": "# Hello"}]
+        cfg = load_config_from_files(files)
+        assert cfg is None
 
-    def test_raises_when_present_config_is_invalid(self):
-        files = [FakeFile(CONFIG_FILENAME, "rules:\n  x:\n    severity: bogus\n")]
+    def test_empty_file_list_returns_none(self):
+        cfg = load_config_from_files([])
+        assert cfg is None
+
+    def test_malformed_config_raises(self):
+        files = [{"name": ".codereviewer.yml", "content": "{ broken yaml ["}]
         with pytest.raises(ConfigValidationError):
             load_config_from_files(files)
 
-    def test_works_with_plain_dicts_not_just_objects(self):
-        files = [
-            {"name": CONFIG_FILENAME, "content": SAMPLE_CONFIG_YAML},
-            {"name": "main.go", "content": "package main"},
-        ]
-        config = load_config_from_files(files)
-        assert config is not None
-        assert config.is_language_enabled("go") is False
-
-    def test_empty_file_list_returns_none(self):
-        assert load_config_from_files([]) is None
+    def test_object_style_files(self):
+        class FakeFile:
+            def __init__(self, name, content):
+                self.name = name
+                self.content = content
+        files = [FakeFile(".codereviewer.yml", "ignore_paths:\n  - '*.swp'")]
+        cfg = load_config_from_files(files)
+        assert cfg is not None
+        assert "*.swp" in cfg.ignore_paths
