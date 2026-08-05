@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { registerTimer } from './timerRegistry.js';
 
 /**
  * In-memory cache for code analysis results with TTL support.
@@ -14,26 +15,36 @@ import crypto from 'crypto';
 
 class AsyncLock {
   constructor() {
-    this._promise = null;
-    this._resolve = null;
+    this._queue = Promise.resolve();
+    this._free = true;
   }
   async acquire(fn) {
-    while (this._promise) {
-      await this._promise;
-    }
-    this._promise = new Promise(resolve => { this._resolve = resolve; });
+    // Mark the lock as busy so isFree() reports false while any caller is
+    // queued or running, not just the currently held operation.
+    this._free = false;
+    // Serialize all callers through a promise chain. Each acquire()
+    // waits for the previous operation to complete before executing.
+    // The previous line is captured before chaining so concurrent callers
+    // each get their own slot in the chain rather than all sharing one.
+    const prev = this._queue;
+    let release;
+    const mySlot = new Promise(resolve => { release = resolve; });
+    this._queue = mySlot;
+    await prev;
     try {
       return await fn();
     } finally {
-      const resolve = this._resolve;
-      this._promise = null;
-      this._resolve = null;
-      if (resolve) resolve();
+      release();
+      // Only mark the lock free if no caller chained after us; otherwise a
+      // queued waiter is still pending and the lock must stay busy.
+      if (this._queue === mySlot) {
+        this._free = true;
+      }
     }
   }
 
   isFree() {
-    return this._promise === null;
+    return this._free;
   }
 }
 
@@ -47,8 +58,11 @@ class AnalysisCache {
     this.pending = new Map();
     this._locks = new Map();
     this._repoUrlIndex = new Map();
-    this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0 };
-    this._startSweeper();
+    this._invalidatedKeys = new Set();
+    this.stats = { hits: 0, misses: 0, dedupSaves: 0, absoluteExpiries: 0, slidingExpiries: 0, evictions: 0 };
+    // The sweeper is started lazily on first set() and stops itself when the
+    // cache empties, so an idle instance never keeps a live interval (and a
+    // garbage-collected instance cannot leak a timer through the closure).
   }
 
   /**
@@ -71,7 +85,10 @@ class AnalysisCache {
       .createHash('sha256')
       .update(
         files
-          .map(f => `${f.name}:${crypto.createHash('sha256').update(f.content).digest('hex')}`)
+          .map(f => {
+            const content = typeof f.content === 'string' ? f.content : String(f.content ?? '');
+            return `${f.name}:${crypto.createHash('sha256').update(content).digest('hex')}`;
+          })
           .sort()
           .join('|')
       )
@@ -114,7 +131,7 @@ class AnalysisCache {
 
     // Cache hit — promote to MRU position and extend TTL
     this.cache.delete(key);
-    entry.expiresAt = now + this.ttlMs;
+    entry.expiresAt = now + (entry.isMock ? this.mockTtlMs : this.ttlMs);
     this.cache.set(key, entry);
     this.stats.hits++;
     const qualityLabel = entry.isMock ? '⚠️ MOCK' : '✅';
@@ -150,13 +167,14 @@ class AnalysisCache {
     const absoluteExpiresAt = now + (ttl * this.absoluteMaxMultiplier);
     const repoUrl = options.repoUrl;
     const normalizedRepoUrl = repoUrl ? repoUrl.replace(/\/+$/, '').toLowerCase() : undefined;
-    this.cache.set(key, { result, expiresAt, absoluteExpiresAt, repoUrl: normalizedRepoUrl, isMock: !!options.isMock });
+    this.cache.set(key, { result, expiresAt, absoluteExpiresAt, createdAt: now, repoUrl: normalizedRepoUrl, isMock: !!options.isMock });
     if (normalizedRepoUrl) {
       if (!this._repoUrlIndex.has(normalizedRepoUrl)) {
         this._repoUrlIndex.set(normalizedRepoUrl, new Set());
       }
       this._repoUrlIndex.get(normalizedRepoUrl).add(key);
     }
+    this._startSweeper();
     const qualityLabel = options.isMock ? '⚠️ MOCK' : '💾';
     console.log(`${qualityLabel} Cached analysis result for key ${key.slice(0, 8)}... (${this.cache.size}/${this.maxEntries} entries, ${this.stats.evictions} evictions, ttl=${ttl}ms)`);
   }
@@ -185,22 +203,30 @@ class AnalysisCache {
         const pending = this.pending.get(key);
         if (pending) {
           this.stats.dedupSaves++;
-          return pending;
+          return pending.promise;
         }
 
         const promise = fetcher().then(result => {
           const cacheHint = (result && result._cacheHint) || {};
           const resultData = (result && result._data !== undefined) ? result._data : result;
           const isMock = cacheHint.isMock === true || result._mock === true;
-          this.set(key, resultData, { repoUrl, isMock });
           this.pending.delete(key);
+          // A repo-level invalidation may have raced with this in-flight fetch.
+          // If so, drop the result instead of re-caching it after invalidation.
+          if (this._invalidatedKeys.has(key)) {
+            this._invalidatedKeys.delete(key);
+            console.log(`🚫 Dropped in-flight result for invalidated key ${key.slice(0, 8)}...`);
+            return resultData;
+          }
+          this.set(key, resultData, { repoUrl, isMock });
           return resultData;
         }).catch(err => {
           this.pending.delete(key);
+          this._invalidatedKeys.delete(key);
           throw err;
         });
 
-        this.pending.set(key, promise);
+        this.pending.set(key, { promise, repoUrl });
         return promise;
       });
     } finally {
@@ -245,7 +271,7 @@ class AnalysisCache {
     const size = this.cache.size;
     this.cache.clear();
     this._repoUrlIndex.clear();
-    this._startSweeper();
+    // No restart here: the sweeper starts lazily again on the next set().
     console.log(`🗑️  Cleared analysis cache (${size} entries removed)`);
   }
 
@@ -254,7 +280,7 @@ class AnalysisCache {
    */
   _startSweeper(intervalMs = 60000) {
     if (this._sweeper) return;
-    this._sweeper = setInterval(() => {
+    this._sweeper = registerTimer(setInterval(() => {
       const now = Date.now();
       for (const [key, entry] of this.cache) {
         // Check absolute max TTL first — entries that have lived too long
@@ -284,7 +310,13 @@ class AnalysisCache {
         }
       }
       this._cleanupIdleLocks();
-    }, intervalMs);
+      if (this.cache.size === 0) {
+        // Nothing left to sweep — release the interval so idle instances
+        // (or instances being garbage-collected without clear()) cannot
+        // keep a live timer via the sweeper closure.
+        this._stopSweeper();
+      }
+    }, intervalMs));
     if (this._sweeper.unref) this._sweeper.unref();
   }
 
@@ -313,7 +345,8 @@ class AnalysisCache {
     let totalAge = 0;
     let mockCount = 0;
     for (const entry of this.cache.values()) {
-      totalAge += Date.now() - (entry.expiresAt - this.ttlMs);
+      const createdAt = entry.createdAt || (entry.expiresAt - this.ttlMs);
+      totalAge += Date.now() - createdAt;
       if (entry.isMock) mockCount++;
     }
 
@@ -324,7 +357,7 @@ class AnalysisCache {
       misses: this.stats.misses,
       mockCount,
       avgAgeMs: this.cache.size > 0 ? Math.round(totalAge / this.cache.size) : 0,
-      evictions: this.stats.evictions,
+      evictions: Number.isFinite(this.stats.evictions) ? this.stats.evictions : 0,
       absoluteExpiries: this.stats.absoluteExpiries,
       slidingExpiries: this.stats.slidingExpiries,
       hitRate: `${hitRate}%`,
@@ -358,16 +391,28 @@ class AnalysisCache {
   invalidateByRepoUrl(repoUrl) {
     const normalized = repoUrl.replace(/\/+$/, '').toLowerCase();
     const keys = this._repoUrlIndex.get(normalized);
-    if (!keys || keys.size === 0) {
-      return 0;
-    }
     let removed = 0;
+    if (keys && keys.size > 0) {
       for (const key of keys) {
         if (this.cache.delete(key)) {
-        removed++;
+          removed++;
+        }
+      }
+      this._repoUrlIndex.delete(normalized);
+    }
+    // Also evict in-flight pending fetches for this repo URL so a subsequent
+    // /api/analyze does not reuse a stale dedup promise (or re-cache a result
+    // that raced with the invalidation).
+    for (const [key, entry] of this.pending) {
+      if (entry.repoUrl) {
+        const entryNormalized = entry.repoUrl.replace(/\/+$/, '').toLowerCase();
+        if (entryNormalized === normalized) {
+          this._invalidatedKeys.add(key);
+          this.pending.delete(key);
+          removed++;
+        }
       }
     }
-    this._repoUrlIndex.delete(normalized);
     if (removed > 0) {
       this.stats.evictions += removed;
       console.log(`🗑️  Invalidated ${removed} cache entries for repo ${repoUrl}`);

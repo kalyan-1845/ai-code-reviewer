@@ -14,7 +14,7 @@ import { createServer } from 'http';
 const repoContexts = new Map();
 
 function validateChatParams(body) {
-  const { message, history = [], model = 'llama-3.3-70b-versatile',
+  let { message, history = [], model = 'llama-3.3-70b-versatile',
           temperature = 0.7, maxTokens = 2048,
           systemPrompt = 'You are a helpful code reviewer.',
           sessionId, useRag } = body;
@@ -28,6 +28,10 @@ function validateChatParams(body) {
     const hint = !sessionId ? 'sessionId is missing from the request' : 'session expired';
     return { status: 400, error: `No repository is currently active or ${hint}. Please analyze a repository first.` };
   }
+
+  const parsedTemp = parseFloat(temperature);
+  temperature = Math.max(0, Math.min(2, Number.isNaN(parsedTemp) ? 0.7 : parsedTemp));
+  maxTokens = Math.max(1, Math.min(128000, parseInt(maxTokens, 10) || 2048));
 
   return {
     status: 200,
@@ -132,6 +136,27 @@ test('uses provided temperature value', () => {
   repoContexts.delete(sessionId);
 });
 
+test('clamps chat temperature to the supported range', () => {
+  const sessionId = 'test-session-temp-clamp';
+  repoContexts.set(sessionId, { files: ['file1.js'] });
+
+  assert.equal(validateChatParams({ message: 'hello', sessionId, temperature: -1 }).temperature, 0);
+  assert.equal(validateChatParams({ message: 'hello', sessionId, temperature: 4 }).temperature, 2);
+  assert.equal(validateChatParams({ message: 'hello', sessionId, temperature: 'bad' }).temperature, 0.7);
+
+  repoContexts.delete(sessionId);
+});
+
+test('allows temperature of exactly 0 without coercion to default', () => {
+  const sessionId = 'test-session-temp-zero';
+  repoContexts.set(sessionId, { files: ['file1.js'] });
+
+  const result = validateChatParams({ message: 'hello', sessionId, temperature: 0 });
+  assert.equal(result.temperature, 0);
+
+  repoContexts.delete(sessionId);
+});
+
 test('uses default maxTokens 2048 when not provided', () => {
   const sessionId = 'test-session-tokens';
   repoContexts.set(sessionId, { files: ['file1.js'] });
@@ -148,6 +173,17 @@ test('uses provided maxTokens value', () => {
 
   const result = validateChatParams({ message: 'hello', sessionId, maxTokens: 4096 });
   assert.equal(result.maxTokens, 4096);
+
+  repoContexts.delete(sessionId);
+});
+
+test('clamps chat maxTokens to the supported range', () => {
+  const sessionId = 'test-session-tokens-clamp';
+  repoContexts.set(sessionId, { files: ['file1.js'] });
+
+  assert.equal(validateChatParams({ message: 'hello', sessionId, maxTokens: 0 }).maxTokens, 2048);
+  assert.equal(validateChatParams({ message: 'hello', sessionId, maxTokens: 999999 }).maxTokens, 128000);
+  assert.equal(validateChatParams({ message: 'hello', sessionId, maxTokens: 'bad' }).maxTokens, 2048);
 
   repoContexts.delete(sessionId);
 });

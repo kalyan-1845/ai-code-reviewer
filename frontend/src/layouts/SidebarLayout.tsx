@@ -47,13 +47,19 @@ export default function SidebarLayout() {
             <LayoutDashboard size={16} /> Analytics Dashboard
           </Link>
           
-          <div style={{
+          <Link 
+            to="/settings" 
+            aria-current={location.pathname === '/settings' ? 'page' : undefined}
+            style={{
               display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '8px',
-              fontSize: '13px', fontWeight: 600, color: '#64748b', cursor: 'not-allowed'
+              textDecoration: 'none', fontSize: '13px', fontWeight: 600,
+              background: location.pathname === '/settings' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+              color: location.pathname === '/settings' ? '#60a5fa' : '#9ca3af',
+              border: location.pathname === '/settings' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
             }}
           >
-            <SettingsIcon size={16} /> Settings (WIP)
-          </div>
+            <SettingsIcon size={16} /> Settings
+          </Link>
         </nav>
 
         <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>

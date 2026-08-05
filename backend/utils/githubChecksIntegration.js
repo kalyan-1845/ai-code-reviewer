@@ -4,21 +4,26 @@ const MAX_ANNOTATIONS_PER_REQUEST = 50;
 function severityToGitHubLevel(severity) {
   const levelMap = {
     error: 'failure',
-    warning: 'neutral',
+    warning: 'warning',
     info: 'notice',
   };
   return levelMap[severity] || 'notice';
 }
 
 function formatAnnotations(findings) {
-  return findings.map(finding => ({
-    path: finding.file,
-    start_line: finding.line,
-    end_line: finding.line,
-    annotation_level: severityToGitHubLevel(finding.severity),
-    message: finding.message,
-    title: finding.rule_id,
-  }));
+  if (!Array.isArray(findings)) return [];
+  return findings.map(finding => {
+    const rawLine = parseInt(finding.line, 10);
+    const line = Number.isInteger(rawLine) && rawLine >= 1 ? rawLine : 1;
+    return {
+      path: finding.file,
+      start_line: line,
+      end_line: line,
+      annotation_level: severityToGitHubLevel(finding.severity),
+      message: finding.message || 'No description provided',
+      title: finding.rule_id || 'unknown-rule',
+    };
+  });
 }
 
 function batchAnnotations(annotations, batchSize = MAX_ANNOTATIONS_PER_REQUEST) {
@@ -47,7 +52,7 @@ async function createCheckRun(octokit, owner, repo, sha, findings) {
     const batchAnnotations = batches[i];
     const isLastBatch = i === batches.length - 1;
 
-    const hasErrorSeverity = findings.some(f => f.severity === 'error');
+    const hasErrorSeverity = batchAnnotations.some(a => a.annotation_level === 'failure');
 
     const checkRunPayload = {
       owner,
@@ -58,7 +63,9 @@ async function createCheckRun(octokit, owner, repo, sha, findings) {
       conclusion: hasErrorSeverity ? 'failure' : 'success',
       output: {
         title: `Code Review Results (Batch ${i + 1}/${batches.length})`,
-        summary: `${findings.length} finding(s) detected`,
+        summary: hasErrorSeverity
+          ? `${batchAnnotations.length} finding(s) including errors`
+          : `${batchAnnotations.length} finding(s) (no errors)`,
         annotations: batchAnnotations,
       },
     };

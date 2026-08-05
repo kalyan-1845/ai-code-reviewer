@@ -85,15 +85,29 @@ class ReviewQueue {
         while (queue.length > 0) {
           const item = queue.shift();
           const circuitBreaker = this._getCircuitBreaker(key);
+          let permanentlyFailed = false;
+
           for (let attempt = 0; attempt <= this._maxRetries; attempt++) {
             try {
               await circuitBreaker.call(() => processor(item));
               break;
             } catch (err) {
               if (err.name === 'CircuitBreakerOpenError') {
-                console.error(`ReviewQueue: circuit breaker OPEN for "${key}", scheduling retry after cooldown`);
-                await new Promise(r => setTimeout(r, Math.min(circuitBreaker._cooldownMs || 30000, 5000)));
-                queue.push(item);
+                const cooldownRemaining = Math.max(
+                  (circuitBreaker._cooldownMs || 30000) - (Date.now() - circuitBreaker._lastFailureTime),
+                  0
+                );
+                console.error(
+                  `ReviewQueue: circuit breaker OPEN for "${key}", ` +
+                  `waiting ${Math.ceil(cooldownRemaining / 1000)}s before retry`
+                );
+
+                // Always sleep before requeueing. Without the sleep the
+                // outer while-loop immediately re-picks the same item and
+                // the still-OPEN breaker rejects it again — a busy-spin
+                // that blocks the event loop until the cooldown elapses.
+                await new Promise(r => setTimeout(r, cooldownRemaining + 1000));
+                queue.unshift(item);
                 break;
               }
               if (attempt < this._maxRetries) {
@@ -103,8 +117,13 @@ class ReviewQueue {
               } else {
                 console.error(`ReviewQueue: item permanently failed for "${key}" after ${this._maxRetries + 1} attempts:`, err);
                 circuitBreaker.onFailure();
+                permanentlyFailed = true;
               }
             }
+          }
+
+          if (permanentlyFailed) {
+            continue;
           }
         }
         // Two-phase check: only delete the queue if it is still empty.
@@ -127,22 +146,23 @@ class ReviewQueue {
   // for the same key before starting the new one. This prevents lost updates and
   // race conditions from concurrent read-modify-write on shared resources.
   async runExclusive(key, fn) {
-    const existing = this._exclusiveLocks.get(key);
-    if (existing) {
-      // Wait for the existing operation to complete before starting a new one
-      await existing;
-    }
-    const next = (async () => {
-      try {
-        return await fn();
-      } finally {
+    // Chain the new run onto the previous run for this key. Promise-based
+    // chaining is atomic: the check-and-set happen in the same synchronous
+    // block, so concurrent callers cannot both observe an absent lock and
+    // start running in parallel (TOCTOU).
+    const prev = this._exclusiveLocks.get(key) || Promise.resolve();
+    const run = prev.then(async () => fn());
+    const wrapped = run.finally(() => {
+      // Only the holder that is still the current lock cleans up. If a newer
+      // run replaced us, it owns the cleanup of its own finally block.
+      if (this._exclusiveLocks.get(key) === wrapped) {
         this._exclusiveLocks.delete(key);
         this._exclusiveLocksTimestamps.delete(key);
       }
-    })();
-    this._exclusiveLocks.set(key, next);
+    });
+    this._exclusiveLocks.set(key, wrapped);
     this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });
-    return next;
+    return wrapped;
   }
 
   cleanupStaleExclusiveLocks(maxAgeMs) {

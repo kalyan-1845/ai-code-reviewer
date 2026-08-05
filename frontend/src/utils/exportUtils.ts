@@ -125,11 +125,11 @@ export const handlePdfExport = async (
     return;
   }
 
-  try {
-    // Temporarily force light theme for better PDF readability
-    const originalTheme = document.documentElement.getAttribute('data-theme');
-    document.documentElement.setAttribute('data-theme', 'light');
+  // Temporarily force light theme for better PDF readability
+  const originalTheme = document.documentElement.getAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme', 'light');
 
+  try {
     const opt = {
       margin:       10,
       filename:     `${repoName || 'RepoSage'}-Audit-Report.pdf`,
@@ -153,16 +153,16 @@ export const handlePdfExport = async (
 
     // The html2pdf.js library handles elements with data-html2canvas-ignore="true" natively via html2canvas
     await html2pdf().set(opt).from(element).save();
-
-    // Restore original theme
+  } catch (err: any) {
+    console.error(err);
+    alert(err.message || 'Failed to export PDF report.');
+  } finally {
+    // Restore the original theme even when the PDF export fails
     if (originalTheme) {
       document.documentElement.setAttribute('data-theme', originalTheme);
     } else {
       document.documentElement.removeAttribute('data-theme');
     }
-  } catch (err: any) {
-    console.error(err);
-    alert(err.message || 'Failed to export PDF report.');
   }
 };
 
