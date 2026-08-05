@@ -39,7 +39,7 @@ export function sanitizeMermaidOutput(svg) {
 }
 
 export function sanitizeAuditEntry(entry) {
-  if (!entry) return entry;
+  if (!entry || typeof entry !== 'object') return {};
   const sanitized = { ...entry };
   if (sanitized.response?.analysis?.mermaidDiagram) {
     sanitized.response.analysis.mermaidDiagram = sanitizeForStorage(sanitized.response.analysis.mermaidDiagram);
