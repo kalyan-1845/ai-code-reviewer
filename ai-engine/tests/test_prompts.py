@@ -106,14 +106,16 @@ class TestPromptSubstitution:
         assert len(result) > 0
 
     def test_test_generation_prompt_substitution(self):
-        # TEST_GENERATION_AGENT_PROMPT uses {company} and {language} only
         result = TEST_GENERATION_AGENT_PROMPT.format(
             company="AcmeCorp",
             language="English",
+            structure_text="src/main.py",
+            contents_text="def main():\n    pass",
         )
         assert isinstance(result, str)
         assert len(result) > 0
         assert "AcmeCorp" in result
+        assert "src/main.py" in result
 
     def test_architecture_prompt_substitution(self):
         result = ARCHITECTURE_AGENT_PROMPT.format(

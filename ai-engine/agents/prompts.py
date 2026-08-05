@@ -165,6 +165,12 @@ You must obey the JSON output format above."""
 TEST_GENERATION_AGENT_PROMPT = """Target Company Persona: {company}
 Response Language: {language}
 
+Repository Structure:
+{structure_text}
+
+Repository Contents:
+{contents_text}
+
 Review this repository codebase batch focusing strictly on MISSING UNIT TESTS. If you detect logic changes in a function or a complex new function without corresponding tests, you should automatically generate the missing unit test code or suggest updates to existing tests.
 Ignore styling, security, and general performance.
 
