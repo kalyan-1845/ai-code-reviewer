@@ -155,6 +155,28 @@ test('createFrontendSessionCookie includes Max-Age', () => {
   assert.ok(session.cookieHeader.includes('Max-Age='), 'cookie should have Max-Age');
 });
 
+test('createFrontendSessionCookie includes Expires in RFC 1123 format', () => {
+  const { res } = makeSessionReqRes();
+  const session = createFrontendSessionCookie(res);
+
+  assert.ok(session.cookieHeader.includes('Expires='), 'cookie should have Expires');
+  const expires = session.cookieHeader.split('Expires=')[1]?.split(';')[0];
+  assert.ok(expires, 'Expires value should not be empty');
+  const parsed = new Date(expires);
+  assert.ok(!Number.isNaN(parsed.getTime()), 'Expires should be a valid date');
+  assert.ok(parsed.getTime() > Date.now(), 'Expires should be in the future');
+});
+
+test('createFrontendSessionCookie Expires matches Max-Age window', () => {
+  const { res } = makeSessionReqRes();
+  const session = createFrontendSessionCookie(res);
+
+  const maxAge = parseInt(session.cookieHeader.split('Max-Age=')[1]?.split(';')[0], 10);
+  const expires = new Date(session.cookieHeader.split('Expires=')[1]?.split(';')[0]);
+  const deltaSeconds = Math.round((expires.getTime() - Date.now()) / 1000);
+  assert.ok(Math.abs(deltaSeconds - maxAge) < 5, 'Expires should be ~Max-Age seconds in the future');
+});
+
 test('createFrontendSessionCookie includes rps_v1_session name prefix', () => {
   const { res } = makeSessionReqRes();
   const session = createFrontendSessionCookie(res);
