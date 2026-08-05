@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+import app as app_module
 from fastapi.testclient import TestClient
 
 from app import app
@@ -71,3 +72,34 @@ class TestAnalyzeConfigIntegration:
         assert len(captured_prompts) >= 1
         assert "main.go" not in captured_prompts[0]
         assert "main.py" in captured_prompts[0]
+
+    def test_validate_system_prompt_runs_exactly_once_per_analyze(self):
+        """The synchronous validate_system_prompt call was removed; the awaited
+        asyncio.to_thread(...) version must run exactly once per request (#3768)."""
+        mock_completion = MagicMock()
+        mock_completion.choices = [MagicMock()]
+        mock_completion.choices[0].message.content = (
+            '{"fileReviews": {}, "generatedReadme": "", "mermaidDiagram": "graph TD"}'
+        )
+
+        calls = {"count": 0}
+        original = app_module.validate_system_prompt
+
+        def counting_spy(value):
+            calls["count"] += 1
+            return original(value)
+
+        async def fake_call_groq(**kwargs):
+            return mock_completion
+
+        payload = _payload([
+            {"name": "main.py", "content": "print('hi')"},
+        ])
+
+        with patch("app.groq_client", MagicMock()):
+            with patch("app.validate_system_prompt", side_effect=counting_spy):
+                with patch("app._call_groq_with_timeout", side_effect=fake_call_groq):
+                    response = client.post("/analyze", json=payload)
+
+        assert response.status_code == 200
+        assert calls["count"] == 1
