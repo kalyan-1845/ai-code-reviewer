@@ -89,7 +89,7 @@ class AnalysisCache {
             const content = typeof f.content === 'string' ? f.content : String(f.content ?? '');
             return `${f.name}:${crypto.createHash('sha256').update(content).digest('hex')}`;
           })
-          .sort()
+          .sort((a, b) => a - b)
           .join('|')
       )
       .digest('hex')
