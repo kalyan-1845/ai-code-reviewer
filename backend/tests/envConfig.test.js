@@ -131,3 +131,59 @@ test('parsePositiveInt default is returned when no value given', () => {
   // Empty string parseInt returns NaN, which fails Number.isFinite check
   assert.strictEqual(result, 77);
 });
+
+test('parsePositiveInt handles NaN as numeric input', () => {
+  // NaN is typeof 'number' so it passes the typeof check
+  // Number.isFinite(NaN) is false, so it falls back to default
+  const result = mod.parsePositiveInt(NaN, 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt handles Infinity as numeric input', () => {
+  // Infinity is a number, but Number.isFinite(Infinity) is false
+  const result = mod.parsePositiveInt(Infinity, 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt handles negative zero', () => {
+  // parseInt('-0', 10) returns -0 (Number), Number.isFinite(-0) is true, -0 > 0 is false
+  const result = mod.parsePositiveInt('-0', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt handles scientific notation strings', () => {
+  // '1e5' parseInt returns 1 (stops at 'e'), which is > 0
+  // This documents the current behavior where '1e5' is accepted as 1
+  const result = mod.parsePositiveInt('1e5', 'TEST', 50);
+  assert.strictEqual(result, 1);
+});
+
+test('parsePositiveInt handles strings with embedded spaces', () => {
+  // '50 60' parseInt returns 50 (stops at space), which is > 0
+  const result = mod.parsePositiveInt('50 60', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt accepts float-like strings that parse to valid integers', () => {
+  // '300.0' parseInt returns 300, which is > 0 and finite
+  const result = mod.parsePositiveInt('300.0', 'TEST', 50);
+  assert.strictEqual(result, 300);
+});
+
+test('parsePositiveInt handles float numeric inputs', () => {
+  // 3.14 parseInt returns 3, which is > 0 and finite
+  const result = mod.parsePositiveInt(3.14, 'TEST', 50);
+  assert.strictEqual(result, 3);
+});
+
+test('parsePositiveInt handles very large safe integer strings', () => {
+  // 65535 is the max port; we test that the function handles large numbers up to that
+  const result = mod.parsePositiveInt('65535', 'TEST', 50);
+  assert.strictEqual(result, 65535);
+});
+
+test('parsePositiveInt rejects number 0 as numeric input', () => {
+  // 0 is a number, but fails the num > 0 check
+  const result = mod.parsePositiveInt(0, 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
