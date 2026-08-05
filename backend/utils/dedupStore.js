@@ -82,7 +82,6 @@ class DedupStore {
       this.memoryStore.delete(key);
       return false;
     }
-    if (!(entry.value instanceof Set)) return false;
     return entry.value.has(member);
   }
 
