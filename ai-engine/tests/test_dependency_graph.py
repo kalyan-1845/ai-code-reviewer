@@ -109,6 +109,18 @@ class TestExtractBasename:
     def test_handles_plain_module_name(self):
         assert _extract_basename("lodash") == "lodash"
 
+    def test_handles_deep_relative_import(self):
+        assert _extract_basename("../services/UserService") == "UserService"
+        assert _extract_basename("../../models/UserRepository") == "UserRepository"
+
+    def test_handles_file_path_with_extension(self):
+        assert _extract_basename("./auth/login.ts") == "login"
+        assert _extract_basename("src/components/Button.tsx") == "Button"
+
+    def test_handles_multiple_dots_in_module_path(self):
+        assert _extract_basename("models.User.Service") == "Service"
+        assert _extract_basename("foo.bar.baz.qux") == "qux"
+
 
 class TestBuildDependencyGraph:
     def test_no_files_returns_empty_graph(self):
