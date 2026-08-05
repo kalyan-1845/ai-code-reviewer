@@ -13,6 +13,26 @@ except ImportError:
     from ai_engine.services.cache_manager import compute_hash, get_cached_review, set_cached_review
 
 
+REVIEWER_SYSTEM_PROMPT = (
+    "You are a code review micro-agent. Analyze the provided code chunk "
+    "(including any AST dependency context) for bugs, security issues, "
+    "performance problems, or other flaws. Reply with a concise micro-review "
+    "describing what was found, or state explicitly that no issues were detected."
+)
+
+reviewer_llm_caller = None
+
+
+def set_reviewer_llm_caller(caller):
+    """Register the LLM caller used by reviewer_node for uncached chunks.
+
+    The caller must accept (system_prompt, user_prompt) and return the
+    review text as a string.
+    """
+    global reviewer_llm_caller
+    reviewer_llm_caller = caller
+
+
 def sanitizer_node(state: AgentState) -> dict:
     raw_diff = state.get("raw_diff", "")
     is_safe, reason = scan_diff(raw_diff)
@@ -86,9 +106,18 @@ def reviewer_node(state: AgentState) -> dict:
             is_cached = True
         else:
             is_cached = False
-            review = f"Micro-review for chunk {current_index + 1}/{len(chunks)}:\nAnalyzed snippet ({len(chunk_content)} chars). No critical flaws detected."
+            if reviewer_llm_caller is None:
+                raise RuntimeError(
+                    "Reviewer LLM caller is not configured; cannot produce a real review "
+                    "for an uncached chunk. Configure one via set_reviewer_llm_caller."
+                )
+            system_prompt = REVIEWER_SYSTEM_PROMPT
+            user_prompt = chunk_content
             if ast_context:
-                review += f"\nAST Context: {ast_context}"
+                user_prompt = f"{user_prompt}\n\nAST Context:\n{ast_context}"
+            review = reviewer_llm_caller(system_prompt, user_prompt)
+            if not isinstance(review, str):
+                review = str(review)
             set_cached_review(hash_key, review)
 
         micro_reviews.append(review)
