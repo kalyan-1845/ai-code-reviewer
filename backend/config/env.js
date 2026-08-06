@@ -1,6 +1,6 @@
 export function parsePositiveInt(value, name, defaultVal) {
-  const num = parseInt(value, 10);
-  if (Number.isFinite(num) && num > 0) return num;
+  const num = typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  if (Number.isInteger(num) && num > 0) return num;
   if (value !== undefined) {
     console.warn(`Warning: ${name} must be a positive integer, falling back to default (${defaultVal})`);
   }
