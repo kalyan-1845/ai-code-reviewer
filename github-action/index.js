@@ -47,7 +47,7 @@ async function run() {
         }
       }
     }
-    const maxTokensInput = parseInt(core.getInput('max-tokens') || '4096', 10);
+    const maxTokensInput = parseInt(core.getInput('max-tokens', 10) || '4096', 10);
     const maxTokens = Number.isFinite(maxTokensInput) ? maxTokensInput : 4096;
     const autoApprove = core.getInput('auto-approve')?.toLowerCase() === 'true';
 
