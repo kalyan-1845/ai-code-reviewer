@@ -2903,7 +2903,7 @@ app.get("/api/review-history", requireApiKey, async (req, res) => {
 
     try {
         await ensureConnection();
-        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
         const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
 
