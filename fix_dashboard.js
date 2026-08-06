@@ -60,7 +60,7 @@ const replacement = `const handleAnalyze = async (e: React.FormEvent) => {
 
       const data: BackendResponse = await response.json();
       setAnalysisResult(data);
-      const currentSessionId = data.sessionPersisted === true ? data.sessionId ?? null : null;
+      const currentSessionId = data.sessionPersisted  ? data.sessionId ?? null : null;
       setSessionId(currentSessionId);
       
       await saveReport(data, repoUrl, currentSessionId);
