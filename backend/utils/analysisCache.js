@@ -209,7 +209,7 @@ class AnalysisCache {
         const promise = fetcher().then(result => {
           const cacheHint = (result && result._cacheHint) || {};
           const resultData = (result && result._data !== undefined) ? result._data : result;
-          const isMock = cacheHint.isMock === true || result._mock === true;
+          const isMock = cacheHint.isMock  || result._mock === true;
           this.pending.delete(key);
           // A repo-level invalidation may have raced with this in-flight fetch.
           // If so, drop the result instead of re-caching it after invalidation.

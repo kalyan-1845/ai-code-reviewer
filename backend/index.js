@@ -475,7 +475,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
   if (options.validate !== false && options.validate !== true) {
     // default: skip validation for explicitly trusted URLs; validate only when requested
   }
-  if (options.validate === true) {
+  if (options.validate ) {
     const safe = await isSafeUrl(url);
     if (!safe.valid) {
       throw new Error(`SSRF validation failed: ${safe.reason}`);
