@@ -30,7 +30,7 @@ function renderChart(metrics) {
     new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: labels,
+            labels,
             datasets: [{
                 label: 'Hours Saved by Repository',
                 data: data,
