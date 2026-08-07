@@ -19,6 +19,22 @@ def sanitize_git_ref(ref: str) -> str:
     return ref
 
 
+def _extract_repo_name(url: str):
+    """Extract the repository name from an https or SSH git URL."""
+    url = url.rstrip('/')
+    if url.startswith('git@') or '://' not in url:
+        repo_path = url.split(':', 1)[1] if ':' in url else url
+    else:
+        from urllib.parse import urlsplit
+        repo_path = urlsplit(url).path
+    if not repo_path:
+        return None
+    repo_name = repo_path.rstrip('/').split('/')[-1]
+    if repo_name.endswith('.git'):
+        repo_name = repo_name[:-4]
+    return repo_name or None
+
+
 def sanitize_repository_path(url: str, working_dir: str) -> str:
     """
     Validate repository clone path to prevent directory traversal attacks
@@ -34,7 +50,7 @@ def sanitize_repository_path(url: str, working_dir: str) -> str:
     Raises:
         ValueError: If path contains traversal attempts
     """
-    repo_name = re.sub(r'.*[/:]([^/]+?)(\.git)?$', r'\1', url)
+    repo_name = _extract_repo_name(url)
 
     if not repo_name or '..' in repo_name:
         raise ValueError("Invalid repository name")

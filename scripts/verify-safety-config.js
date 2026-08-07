@@ -10,7 +10,7 @@ function readJSON(filePath) {
 }
 
 const config = readJSON(path.join(rootDir, 'shared-safety-config.json'));
-const configPhrases = [...config.dangerous_phrases].sort();
+const configPhrases = [...config.dangerous_phrases].sort((a, b) => a - b);
 
 const implementations = {
   'backend/shared/dangerousPhrases.js': path.join(rootDir, 'backend/shared/dangerousPhrases.js'),
