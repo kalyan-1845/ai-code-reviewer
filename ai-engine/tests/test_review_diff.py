@@ -57,7 +57,8 @@ class TestReviewDiffEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data == {"comments": []}
+        assert data["comments"] == []
+        assert data["status"] == "success"
 
     def test_file_with_empty_changes_skips_file(self, patch_groq_client):
         """Files with no changes (empty changes array) are skipped."""
