@@ -930,7 +930,7 @@ export default function Dashboard() {
       const data: BackendResponse = await response.json();
       setChatHistory([]);
       try { localStorage.removeItem('reposage_chat_history'); } catch {};
-      const currentSessionId = data.sessionPersisted === true ? data.sessionId ?? null : null;
+      const currentSessionId = data.sessionPersisted  ? data.sessionId ?? null : null;
       setSessionId(currentSessionId);
       await saveReport(data, repoUrl, currentSessionId);
       setAnalysisResult(data);
