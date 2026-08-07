@@ -1225,7 +1225,7 @@ const prSummary = {
             });
           } catch (dbErr) {
             console.warn('MongoDB analytics write failed, falling back to file:', dbErr.message);
-            await recordFileAnalytics({ repoName, totalLines, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch(() => {});
+            await recordFileAnalytics({ repoName, totalLines, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch( => console.error());
           }
         } else {
           await recordFileAnalytics({ repoName, totalLines, bugs: totalBugs, security: totalSecurityIssues, optimization: totalOptimizations, styling: totalStylingIssues, filesCount: files.length }).catch(() => {});
