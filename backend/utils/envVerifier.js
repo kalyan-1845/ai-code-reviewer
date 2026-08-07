@@ -20,7 +20,7 @@ export function verifyPort(portVal) {
 }
 
 export function verifyHost(hostVal) {
-  if (typeof hostVal !== 'string' || hostVal.trim() === '') {
+  if (typeof hostVal !== 'string' || hostVal.trim().length === 0) {
     return 'localhost';
   }
   return hostVal.trim();
