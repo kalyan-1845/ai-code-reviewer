@@ -20,6 +20,7 @@ import { scrubRepositoryPayload } from './utils/secretScrubber.js';
 import { recordAnalysis as recordFileAnalytics } from './utils/analyticsStore.js';
 import { loadIgnorePatterns, readFilesRecursively } from './utils/ignoreHelper.js';
 import { isValidRepoUrl, parseRepoUrl, isSafeUrl } from './utils/urlValidator.js';
+import { resolveAiEngineUrl } from './utils/aiEngineClient.js';
 import { isValidGithubToken } from './utils/tokenValidator.js';
 import simpleGit from 'simple-git';
 import escapeHtml from 'lodash.escape';
@@ -73,10 +74,17 @@ const responseCache = new AnalysisCache(ANALYSIS_CACHE_TTL_MS);
 // Trust the first hop of reverse proxy headers (Render, Railway, Heroku, Nginx, AWS ALB, etc.)
 // so that req.ip and express-rate-limit resolve the real client IP from X-Forwarded-For
 // rather than the internal proxy address.
-// Set TRUST_PROXY=false in .env to disable this when running without a proxy (e.g. local dev).
-const trustProxy = process.env.TRUST_PROXY !== 'false';
+// Set TRUST_PROXY=true in .env to enable this when running behind a proxy.
+const trustProxy = String(process.env.TRUST_PROXY).trim().toLowerCase() === 'true';
 if (trustProxy) {
   app.set('trust proxy', 1);
+}
+
+// Resolve the AI engine base URL once: only https or http://localhost / http://127.0.0.1
+// are accepted, everything else falls back to the local engine with a warning.
+const { url: aiEngineBaseUrl, warnings: aiEngineUrlWarnings } = resolveAiEngineUrl(process.env.AI_ENGINE_URL);
+if (aiEngineUrlWarnings.length > 0) {
+  console.warn('[ai-engine-url] ' + aiEngineUrlWarnings.join(' '));
 }
 
 // NOTE: No custom keyGenerator is needed. With `trust proxy: 1` set above, Express
@@ -138,6 +146,15 @@ const pdfExportLimiter = rateLimit({
   legacyHeaders: false,
   store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
   message: { error: 'Too many PDF export requests. Please slow down and retry after 1 minute.' }
+});
+
+const roiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisClient ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }) : undefined,
+  message: { error: 'Too many ROI metric requests. Please slow down and retry after 15 minutes.' }
 });
 
 // Parse cookies for CSRF token validation
@@ -596,7 +613,7 @@ const AI_ENGINE_HEALTH_INTERVAL = 30000;
 let aiEngineHealthy = true;
 
 const aiEngineHealthTimer = setInterval(async () => {
-  const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
+  const baseUrl = (aiEngineBaseUrl).replace(/\/+$/, '');
   try {
     const resp = await fetchWithTimeout(`${baseUrl}/health`, {}, 5000);
     if (resp.ok && !aiEngineHealthy) {
@@ -897,7 +914,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
 
       // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
       // This is a perfect placeholder where contributors can connect the FastAPI server!
-      const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+      const aiEngineUrl = aiEngineBaseUrl;
       
       let reviewResult;
       const baseUrl = aiEngineUrl.replace(/\/+$/, '');
@@ -950,7 +967,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
 
       reviewResult = await analysisCache.getOrSet(cacheKey, async () => {
         // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
-        const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+        const aiEngineUrl = aiEngineBaseUrl;
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         try {
           const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
@@ -1063,7 +1080,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
       let ragStatus = 'skipped';
       if (!cacheHit) {
         try {
-          const baseUrl = (process.env.AI_ENGINE_URL || 'http://localhost:8000').replace(/\/+$/, '');
+          const baseUrl = (aiEngineBaseUrl).replace(/\/+$/, '');
         const splitResp = await fetchWithTimeout(`${baseUrl}/api/rag/split`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
@@ -1207,6 +1224,7 @@ const prSummary = {
           try {
             await Analytics.create({
               sessionId,
+              clientId: req.clientId,
               repoUrl,
               repoName,
               filesReviewedCount: files.length,
@@ -1353,7 +1371,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysis
       }
     }
 
-    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    const aiEngineUrl = aiEngineBaseUrl;
     const baseUrl = aiEngineUrl.replace(/\/+$/, '');
 
     let reviewResult;
@@ -1506,7 +1524,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
       // Extend TTL atomically with ownership check, inside the lock
       await Session.updateOne({ sessionId }, { $set: { lastAccessedAt: new Date() }, $max: { absoluteExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000) } });
 
-      const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+      const aiEngineUrl = aiEngineBaseUrl;
 
       try {
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
@@ -1516,7 +1534,9 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
           body: JSON.stringify({
             files: context.files,
             message,
-            history,
+            history: Array.isArray(history) ? history.slice(-20).map(m => (m && typeof m === 'object')
+              ? { role: m.role, content: String(m.content || '').slice(0, 8000) }
+              : m) : [],
             model,
             temperature,
             maxTokens,
@@ -1557,7 +1577,7 @@ app.post('/api/rag/query', requireApiKey, requireJsonContentType, async (req, re
     return res.status(400).json({ error: 'question is required.' });
   }
 
-  const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+  const aiEngineUrl = aiEngineBaseUrl;
 
   try {
     const baseUrl = aiEngineUrl.replace(/\/+$/, '');
@@ -1604,7 +1624,7 @@ const webhookLimiter = rateLimit({
   message: { error: 'Too many webhook requests.' }
 });
 
-app.get('/api/roi', async (req, res) => {
+app.get('/api/roi', roiLimiter, async (req, res) => {
   try {
     const metrics = await RoiMetrics.find({});
     
@@ -1627,8 +1647,13 @@ app.get('/api/roi', async (req, res) => {
 
     const timeSavedHours = (aggregated.timeSavedMinutes / 60).toFixed(1);
 
+    const topMetrics = metrics
+      .map(m => ({ ...m.toObject ? m.toObject() : m }))
+      .sort((a, b) => (b.totalAiComments || 0) - (a.totalAiComments || 0))
+      .slice(0, 10);
+
     res.json({
-      metrics,
+      metrics: topMetrics,
       aggregated: {
         ...aggregated,
         acceptanceRate,
@@ -1749,7 +1774,7 @@ app.post('/api/webhook', webhookLimiter, async (req, res) => {
       console.log(`💬 Conversational AI trigger on PR #${pullNumber}, file: ${filePath}`);
       
       try {
-        const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+        const aiEngineUrl = aiEngineBaseUrl;
         const baseUrl = aiEngineUrl.replace(/\/+$/, '');
         const aiResponse = await fetchWithTimeout(`${baseUrl}/chat-inline`, {
           method: 'POST',
@@ -2231,7 +2256,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
     }
 
     console.log(`🧠 Querying AI engine for ${filesToReview.length} files...`);
-    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    const aiEngineUrl = aiEngineBaseUrl;
     
     try {
       // Look for .ai-reviewer.yml to check security mode
@@ -2335,7 +2360,7 @@ async function runWebhookReview(owner, repo, pullNumber, headSha) {
 
   // PR Summary generation
   try {
-    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
+    const aiEngineUrl = aiEngineBaseUrl;
     const baseUrl = aiEngineUrl.replace(/\/+$/, '');
     
     // We truncate diff to max 15000 chars for summary
@@ -2851,6 +2876,7 @@ app.get('/api/analytics/trends', requireApiKey, async (req, res) => {
 
     const matchFilter = {
       analyzedAt: { $gte: thirtyDaysAgo },
+      clientId: req.clientId,
     };
 
     if (req.query.sessionId && typeof req.query.sessionId === 'string') {

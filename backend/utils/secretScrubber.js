@@ -14,8 +14,8 @@ const SECRET_DETECTION_RULES = [
   // Generic High-Entropy API Keys / Tokens in assignments
   /(?:api[_\-]?key|secret[_\-]?key|auth[_\-]?token|access[_\-]?token)['"]?\s*[:=]\s*['"]?([a-zA-Z0-9\-_]{20,})['"]?/gi,
 
-  // Generic Bearer Authorization Tokens (require Authorization header context)
-  /(?:Authorization|authorization|auth)\s*:\s*Bearer\s+([a-zA-Z0-9\-_.=~+]{20,})\b/gi
+  // Generic Bearer Authorization Tokens
+  /\bBearer\s+([a-zA-Z0-9\-_.=~+]{20,})\b/gi
 ];
 
 function hasSecretContext(line) {
@@ -35,21 +35,10 @@ function scrubRepositoryPayload(codebaseString) {
   let sanitizedPayload = codebaseString;
 
   for (const rule of SECRET_DETECTION_RULES) {
-    // Replace against a snapshot of the pre-replacement string so the line
-    // context lookup below never sees text already modified by this rule's
-    // earlier matches (or by previous rules).
     const source = sanitizedPayload;
     sanitizedPayload = source.replace(rule, (match, capturedGroup) => {
       if (typeof capturedGroup === 'string') {
         return match.replace(capturedGroup, '[REDACTED_SECRET]');
-      }
-      // Context check: only redact 40-char base64 strings on lines with secret keywords
-      if (match.length === 40 && /^[A-Za-z0-9\/+=]{40}$/.test(match)) {
-        const lineMatch = source.match(new RegExp('^.*' + match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '.*$', 'm'));
-        const line = lineMatch ? lineMatch[0] : '';
-        if (!hasSecretContext(line)) {
-          return match;
-        }
       }
       return '[REDACTED_SECRET]';
     });
