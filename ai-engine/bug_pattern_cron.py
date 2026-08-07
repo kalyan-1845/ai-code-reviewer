@@ -22,6 +22,9 @@ def fetch_closed_bugs(repo: str, token: str) -> list:
         response = httpx.get(url, headers=headers, params=params, timeout=30.0)
         response.raise_for_status()
         issues = response.json()
+        # GitHub's issues endpoint returns pull requests too; drop them here so
+        # downstream chunking never indexes PRs as historical bugs.
+        issues = [issue for issue in issues if "pull_request" not in issue]
         print(f"Found {len(issues)} closed bug issues.")
         return issues
     except Exception as e:
