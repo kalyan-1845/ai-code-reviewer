@@ -2,6 +2,7 @@ import subprocess
 import re
 import os
 from typing import List, Set
+from urllib.parse import urlsplit
 import requests
 
 _GIT_REF_RE = re.compile(r"^[\w./\-]+$")
@@ -19,6 +20,19 @@ def sanitize_git_ref(ref: str) -> str:
     return ref
 
 
+def _extract_repo_name(url: str) -> str:
+    """Extract the repository name from an HTTPS or SSH-style git URL."""
+    candidate = url
+    if "://" not in candidate and "@" in candidate:
+        # SSH-style URL like git@github.com:owner/repo.git -> owner/repo.git
+        candidate = candidate.replace(":", "/", 1)
+    path = urlsplit(candidate).path if "://" in candidate else candidate
+    name = path.rstrip("/").rsplit("/", 1)[-1]
+    if name.endswith(".git"):
+        name = name[:-4]
+    return name
+
+
 def sanitize_repository_path(url: str, working_dir: str) -> str:
     """
     Validate repository clone path to prevent directory traversal attacks
@@ -34,7 +48,7 @@ def sanitize_repository_path(url: str, working_dir: str) -> str:
     Raises:
         ValueError: If path contains traversal attempts
     """
-    repo_name = re.sub(r'.*[/:]([^/]+?)(\.git)?$', r'\1', url)
+    repo_name = _extract_repo_name(url)
 
     if not repo_name or '..' in repo_name:
         raise ValueError("Invalid repository name")

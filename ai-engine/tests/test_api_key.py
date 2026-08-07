@@ -6,6 +6,9 @@ def clear_keys(monkeypatch):
     monkeypatch.delenv("REPOSAGE_API_KEY", raising=False)
     monkeypatch.delenv("AI_ENGINE_API_KEY", raising=False)
     monkeypatch.delenv("API_KEY", raising=False)
+    # These tests verify fail-closed auth behavior, so the test-suite bypass
+    # (set by tests/conftest.py) must not be active here.
+    monkeypatch.delenv("AI_ENGINE_AUTH_DISABLED", raising=False)
 
 def set_key(monkeypatch, val):
     clear_keys(monkeypatch)

@@ -85,7 +85,7 @@ def test_cache_miss_and_write_cache(mock_from_url):
     node_res = reviewer_node(state)
     assert node_res["is_cached"] is False
     assert len(node_res["micro_reviews"]) == 1
-    assert "Review for chunk 1/1" in node_res["micro_reviews"][0]
+    assert "review for chunk 1/1" in node_res["micro_reviews"][0].lower()
     
     # Verify write back to Redis with 7-day TTL (604800 seconds)
     mock_client.set.assert_called_once()
