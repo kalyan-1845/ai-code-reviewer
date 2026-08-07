@@ -22,6 +22,7 @@ def fetch_closed_bugs(repo: str, token: str) -> list:
         response = httpx.get(url, headers=headers, params=params, timeout=30.0)
         response.raise_for_status()
         issues = response.json()
+        issues = [i for i in issues if "pull_request" not in i]
         print(f"Found {len(issues)} closed bug issues.")
         return issues
     except Exception as e:
