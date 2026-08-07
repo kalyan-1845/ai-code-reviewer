@@ -8,8 +8,7 @@ from rag import cleanup_stale_chunks
 
 class TestCleanupStaleChunks:
     def test_removes_files_not_in_current_files_set(self):
-        with patch('rag._get_collection') as mock_get_col, \
-             patch('rag.delete_chunks_for_file') as mock_delete:
+        with patch('rag._get_collection') as mock_get_col:
             mock_collection = MagicMock()
             mock_collection.get.side_effect = [
                 {
@@ -19,11 +18,11 @@ class TestCleanupStaleChunks:
                         {"source_file": "c.py"},
                     ]
                 },
-                {"metadatas": []}
+                {"metadatas": []},
+                {"ids": ["id-c"]},
             ]
             mock_collection.count.return_value = 5
             mock_get_col.return_value = mock_collection
-            mock_delete.return_value = 1
 
             current = {"a.py", "b.py"}
             result = cleanup_stale_chunks(current, repo_url=None)
@@ -32,11 +31,10 @@ class TestCleanupStaleChunks:
             assert "a.py" not in result["stale_paths"]
             assert result["removed_count"] == 1
             assert result["remaining_count"] == 5
-            mock_delete.assert_called_once_with("c.py", repo_url=None)
+            mock_collection.delete.assert_called_once_with(ids=["id-c"])
 
     def test_removes_multiple_stale_files(self):
-        with patch('rag._get_collection') as mock_get_col, \
-             patch('rag.delete_chunks_for_file') as mock_delete:
+        with patch('rag._get_collection') as mock_get_col:
             mock_collection = MagicMock()
             mock_collection.get.side_effect = [
                 {
@@ -46,17 +44,17 @@ class TestCleanupStaleChunks:
                         {"source_file": "z.py"},
                     ]
                 },
-                {"metadatas": []}
+                {"metadatas": []},
+                {"ids": ["id-x", "id-y", "id-z"]},
             ]
             mock_collection.count.return_value = 3
             mock_get_col.return_value = mock_collection
-            mock_delete.side_effect = [2, 3, 1]
 
             result = cleanup_stale_chunks(set(), repo_url=None)
 
             assert set(result["stale_paths"]) == {"x.py", "y.py", "z.py"}
-            assert result["removed_count"] == 6  # 2 + 3 + 1
-            assert mock_delete.call_count == 3
+            assert result["removed_count"] == 3
+            mock_collection.delete.assert_called_once_with(ids=["id-x", "id-y", "id-z"])
 
     def test_returns_empty_stale_when_all_files_current(self):
         with patch('rag._get_collection') as mock_get_col, \
@@ -96,8 +94,7 @@ class TestCleanupStaleChunks:
             mock_delete.assert_not_called()
 
     def test_handles_metadata_with_missing_source_file(self):
-        with patch('rag._get_collection') as mock_get_col, \
-             patch('rag.delete_chunks_for_file') as mock_delete:
+        with patch('rag._get_collection') as mock_get_col:
             mock_collection = MagicMock()
             mock_collection.get.side_effect = [
                 {
@@ -107,31 +104,31 @@ class TestCleanupStaleChunks:
                         {"other": "field"},
                     ]
                 },
-                {"metadatas": []}
+                {"metadatas": []},
+                {"ids": ["id-a"]},
             ]
             mock_collection.count.return_value = 3
             mock_get_col.return_value = mock_collection
-            mock_delete.return_value = 1
 
             result = cleanup_stale_chunks(set(), repo_url=None)
 
             assert "a.py" in result["stale_paths"]
             assert len(result["stale_paths"]) == 1
-            mock_delete.assert_called_once_with("a.py", repo_url=None)
+            assert result["removed_count"] == 1
+            mock_collection.delete.assert_called_once_with(ids=["id-a"])
 
     def test_passes_repo_url_to_delete_and_collection(self):
-        with patch('rag._get_collection') as mock_get_col, \
-             patch('rag.delete_chunks_for_file') as mock_delete:
+        with patch('rag._get_collection') as mock_get_col:
             mock_collection = MagicMock()
             mock_collection.get.side_effect = [
                 {"metadatas": [{"source_file": "x.py"}]},
-                {"metadatas": []}
+                {"metadatas": []},
+                {"ids": ["id-x"]},
             ]
             mock_collection.count.return_value = 1
             mock_get_col.return_value = mock_collection
-            mock_delete.return_value = 1
 
             result = cleanup_stale_chunks(set(), repo_url="https://github.com/owner/repo")
 
             mock_get_col.assert_called_once_with("https://github.com/owner/repo")
-            mock_delete.assert_called_once_with("x.py", repo_url="https://github.com/owner/repo")
+            mock_collection.delete.assert_called_once_with(ids=["id-x"])

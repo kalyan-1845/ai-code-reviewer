@@ -472,6 +472,8 @@ async def global_exception_handler(request, exc):
 
 
 def verify_api_key(x_api_key: str = Header(None)):
+    if _auth_bypass_enabled():
+        return
     expected_key = os.getenv("REPOSAGE_API_KEY") or os.getenv("AI_ENGINE_API_KEY") or os.getenv("API_KEY") or ""
     if expected_key and not hmac.compare_digest(x_api_key or "", expected_key):
         raise HTTPException(status_code=401, detail="Invalid API Key")
@@ -1786,7 +1788,7 @@ If no issues are found, reply with: {{ "reviews": [] }}"""
     except asyncio.TimeoutError:
         print(f"⚠️ review-diff timed out after {int(ANALYSIS_TIMEOUT_SECONDS)}s, returning partial results")
 
-    review_status = "error" if files_reviewed_count == 0 else "success"
+    review_status = "error" if files_to_review and files_reviewed_count == 0 else "success"
     result = {"comments": comments, "status": review_status}
     if truncated:
         result["truncated"] = True

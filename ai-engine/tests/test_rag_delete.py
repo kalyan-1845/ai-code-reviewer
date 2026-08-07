@@ -66,8 +66,7 @@ class TestDeleteChunksForFile:
 
 class TestCleanupStaleChunks:
     def test_removes_chunks_for_files_not_in_current_set(self):
-        with patch('rag._get_collection') as mock_get_col, \
-             patch('rag.delete_chunks_for_file') as mock_delete:
+        with patch('rag._get_collection') as mock_get_col:
             mock_collection = MagicMock()
             mock_collection.get.side_effect = [
                 {
@@ -77,17 +76,18 @@ class TestCleanupStaleChunks:
                         {"source_file": "also_stale.py"},
                     ]
                 },
-                {"metadatas": []}
+                {"metadatas": []},
+                {"ids": ["id-stale", "id-also"]},
             ]
             mock_collection.count.return_value = 1
             mock_get_col.return_value = mock_collection
-            mock_delete.return_value = 1
 
             result = cleanup_stale_chunks({"keep.py"})
 
             assert result["removed_count"] == 2
             assert set(result["stale_paths"]) == {"stale.py", "also_stale.py"}
             assert result["remaining_count"] == 1
+            mock_collection.delete.assert_called_once_with(ids=["id-stale", "id-also"])
 
     def test_does_not_remove_chunks_when_all_files_are_current(self):
         with patch('rag._get_collection') as mock_get_col, \
@@ -112,8 +112,7 @@ class TestCleanupStaleChunks:
             assert result["stale_paths"] == []
 
     def test_removes_all_chunks_when_current_files_is_empty(self):
-        with patch('rag._get_collection') as mock_get_col, \
-             patch('rag.delete_chunks_for_file') as mock_delete:
+        with patch('rag._get_collection') as mock_get_col:
             mock_collection = MagicMock()
             mock_collection.get.side_effect = [
                 {
@@ -122,20 +121,20 @@ class TestCleanupStaleChunks:
                         {"source_file": "y.py"},
                     ]
                 },
-                {"metadatas": []}
+                {"metadatas": []},
+                {"ids": ["id-x", "id-y"]},
             ]
             mock_collection.count.return_value = 0
             mock_get_col.return_value = mock_collection
-            mock_delete.return_value = 1
 
             result = cleanup_stale_chunks(set())
 
             assert result["removed_count"] == 2
             assert set(result["stale_paths"]) == {"x.py", "y.py"}
+            mock_collection.delete.assert_called_once_with(ids=["id-x", "id-y"])
 
     def test_skips_chunks_with_missing_source_file_metadata(self):
-        with patch('rag._get_collection') as mock_get_col, \
-             patch('rag.delete_chunks_for_file') as mock_delete:
+        with patch('rag._get_collection') as mock_get_col:
             mock_collection = MagicMock()
             # One chunk has no source_file key — should be silently ignored
             mock_collection.get.side_effect = [
@@ -145,17 +144,19 @@ class TestCleanupStaleChunks:
                         {"other_key": "no_source"},
                     ]
                 },
-                {"metadatas": []}
+                {"metadatas": []},
+                {"ids": ["id-valid"]},
             ]
             mock_collection.count.return_value = 1
             mock_get_col.return_value = mock_collection
-            mock_delete.return_value = 1
 
             result = cleanup_stale_chunks(set())
 
             # Only "valid.py" should be treated as stale; the entry without
             # source_file is silently skipped
             assert set(result["stale_paths"]) == {"valid.py"}
+            assert result["removed_count"] == 1
+            mock_collection.delete.assert_called_once_with(ids=["id-valid"])
 
     def test_returns_correct_response_shape(self):
         with patch('rag._get_collection') as mock_get_col, \

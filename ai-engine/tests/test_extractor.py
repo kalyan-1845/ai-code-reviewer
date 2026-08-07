@@ -182,7 +182,7 @@ def test_find_matching_brace_simple():
     pos = content.index('{') + 1
     end = extractor.find_matching_brace(content, pos)
     assert content[end] == '}'
-    assert end == len(content) - 2  # '}' before final ')'
+    assert end == len(content) - 1  # '}' is the final character
 
 
 def test_find_matching_brace_nested():

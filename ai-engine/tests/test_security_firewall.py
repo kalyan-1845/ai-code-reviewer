@@ -23,7 +23,8 @@ def test_malicious_payload():
     is_safe, reason = scan_diff(malicious_diff)
     assert is_safe is False
     assert "Security Warning" in reason
-    assert "System Override" in reason or "ignore previous instructions" in reason or "LGTM" in reason
+    lowered = reason.lower()
+    assert "system override" in lowered or "ignore previous instructions" in lowered or "lgtm" in lowered
 
 
 def test_various_injection_keywords():
