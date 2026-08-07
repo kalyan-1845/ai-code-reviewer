@@ -1,6 +1,6 @@
 export function sanitizeRedisKey(input, maxLength = 128) {
   // Convert non-string inputs to string; use empty string for null/undefined
-  const str = String(input == null ? '' : input);
+  const str = String(input === null ? '' : input);
   if (str.length === 0) {
     return '_empty_';
   }
