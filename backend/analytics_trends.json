@@ -1,6 +1,6 @@
 [
   {
-    "timestamp": "2026-08-04T02:44:06.883Z",
+    "timestamp": "2026-08-07T07:15:03.591Z",
     "repoName": "repo-5",
     "totalLines": 5,
     "bugs": 5,
@@ -13,7 +13,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.886Z",
+    "timestamp": "2026-08-07T07:15:03.591Z",
     "repoName": "repo-6",
     "totalLines": 6,
     "bugs": 6,
@@ -26,7 +26,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.889Z",
+    "timestamp": "2026-08-07T07:15:03.592Z",
     "repoName": "repo-7",
     "totalLines": 7,
     "bugs": 7,
@@ -39,7 +39,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.891Z",
+    "timestamp": "2026-08-07T07:15:03.592Z",
     "repoName": "repo-8",
     "totalLines": 8,
     "bugs": 8,
@@ -52,7 +52,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.894Z",
+    "timestamp": "2026-08-07T07:15:03.592Z",
     "repoName": "repo-9",
     "totalLines": 9,
     "bugs": 9,
@@ -65,7 +65,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.899Z",
+    "timestamp": "2026-08-07T07:15:03.593Z",
     "repoName": "repo-10",
     "totalLines": 10,
     "bugs": 10,
@@ -78,7 +78,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.902Z",
+    "timestamp": "2026-08-07T07:15:03.593Z",
     "repoName": "repo-11",
     "totalLines": 11,
     "bugs": 11,
@@ -91,7 +91,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.906Z",
+    "timestamp": "2026-08-07T07:15:03.593Z",
     "repoName": "repo-12",
     "totalLines": 12,
     "bugs": 12,
@@ -104,7 +104,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.909Z",
+    "timestamp": "2026-08-07T07:15:03.593Z",
     "repoName": "repo-13",
     "totalLines": 13,
     "bugs": 13,
@@ -117,7 +117,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.914Z",
+    "timestamp": "2026-08-07T07:15:03.594Z",
     "repoName": "repo-14",
     "totalLines": 14,
     "bugs": 14,
@@ -130,7 +130,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.922Z",
+    "timestamp": "2026-08-07T07:15:03.594Z",
     "repoName": "repo-15",
     "totalLines": 15,
     "bugs": 15,
@@ -143,7 +143,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.925Z",
+    "timestamp": "2026-08-07T07:15:03.594Z",
     "repoName": "repo-16",
     "totalLines": 16,
     "bugs": 16,
@@ -156,7 +156,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.929Z",
+    "timestamp": "2026-08-07T07:15:03.594Z",
     "repoName": "repo-17",
     "totalLines": 17,
     "bugs": 17,
@@ -169,7 +169,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.934Z",
+    "timestamp": "2026-08-07T07:15:03.595Z",
     "repoName": "repo-18",
     "totalLines": 18,
     "bugs": 18,
@@ -182,7 +182,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.938Z",
+    "timestamp": "2026-08-07T07:15:03.595Z",
     "repoName": "repo-19",
     "totalLines": 19,
     "bugs": 19,
@@ -195,7 +195,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.941Z",
+    "timestamp": "2026-08-07T07:15:03.595Z",
     "repoName": "repo-20",
     "totalLines": 20,
     "bugs": 20,
@@ -208,7 +208,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.945Z",
+    "timestamp": "2026-08-07T07:15:03.595Z",
     "repoName": "repo-21",
     "totalLines": 21,
     "bugs": 21,
@@ -221,7 +221,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.955Z",
+    "timestamp": "2026-08-07T07:15:03.596Z",
     "repoName": "repo-22",
     "totalLines": 22,
     "bugs": 22,
@@ -234,7 +234,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.958Z",
+    "timestamp": "2026-08-07T07:15:03.596Z",
     "repoName": "repo-23",
     "totalLines": 23,
     "bugs": 23,
@@ -247,7 +247,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.961Z",
+    "timestamp": "2026-08-07T07:15:03.596Z",
     "repoName": "repo-24",
     "totalLines": 24,
     "bugs": 24,
@@ -260,7 +260,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.965Z",
+    "timestamp": "2026-08-07T07:15:03.596Z",
     "repoName": "repo-25",
     "totalLines": 25,
     "bugs": 25,
@@ -273,7 +273,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.969Z",
+    "timestamp": "2026-08-07T07:15:03.596Z",
     "repoName": "repo-26",
     "totalLines": 26,
     "bugs": 26,
@@ -286,7 +286,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.972Z",
+    "timestamp": "2026-08-07T07:15:03.597Z",
     "repoName": "repo-27",
     "totalLines": 27,
     "bugs": 27,
@@ -299,7 +299,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.975Z",
+    "timestamp": "2026-08-07T07:15:03.597Z",
     "repoName": "repo-28",
     "totalLines": 28,
     "bugs": 28,
@@ -312,7 +312,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.978Z",
+    "timestamp": "2026-08-07T07:15:03.597Z",
     "repoName": "repo-29",
     "totalLines": 29,
     "bugs": 29,
@@ -325,7 +325,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.982Z",
+    "timestamp": "2026-08-07T07:15:03.597Z",
     "repoName": "repo-30",
     "totalLines": 30,
     "bugs": 30,
@@ -338,7 +338,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.986Z",
+    "timestamp": "2026-08-07T07:15:03.598Z",
     "repoName": "repo-31",
     "totalLines": 31,
     "bugs": 31,
@@ -351,7 +351,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.990Z",
+    "timestamp": "2026-08-07T07:15:03.598Z",
     "repoName": "repo-32",
     "totalLines": 32,
     "bugs": 32,
@@ -364,7 +364,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.993Z",
+    "timestamp": "2026-08-07T07:15:03.598Z",
     "repoName": "repo-33",
     "totalLines": 33,
     "bugs": 33,
@@ -377,7 +377,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.996Z",
+    "timestamp": "2026-08-07T07:15:03.598Z",
     "repoName": "repo-34",
     "totalLines": 34,
     "bugs": 34,
@@ -390,7 +390,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:06.999Z",
+    "timestamp": "2026-08-07T07:15:03.599Z",
     "repoName": "repo-35",
     "totalLines": 35,
     "bugs": 35,
@@ -403,7 +403,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.003Z",
+    "timestamp": "2026-08-07T07:15:03.599Z",
     "repoName": "repo-36",
     "totalLines": 36,
     "bugs": 36,
@@ -416,7 +416,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.006Z",
+    "timestamp": "2026-08-07T07:15:03.599Z",
     "repoName": "repo-37",
     "totalLines": 37,
     "bugs": 37,
@@ -429,7 +429,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.009Z",
+    "timestamp": "2026-08-07T07:15:03.599Z",
     "repoName": "repo-38",
     "totalLines": 38,
     "bugs": 38,
@@ -442,7 +442,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.013Z",
+    "timestamp": "2026-08-07T07:15:03.600Z",
     "repoName": "repo-39",
     "totalLines": 39,
     "bugs": 39,
@@ -455,7 +455,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.017Z",
+    "timestamp": "2026-08-07T07:15:03.600Z",
     "repoName": "repo-40",
     "totalLines": 40,
     "bugs": 40,
@@ -468,7 +468,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.021Z",
+    "timestamp": "2026-08-07T07:15:03.600Z",
     "repoName": "repo-41",
     "totalLines": 41,
     "bugs": 41,
@@ -481,7 +481,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.024Z",
+    "timestamp": "2026-08-07T07:15:03.600Z",
     "repoName": "repo-42",
     "totalLines": 42,
     "bugs": 42,
@@ -494,7 +494,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.027Z",
+    "timestamp": "2026-08-07T07:15:03.601Z",
     "repoName": "repo-43",
     "totalLines": 43,
     "bugs": 43,
@@ -507,7 +507,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.035Z",
+    "timestamp": "2026-08-07T07:15:03.601Z",
     "repoName": "repo-44",
     "totalLines": 44,
     "bugs": 44,
@@ -520,7 +520,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.038Z",
+    "timestamp": "2026-08-07T07:15:03.601Z",
     "repoName": "repo-45",
     "totalLines": 45,
     "bugs": 45,
@@ -533,7 +533,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.040Z",
+    "timestamp": "2026-08-07T07:15:03.601Z",
     "repoName": "repo-46",
     "totalLines": 46,
     "bugs": 46,
@@ -546,7 +546,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.042Z",
+    "timestamp": "2026-08-07T07:15:03.602Z",
     "repoName": "repo-47",
     "totalLines": 47,
     "bugs": 47,
@@ -559,7 +559,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.046Z",
+    "timestamp": "2026-08-07T07:15:03.602Z",
     "repoName": "repo-48",
     "totalLines": 48,
     "bugs": 48,
@@ -572,7 +572,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.050Z",
+    "timestamp": "2026-08-07T07:15:03.602Z",
     "repoName": "repo-49",
     "totalLines": 49,
     "bugs": 49,
@@ -585,7 +585,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.052Z",
+    "timestamp": "2026-08-07T07:15:03.602Z",
     "repoName": "repo-50",
     "totalLines": 50,
     "bugs": 50,
@@ -598,7 +598,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.056Z",
+    "timestamp": "2026-08-07T07:15:03.603Z",
     "repoName": "repo-51",
     "totalLines": 51,
     "bugs": 51,
@@ -611,7 +611,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.059Z",
+    "timestamp": "2026-08-07T07:15:03.603Z",
     "repoName": "repo-52",
     "totalLines": 52,
     "bugs": 52,
@@ -624,7 +624,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.063Z",
+    "timestamp": "2026-08-07T07:15:03.603Z",
     "repoName": "repo-53",
     "totalLines": 53,
     "bugs": 53,
@@ -637,7 +637,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.065Z",
+    "timestamp": "2026-08-07T07:15:03.603Z",
     "repoName": "repo-54",
     "totalLines": 54,
     "bugs": 54,
@@ -650,7 +650,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.068Z",
+    "timestamp": "2026-08-07T07:15:03.604Z",
     "repoName": "repo-55",
     "totalLines": 55,
     "bugs": 55,
@@ -663,7 +663,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.071Z",
+    "timestamp": "2026-08-07T07:15:03.604Z",
     "repoName": "repo-56",
     "totalLines": 56,
     "bugs": 56,
@@ -676,7 +676,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.076Z",
+    "timestamp": "2026-08-07T07:15:03.605Z",
     "repoName": "repo-57",
     "totalLines": 57,
     "bugs": 57,
@@ -689,7 +689,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.080Z",
+    "timestamp": "2026-08-07T07:15:03.605Z",
     "repoName": "repo-58",
     "totalLines": 58,
     "bugs": 58,
@@ -702,7 +702,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.082Z",
+    "timestamp": "2026-08-07T07:15:03.605Z",
     "repoName": "repo-59",
     "totalLines": 59,
     "bugs": 59,
@@ -715,7 +715,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.083Z",
+    "timestamp": "2026-08-07T07:15:03.606Z",
     "repoName": "repo-60",
     "totalLines": 60,
     "bugs": 60,
@@ -728,7 +728,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.086Z",
+    "timestamp": "2026-08-07T07:15:03.607Z",
     "repoName": "repo-61",
     "totalLines": 61,
     "bugs": 61,
@@ -741,7 +741,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.088Z",
+    "timestamp": "2026-08-07T07:15:03.608Z",
     "repoName": "repo-62",
     "totalLines": 62,
     "bugs": 62,
@@ -754,7 +754,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.092Z",
+    "timestamp": "2026-08-07T07:15:03.608Z",
     "repoName": "repo-63",
     "totalLines": 63,
     "bugs": 63,
@@ -767,7 +767,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.096Z",
+    "timestamp": "2026-08-07T07:15:03.609Z",
     "repoName": "repo-64",
     "totalLines": 64,
     "bugs": 64,
@@ -780,7 +780,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.098Z",
+    "timestamp": "2026-08-07T07:15:03.609Z",
     "repoName": "repo-65",
     "totalLines": 65,
     "bugs": 65,
@@ -793,7 +793,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.100Z",
+    "timestamp": "2026-08-07T07:15:03.610Z",
     "repoName": "repo-66",
     "totalLines": 66,
     "bugs": 66,
@@ -806,7 +806,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.104Z",
+    "timestamp": "2026-08-07T07:15:03.610Z",
     "repoName": "repo-67",
     "totalLines": 67,
     "bugs": 67,
@@ -819,7 +819,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.107Z",
+    "timestamp": "2026-08-07T07:15:03.610Z",
     "repoName": "repo-68",
     "totalLines": 68,
     "bugs": 68,
@@ -832,7 +832,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.109Z",
+    "timestamp": "2026-08-07T07:15:03.611Z",
     "repoName": "repo-69",
     "totalLines": 69,
     "bugs": 69,
@@ -845,7 +845,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.110Z",
+    "timestamp": "2026-08-07T07:15:03.611Z",
     "repoName": "repo-70",
     "totalLines": 70,
     "bugs": 70,
@@ -858,7 +858,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.113Z",
+    "timestamp": "2026-08-07T07:15:03.612Z",
     "repoName": "repo-71",
     "totalLines": 71,
     "bugs": 71,
@@ -871,7 +871,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.114Z",
+    "timestamp": "2026-08-07T07:15:03.612Z",
     "repoName": "repo-72",
     "totalLines": 72,
     "bugs": 72,
@@ -884,7 +884,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.116Z",
+    "timestamp": "2026-08-07T07:15:03.612Z",
     "repoName": "repo-73",
     "totalLines": 73,
     "bugs": 73,
@@ -897,7 +897,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.119Z",
+    "timestamp": "2026-08-07T07:15:03.613Z",
     "repoName": "repo-74",
     "totalLines": 74,
     "bugs": 74,
@@ -910,7 +910,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.121Z",
+    "timestamp": "2026-08-07T07:15:03.613Z",
     "repoName": "repo-75",
     "totalLines": 75,
     "bugs": 75,
@@ -923,7 +923,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.122Z",
+    "timestamp": "2026-08-07T07:15:03.614Z",
     "repoName": "repo-76",
     "totalLines": 76,
     "bugs": 76,
@@ -936,7 +936,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.124Z",
+    "timestamp": "2026-08-07T07:15:03.614Z",
     "repoName": "repo-77",
     "totalLines": 77,
     "bugs": 77,
@@ -949,7 +949,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.127Z",
+    "timestamp": "2026-08-07T07:15:03.615Z",
     "repoName": "repo-78",
     "totalLines": 78,
     "bugs": 78,
@@ -962,7 +962,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.130Z",
+    "timestamp": "2026-08-07T07:15:03.615Z",
     "repoName": "repo-79",
     "totalLines": 79,
     "bugs": 79,
@@ -975,7 +975,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.132Z",
+    "timestamp": "2026-08-07T07:15:03.616Z",
     "repoName": "repo-80",
     "totalLines": 80,
     "bugs": 80,
@@ -988,7 +988,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.136Z",
+    "timestamp": "2026-08-07T07:15:03.616Z",
     "repoName": "repo-81",
     "totalLines": 81,
     "bugs": 81,
@@ -1001,7 +1001,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.139Z",
+    "timestamp": "2026-08-07T07:15:03.616Z",
     "repoName": "repo-82",
     "totalLines": 82,
     "bugs": 82,
@@ -1014,7 +1014,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.141Z",
+    "timestamp": "2026-08-07T07:15:03.617Z",
     "repoName": "repo-83",
     "totalLines": 83,
     "bugs": 83,
@@ -1027,7 +1027,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.142Z",
+    "timestamp": "2026-08-07T07:15:03.618Z",
     "repoName": "repo-84",
     "totalLines": 84,
     "bugs": 84,
@@ -1040,7 +1040,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.146Z",
+    "timestamp": "2026-08-07T07:15:03.618Z",
     "repoName": "repo-85",
     "totalLines": 85,
     "bugs": 85,
@@ -1053,7 +1053,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.147Z",
+    "timestamp": "2026-08-07T07:15:03.619Z",
     "repoName": "repo-86",
     "totalLines": 86,
     "bugs": 86,
@@ -1066,7 +1066,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.149Z",
+    "timestamp": "2026-08-07T07:15:03.620Z",
     "repoName": "repo-87",
     "totalLines": 87,
     "bugs": 87,
@@ -1079,7 +1079,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.154Z",
+    "timestamp": "2026-08-07T07:15:03.620Z",
     "repoName": "repo-88",
     "totalLines": 88,
     "bugs": 88,
@@ -1092,7 +1092,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.157Z",
+    "timestamp": "2026-08-07T07:15:03.620Z",
     "repoName": "repo-89",
     "totalLines": 89,
     "bugs": 89,
@@ -1105,7 +1105,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.160Z",
+    "timestamp": "2026-08-07T07:15:03.621Z",
     "repoName": "repo-90",
     "totalLines": 90,
     "bugs": 90,
@@ -1118,7 +1118,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.163Z",
+    "timestamp": "2026-08-07T07:15:03.621Z",
     "repoName": "repo-91",
     "totalLines": 91,
     "bugs": 91,
@@ -1131,7 +1131,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.164Z",
+    "timestamp": "2026-08-07T07:15:03.622Z",
     "repoName": "repo-92",
     "totalLines": 92,
     "bugs": 92,
@@ -1144,7 +1144,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.165Z",
+    "timestamp": "2026-08-07T07:15:03.622Z",
     "repoName": "repo-93",
     "totalLines": 93,
     "bugs": 93,
@@ -1157,7 +1157,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.166Z",
+    "timestamp": "2026-08-07T07:15:03.622Z",
     "repoName": "repo-94",
     "totalLines": 94,
     "bugs": 94,
@@ -1170,7 +1170,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.168Z",
+    "timestamp": "2026-08-07T07:15:03.623Z",
     "repoName": "repo-95",
     "totalLines": 95,
     "bugs": 95,
@@ -1183,7 +1183,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.169Z",
+    "timestamp": "2026-08-07T07:15:03.623Z",
     "repoName": "repo-96",
     "totalLines": 96,
     "bugs": 96,
@@ -1196,7 +1196,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.171Z",
+    "timestamp": "2026-08-07T07:15:03.625Z",
     "repoName": "repo-97",
     "totalLines": 97,
     "bugs": 97,
@@ -1209,7 +1209,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.173Z",
+    "timestamp": "2026-08-07T07:15:03.625Z",
     "repoName": "repo-98",
     "totalLines": 98,
     "bugs": 98,
@@ -1222,7 +1222,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.176Z",
+    "timestamp": "2026-08-07T07:15:03.626Z",
     "repoName": "repo-99",
     "totalLines": 99,
     "bugs": 99,
@@ -1235,7 +1235,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.179Z",
+    "timestamp": "2026-08-07T07:15:03.626Z",
     "repoName": "repo-100",
     "totalLines": 100,
     "bugs": 100,
@@ -1248,7 +1248,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.180Z",
+    "timestamp": "2026-08-07T07:15:03.627Z",
     "repoName": "repo-101",
     "totalLines": 101,
     "bugs": 101,
@@ -1261,7 +1261,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.181Z",
+    "timestamp": "2026-08-07T07:15:03.627Z",
     "repoName": "repo-102",
     "totalLines": 102,
     "bugs": 102,
@@ -1274,7 +1274,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.184Z",
+    "timestamp": "2026-08-07T07:15:03.628Z",
     "repoName": "repo-103",
     "totalLines": 103,
     "bugs": 103,
@@ -1287,7 +1287,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.187Z",
+    "timestamp": "2026-08-07T07:15:03.628Z",
     "repoName": "repo-104",
     "totalLines": 104,
     "bugs": 104,
@@ -1300,7 +1300,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.190Z",
+    "timestamp": "2026-08-07T07:15:03.629Z",
     "repoName": "repo-105",
     "totalLines": 105,
     "bugs": 105,
@@ -1313,7 +1313,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.195Z",
+    "timestamp": "2026-08-07T07:15:03.629Z",
     "repoName": "repo-106",
     "totalLines": 106,
     "bugs": 106,
@@ -1326,7 +1326,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.197Z",
+    "timestamp": "2026-08-07T07:15:03.630Z",
     "repoName": "repo-107",
     "totalLines": 107,
     "bugs": 107,
@@ -1339,7 +1339,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.199Z",
+    "timestamp": "2026-08-07T07:15:03.631Z",
     "repoName": "repo-108",
     "totalLines": 108,
     "bugs": 108,
@@ -1352,7 +1352,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.202Z",
+    "timestamp": "2026-08-07T07:15:03.632Z",
     "repoName": "repo-109",
     "totalLines": 109,
     "bugs": 109,
@@ -1365,7 +1365,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.206Z",
+    "timestamp": "2026-08-07T07:15:03.632Z",
     "repoName": "repo-110",
     "totalLines": 110,
     "bugs": 110,
@@ -1378,7 +1378,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.209Z",
+    "timestamp": "2026-08-07T07:15:03.632Z",
     "repoName": "repo-111",
     "totalLines": 111,
     "bugs": 111,
@@ -1391,7 +1391,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.210Z",
+    "timestamp": "2026-08-07T07:15:03.633Z",
     "repoName": "repo-112",
     "totalLines": 112,
     "bugs": 112,
@@ -1404,7 +1404,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.213Z",
+    "timestamp": "2026-08-07T07:15:03.633Z",
     "repoName": "repo-113",
     "totalLines": 113,
     "bugs": 113,
@@ -1417,7 +1417,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.214Z",
+    "timestamp": "2026-08-07T07:15:03.634Z",
     "repoName": "repo-114",
     "totalLines": 114,
     "bugs": 114,
@@ -1430,7 +1430,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.215Z",
+    "timestamp": "2026-08-07T07:15:03.634Z",
     "repoName": "repo-115",
     "totalLines": 115,
     "bugs": 115,
@@ -1443,7 +1443,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.218Z",
+    "timestamp": "2026-08-07T07:15:03.635Z",
     "repoName": "repo-116",
     "totalLines": 116,
     "bugs": 116,
@@ -1456,7 +1456,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.221Z",
+    "timestamp": "2026-08-07T07:15:03.635Z",
     "repoName": "repo-117",
     "totalLines": 117,
     "bugs": 117,
@@ -1469,7 +1469,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.223Z",
+    "timestamp": "2026-08-07T07:15:03.635Z",
     "repoName": "repo-118",
     "totalLines": 118,
     "bugs": 118,
@@ -1482,7 +1482,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.225Z",
+    "timestamp": "2026-08-07T07:15:03.636Z",
     "repoName": "repo-119",
     "totalLines": 119,
     "bugs": 119,
@@ -1495,7 +1495,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.226Z",
+    "timestamp": "2026-08-07T07:15:03.637Z",
     "repoName": "repo-120",
     "totalLines": 120,
     "bugs": 120,
@@ -1508,7 +1508,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.230Z",
+    "timestamp": "2026-08-07T07:15:03.637Z",
     "repoName": "repo-121",
     "totalLines": 121,
     "bugs": 121,
@@ -1521,7 +1521,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.231Z",
+    "timestamp": "2026-08-07T07:15:03.638Z",
     "repoName": "repo-122",
     "totalLines": 122,
     "bugs": 122,
@@ -1534,7 +1534,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.233Z",
+    "timestamp": "2026-08-07T07:15:03.638Z",
     "repoName": "repo-123",
     "totalLines": 123,
     "bugs": 123,
@@ -1547,7 +1547,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.237Z",
+    "timestamp": "2026-08-07T07:15:03.639Z",
     "repoName": "repo-124",
     "totalLines": 124,
     "bugs": 124,
@@ -1560,7 +1560,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.240Z",
+    "timestamp": "2026-08-07T07:15:03.639Z",
     "repoName": "repo-125",
     "totalLines": 125,
     "bugs": 125,
@@ -1573,7 +1573,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.244Z",
+    "timestamp": "2026-08-07T07:15:03.640Z",
     "repoName": "repo-126",
     "totalLines": 126,
     "bugs": 126,
@@ -1586,7 +1586,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.246Z",
+    "timestamp": "2026-08-07T07:15:03.640Z",
     "repoName": "repo-127",
     "totalLines": 127,
     "bugs": 127,
@@ -1599,7 +1599,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.248Z",
+    "timestamp": "2026-08-07T07:15:03.641Z",
     "repoName": "repo-128",
     "totalLines": 128,
     "bugs": 128,
@@ -1612,7 +1612,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.252Z",
+    "timestamp": "2026-08-07T07:15:03.641Z",
     "repoName": "repo-129",
     "totalLines": 129,
     "bugs": 129,
@@ -1625,7 +1625,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.256Z",
+    "timestamp": "2026-08-07T07:15:03.642Z",
     "repoName": "repo-130",
     "totalLines": 130,
     "bugs": 130,
@@ -1638,7 +1638,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.260Z",
+    "timestamp": "2026-08-07T07:15:03.643Z",
     "repoName": "repo-131",
     "totalLines": 131,
     "bugs": 131,
@@ -1651,7 +1651,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.264Z",
+    "timestamp": "2026-08-07T07:15:03.643Z",
     "repoName": "repo-132",
     "totalLines": 132,
     "bugs": 132,
@@ -1664,7 +1664,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.266Z",
+    "timestamp": "2026-08-07T07:15:03.644Z",
     "repoName": "repo-133",
     "totalLines": 133,
     "bugs": 133,
@@ -1677,7 +1677,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.268Z",
+    "timestamp": "2026-08-07T07:15:03.644Z",
     "repoName": "repo-134",
     "totalLines": 134,
     "bugs": 134,
@@ -1690,7 +1690,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.272Z",
+    "timestamp": "2026-08-07T07:15:03.645Z",
     "repoName": "repo-135",
     "totalLines": 135,
     "bugs": 135,
@@ -1703,7 +1703,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.276Z",
+    "timestamp": "2026-08-07T07:15:03.645Z",
     "repoName": "repo-136",
     "totalLines": 136,
     "bugs": 136,
@@ -1716,7 +1716,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.280Z",
+    "timestamp": "2026-08-07T07:15:03.646Z",
     "repoName": "repo-137",
     "totalLines": 137,
     "bugs": 137,
@@ -1729,7 +1729,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.281Z",
+    "timestamp": "2026-08-07T07:15:03.646Z",
     "repoName": "repo-138",
     "totalLines": 138,
     "bugs": 138,
@@ -1742,7 +1742,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.285Z",
+    "timestamp": "2026-08-07T07:15:03.647Z",
     "repoName": "repo-139",
     "totalLines": 139,
     "bugs": 139,
@@ -1755,7 +1755,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.298Z",
+    "timestamp": "2026-08-07T07:15:03.649Z",
     "repoName": "repo-140",
     "totalLines": 140,
     "bugs": 140,
@@ -1768,7 +1768,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.302Z",
+    "timestamp": "2026-08-07T07:15:03.649Z",
     "repoName": "repo-141",
     "totalLines": 141,
     "bugs": 141,
@@ -1781,7 +1781,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.306Z",
+    "timestamp": "2026-08-07T07:15:03.649Z",
     "repoName": "repo-142",
     "totalLines": 142,
     "bugs": 142,
@@ -1794,7 +1794,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.310Z",
+    "timestamp": "2026-08-07T07:15:03.650Z",
     "repoName": "repo-143",
     "totalLines": 143,
     "bugs": 143,
@@ -1807,7 +1807,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.315Z",
+    "timestamp": "2026-08-07T07:15:03.651Z",
     "repoName": "repo-144",
     "totalLines": 144,
     "bugs": 144,
@@ -1820,7 +1820,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.317Z",
+    "timestamp": "2026-08-07T07:15:03.651Z",
     "repoName": "repo-145",
     "totalLines": 145,
     "bugs": 145,
@@ -1833,7 +1833,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.321Z",
+    "timestamp": "2026-08-07T07:15:03.652Z",
     "repoName": "repo-146",
     "totalLines": 146,
     "bugs": 146,
@@ -1846,7 +1846,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.325Z",
+    "timestamp": "2026-08-07T07:15:03.652Z",
     "repoName": "repo-147",
     "totalLines": 147,
     "bugs": 147,
@@ -1859,7 +1859,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.329Z",
+    "timestamp": "2026-08-07T07:15:03.653Z",
     "repoName": "repo-148",
     "totalLines": 148,
     "bugs": 148,
@@ -1872,7 +1872,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.332Z",
+    "timestamp": "2026-08-07T07:15:03.653Z",
     "repoName": "repo-149",
     "totalLines": 149,
     "bugs": 149,
@@ -1885,7 +1885,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.335Z",
+    "timestamp": "2026-08-07T07:15:03.654Z",
     "repoName": "repo-150",
     "totalLines": 150,
     "bugs": 150,
@@ -1898,7 +1898,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.339Z",
+    "timestamp": "2026-08-07T07:15:03.654Z",
     "repoName": "repo-151",
     "totalLines": 151,
     "bugs": 151,
@@ -1911,7 +1911,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.343Z",
+    "timestamp": "2026-08-07T07:15:03.655Z",
     "repoName": "repo-152",
     "totalLines": 152,
     "bugs": 152,
@@ -1924,7 +1924,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.346Z",
+    "timestamp": "2026-08-07T07:15:03.656Z",
     "repoName": "repo-153",
     "totalLines": 153,
     "bugs": 153,
@@ -1937,7 +1937,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.347Z",
+    "timestamp": "2026-08-07T07:15:03.657Z",
     "repoName": "repo-154",
     "totalLines": 154,
     "bugs": 154,
@@ -1950,7 +1950,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.351Z",
+    "timestamp": "2026-08-07T07:15:03.657Z",
     "repoName": "repo-155",
     "totalLines": 155,
     "bugs": 155,
@@ -1963,7 +1963,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.355Z",
+    "timestamp": "2026-08-07T07:15:03.658Z",
     "repoName": "repo-156",
     "totalLines": 156,
     "bugs": 156,
@@ -1976,7 +1976,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.359Z",
+    "timestamp": "2026-08-07T07:15:03.658Z",
     "repoName": "repo-157",
     "totalLines": 157,
     "bugs": 157,
@@ -1989,7 +1989,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.363Z",
+    "timestamp": "2026-08-07T07:15:03.659Z",
     "repoName": "repo-158",
     "totalLines": 158,
     "bugs": 158,
@@ -2002,7 +2002,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.365Z",
+    "timestamp": "2026-08-07T07:15:03.660Z",
     "repoName": "repo-159",
     "totalLines": 159,
     "bugs": 159,
@@ -2015,7 +2015,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.366Z",
+    "timestamp": "2026-08-07T07:15:03.661Z",
     "repoName": "repo-160",
     "totalLines": 160,
     "bugs": 160,
@@ -2028,7 +2028,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.370Z",
+    "timestamp": "2026-08-07T07:15:03.661Z",
     "repoName": "repo-161",
     "totalLines": 161,
     "bugs": 161,
@@ -2041,7 +2041,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.374Z",
+    "timestamp": "2026-08-07T07:15:03.662Z",
     "repoName": "repo-162",
     "totalLines": 162,
     "bugs": 162,
@@ -2054,7 +2054,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.378Z",
+    "timestamp": "2026-08-07T07:15:03.662Z",
     "repoName": "repo-163",
     "totalLines": 163,
     "bugs": 163,
@@ -2067,7 +2067,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.381Z",
+    "timestamp": "2026-08-07T07:15:03.663Z",
     "repoName": "repo-164",
     "totalLines": 164,
     "bugs": 164,
@@ -2080,7 +2080,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.385Z",
+    "timestamp": "2026-08-07T07:15:03.663Z",
     "repoName": "repo-165",
     "totalLines": 165,
     "bugs": 165,
@@ -2093,7 +2093,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.389Z",
+    "timestamp": "2026-08-07T07:15:03.664Z",
     "repoName": "repo-166",
     "totalLines": 166,
     "bugs": 166,
@@ -2106,7 +2106,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.392Z",
+    "timestamp": "2026-08-07T07:15:03.665Z",
     "repoName": "repo-167",
     "totalLines": 167,
     "bugs": 167,
@@ -2119,7 +2119,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.394Z",
+    "timestamp": "2026-08-07T07:15:03.665Z",
     "repoName": "repo-168",
     "totalLines": 168,
     "bugs": 168,
@@ -2132,7 +2132,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.396Z",
+    "timestamp": "2026-08-07T07:15:03.666Z",
     "repoName": "repo-169",
     "totalLines": 169,
     "bugs": 169,
@@ -2145,7 +2145,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.398Z",
+    "timestamp": "2026-08-07T07:15:03.667Z",
     "repoName": "repo-170",
     "totalLines": 170,
     "bugs": 170,
@@ -2158,7 +2158,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.402Z",
+    "timestamp": "2026-08-07T07:15:03.667Z",
     "repoName": "repo-171",
     "totalLines": 171,
     "bugs": 171,
@@ -2171,7 +2171,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.406Z",
+    "timestamp": "2026-08-07T07:15:03.669Z",
     "repoName": "repo-172",
     "totalLines": 172,
     "bugs": 172,
@@ -2184,7 +2184,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.410Z",
+    "timestamp": "2026-08-07T07:15:03.670Z",
     "repoName": "repo-173",
     "totalLines": 173,
     "bugs": 173,
@@ -2197,7 +2197,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.414Z",
+    "timestamp": "2026-08-07T07:15:03.670Z",
     "repoName": "repo-174",
     "totalLines": 174,
     "bugs": 174,
@@ -2210,7 +2210,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.416Z",
+    "timestamp": "2026-08-07T07:15:03.671Z",
     "repoName": "repo-175",
     "totalLines": 175,
     "bugs": 175,
@@ -2223,7 +2223,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.420Z",
+    "timestamp": "2026-08-07T07:15:03.672Z",
     "repoName": "repo-176",
     "totalLines": 176,
     "bugs": 176,
@@ -2236,7 +2236,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.424Z",
+    "timestamp": "2026-08-07T07:15:03.672Z",
     "repoName": "repo-177",
     "totalLines": 177,
     "bugs": 177,
@@ -2249,7 +2249,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.426Z",
+    "timestamp": "2026-08-07T07:15:03.673Z",
     "repoName": "repo-178",
     "totalLines": 178,
     "bugs": 178,
@@ -2262,7 +2262,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.430Z",
+    "timestamp": "2026-08-07T07:15:03.673Z",
     "repoName": "repo-179",
     "totalLines": 179,
     "bugs": 179,
@@ -2275,7 +2275,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.432Z",
+    "timestamp": "2026-08-07T07:15:03.674Z",
     "repoName": "repo-180",
     "totalLines": 180,
     "bugs": 180,
@@ -2288,7 +2288,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.436Z",
+    "timestamp": "2026-08-07T07:15:03.675Z",
     "repoName": "repo-181",
     "totalLines": 181,
     "bugs": 181,
@@ -2301,7 +2301,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.441Z",
+    "timestamp": "2026-08-07T07:15:03.675Z",
     "repoName": "repo-182",
     "totalLines": 182,
     "bugs": 182,
@@ -2314,7 +2314,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.443Z",
+    "timestamp": "2026-08-07T07:15:03.676Z",
     "repoName": "repo-183",
     "totalLines": 183,
     "bugs": 183,
@@ -2327,7 +2327,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.447Z",
+    "timestamp": "2026-08-07T07:15:03.676Z",
     "repoName": "repo-184",
     "totalLines": 184,
     "bugs": 184,
@@ -2340,7 +2340,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.449Z",
+    "timestamp": "2026-08-07T07:15:03.677Z",
     "repoName": "repo-185",
     "totalLines": 185,
     "bugs": 185,
@@ -2353,7 +2353,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.451Z",
+    "timestamp": "2026-08-07T07:15:03.678Z",
     "repoName": "repo-186",
     "totalLines": 186,
     "bugs": 186,
@@ -2366,7 +2366,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.456Z",
+    "timestamp": "2026-08-07T07:15:03.678Z",
     "repoName": "repo-187",
     "totalLines": 187,
     "bugs": 187,
@@ -2379,7 +2379,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.460Z",
+    "timestamp": "2026-08-07T07:15:03.679Z",
     "repoName": "repo-188",
     "totalLines": 188,
     "bugs": 188,
@@ -2392,7 +2392,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.463Z",
+    "timestamp": "2026-08-07T07:15:03.679Z",
     "repoName": "repo-189",
     "totalLines": 189,
     "bugs": 189,
@@ -2405,7 +2405,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.469Z",
+    "timestamp": "2026-08-07T07:15:03.680Z",
     "repoName": "repo-190",
     "totalLines": 190,
     "bugs": 190,
@@ -2418,7 +2418,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.473Z",
+    "timestamp": "2026-08-07T07:15:03.681Z",
     "repoName": "repo-191",
     "totalLines": 191,
     "bugs": 191,
@@ -2431,7 +2431,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.480Z",
+    "timestamp": "2026-08-07T07:15:03.681Z",
     "repoName": "repo-192",
     "totalLines": 192,
     "bugs": 192,
@@ -2444,7 +2444,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.486Z",
+    "timestamp": "2026-08-07T07:15:03.682Z",
     "repoName": "repo-193",
     "totalLines": 193,
     "bugs": 193,
@@ -2457,7 +2457,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.489Z",
+    "timestamp": "2026-08-07T07:15:03.683Z",
     "repoName": "repo-194",
     "totalLines": 194,
     "bugs": 194,
@@ -2470,7 +2470,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.492Z",
+    "timestamp": "2026-08-07T07:15:03.683Z",
     "repoName": "repo-195",
     "totalLines": 195,
     "bugs": 195,
@@ -2483,7 +2483,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.495Z",
+    "timestamp": "2026-08-07T07:15:03.684Z",
     "repoName": "repo-196",
     "totalLines": 196,
     "bugs": 196,
@@ -2496,7 +2496,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.498Z",
+    "timestamp": "2026-08-07T07:15:03.684Z",
     "repoName": "repo-197",
     "totalLines": 197,
     "bugs": 197,
@@ -2509,7 +2509,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.501Z",
+    "timestamp": "2026-08-07T07:15:03.685Z",
     "repoName": "repo-198",
     "totalLines": 198,
     "bugs": 198,
@@ -2522,7 +2522,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.504Z",
+    "timestamp": "2026-08-07T07:15:03.686Z",
     "repoName": "repo-199",
     "totalLines": 199,
     "bugs": 199,
@@ -2535,7 +2535,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.508Z",
+    "timestamp": "2026-08-07T07:15:03.686Z",
     "repoName": "repo-200",
     "totalLines": 200,
     "bugs": 200,
@@ -2548,7 +2548,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.514Z",
+    "timestamp": "2026-08-07T07:15:03.687Z",
     "repoName": "repo-201",
     "totalLines": 201,
     "bugs": 201,
@@ -2561,7 +2561,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.516Z",
+    "timestamp": "2026-08-07T07:15:03.687Z",
     "repoName": "repo-202",
     "totalLines": 202,
     "bugs": 202,
@@ -2574,7 +2574,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.518Z",
+    "timestamp": "2026-08-07T07:15:03.688Z",
     "repoName": "repo-203",
     "totalLines": 203,
     "bugs": 203,
@@ -2587,7 +2587,7 @@
     "complexityScore": 0
   },
   {
-    "timestamp": "2026-08-04T02:44:07.520Z",
+    "timestamp": "2026-08-07T07:15:03.688Z",
     "repoName": "repo-204",
     "totalLines": 204,
     "bugs": 204,
