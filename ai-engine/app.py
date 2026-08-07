@@ -472,6 +472,8 @@ async def global_exception_handler(request, exc):
 
 
 def verify_api_key(x_api_key: str = Header(None)):
+    if _auth_bypass_enabled():
+        return
     expected_key = os.getenv("REPOSAGE_API_KEY") or os.getenv("AI_ENGINE_API_KEY") or os.getenv("API_KEY") or ""
     if expected_key and not hmac.compare_digest(x_api_key or "", expected_key):
         raise HTTPException(status_code=401, detail="Invalid API Key")
