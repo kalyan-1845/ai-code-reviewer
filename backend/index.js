@@ -438,12 +438,13 @@ function cleanupTempRepos() {
     console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
   }
 }
-async function onShutdown() {
+async function onShutdown(code = 0) {
   cleanupTempRepos();
   cleanupTimers();
   if (redisClient) await redisClient.quit();
   await closeDatabase();
-  process.exit(0);
+  const exitCode = typeof code === 'number' ? code : 0;
+  process.exit(exitCode);
 }
 process.on('SIGINT', onShutdown);
 process.on('SIGTERM', onShutdown);
@@ -455,7 +456,7 @@ process.on('uncaughtException', (err) => {
   if (err.stack) {
     console.error(err.stack);
   }
-  onShutdown();
+  onShutdown(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -463,7 +464,7 @@ process.on('unhandledRejection', (reason, promise) => {
   if (reason instanceof Error && reason.stack) {
     console.error(reason.stack);
   }
-  onShutdown();
+  onShutdown(1);
 });
 
 // Repository contexts for chat are now persisted in MongoDB via the Session model.
