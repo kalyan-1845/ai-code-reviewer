@@ -81,3 +81,24 @@ test('globToRegex: double-star at boundary matches across slash', () => {
   assert.equal(regex.test('src/node_modules/pkg/index.js'), true);
   assert.equal(regex.test('pkg/index.js'), false, 'should not match without node_modules prefix');
 });
+
+test('globToRegex: null input returns a regex that never matches', () => {
+  const regex = globToRegex(null);
+  assert.ok(regex instanceof RegExp, 'should return a RegExp');
+  assert.equal(regex.test('anything'), false);
+  assert.equal(regex.test(''), false);
+});
+
+test('globToRegex: undefined input returns a regex that never matches', () => {
+  const regex = globToRegex(undefined);
+  assert.ok(regex instanceof RegExp, 'should return a RegExp');
+  assert.equal(regex.test('anything'), false);
+  assert.equal(regex.test(''), false);
+});
+
+test('globToRegex: non-string input (number) returns a regex that never matches', () => {
+  const regex = globToRegex(42);
+  assert.ok(regex instanceof RegExp, 'should return a RegExp');
+  assert.equal(regex.test('42'), false);
+  assert.equal(regex.test(''), false);
+});

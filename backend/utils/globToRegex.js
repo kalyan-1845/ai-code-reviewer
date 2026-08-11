@@ -1,6 +1,10 @@
 import picomatch from 'picomatch';
 
 export function globToRegex(pattern) {
+  if (typeof pattern !== 'string') {
+    console.warn(`[globToRegex] Invalid pattern (expected string, got ${typeof pattern}). Returning never-match regex.`);
+    return /(?!)/;
+  }
   try {
     return picomatch.makeRe(pattern);
   } catch (err) {
