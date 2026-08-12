@@ -16,7 +16,7 @@ def _load():
     global _vectors
     try:
         if os.path.exists(VECTORS_FILE):
-            with open(VECTORS_FILE, "r") as f:
+            with open(VECTORS_FILE, "r", encoding="utf-8") as f:
                 _vectors = json.load(f)
         else:
             _vectors = []
@@ -27,7 +27,7 @@ def _load():
 
 def _save():
     tmp = VECTORS_FILE + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(_vectors, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
