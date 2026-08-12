@@ -168,6 +168,24 @@ Response Language: {language}
 Review this repository codebase batch focusing strictly on MISSING UNIT TESTS. If you detect logic changes in a function or a complex new function without corresponding tests, you should automatically generate the missing unit test code or suggest updates to existing tests.
 Ignore styling, security, and general performance.
 
+Here is the repository structure for context:
+{structure_text}
+
+Here is the contents of files for this batch:
+{contents_text}
+
+You MUST reply ONLY in a valid JSON format. Do not write markdown wrapping, do not write explanations before or after.
+Format your JSON precisely as:
+{{
+  "fileReviews": {{
+    "file_path_1": {{
+      "tests": [
+        {{ "type": "missing test", "line": 10, "description": "...", "suggestion": "..." }}
+      ]
+    }}
+  }}
+}}
+
 You must obey the JSON output format above."""
 
 HISTORICAL_BUG_AGENT_PROMPT = """Target Company Persona: {company}

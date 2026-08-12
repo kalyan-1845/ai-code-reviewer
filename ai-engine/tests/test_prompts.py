@@ -106,10 +106,11 @@ class TestPromptSubstitution:
         assert len(result) > 0
 
     def test_test_generation_prompt_substitution(self):
-        # TEST_GENERATION_AGENT_PROMPT uses {company} and {language} only
         result = TEST_GENERATION_AGENT_PROMPT.format(
             company="AcmeCorp",
             language="English",
+            structure_text="src/",
+            contents_text="print('hello')",
         )
         assert isinstance(result, str)
         assert len(result) > 0
