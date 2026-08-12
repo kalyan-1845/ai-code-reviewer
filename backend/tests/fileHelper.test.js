@@ -153,8 +153,20 @@ test('deleteFolderRecursive continues without throwing when unlinkSync raises EA
 
 test('resolveSafePath validates paths strictly within baseDir', () => {
   const base = path.resolve('/app/dir');
+  
+  // Valid paths
   assert.equal(resolveSafePath(base, 'file.txt'), path.join(base, 'file.txt'));
   assert.equal(resolveSafePath(base, '.'), base);
+  assert.equal(resolveSafePath(base, 'sub/dir/file.txt'), path.join(base, 'sub/dir/file.txt'));
+  
+  // Tricky valid path (goes out then back in)
+  assert.equal(resolveSafePath(base, 'sub/../file.txt'), path.join(base, 'file.txt'));
+  
+  // Path traversal attempts
   assert.throws(() => resolveSafePath(base, '../outside.txt'), /Path traversal blocked/);
   assert.throws(() => resolveSafePath(base, '/etc/passwd'), /Path traversal blocked/);
+  assert.throws(() => resolveSafePath(base, 'sub/../../outside.txt'), /Path traversal blocked/);
+  
+  // Prefix trick: another directory starting with the same name
+  assert.throws(() => resolveSafePath(base, '../dir2/file.txt'), /Path traversal blocked/);
 });
