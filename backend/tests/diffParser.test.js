@@ -29,6 +29,23 @@ index 123456..789012 100644
   assert.deepEqual(result[0].changes[1], { line: 12, content: 'const d = 4;' });
 });
 
+test('parseDiff removes binary files from files array and deduplicates in binaryFiles', () => {
+  const diff = `
+diff --git a/logo.png b/logo.png
+index 123456..789012 100644
+Binary files a/logo.png and b/logo.png differ
+diff --git a/app.js b/app.js
+--- a/app.js
++++ b/app.js
+@@ -1,1 +1,2 @@
++console.log("hello");
+  `;
+  const { files, binaryFiles } = parseDiff(diff);
+  assert.equal(files.length, 1);
+  assert.equal(files[0].path, 'app.js');
+  assert.deepEqual(binaryFiles, ['logo.png']);
+});
+
 test('parseDiff should handle multiple file changes', () => {
   const diff = `
 diff --git a/file1.js b/file1.js
@@ -107,10 +124,8 @@ index 0000000..1234567
 Binary files /dev/null and b/image.png differ
   `;
   const { files: result, binaryFiles } = parseDiff(diff);
-  // Binary diff has no additions starting with +, so file should have 0 changes
-  assert.equal(result.length, 1);
-  assert.equal(result[0].path, 'image.png');
-  assert.equal(result[0].changes.length, 0);
+  // Binary diffs are excluded from the text files array
+  assert.equal(result.length, 0);
   assert.equal(binaryFiles.length, 1);
   assert.equal(binaryFiles[0], 'image.png');
 });
@@ -191,7 +206,7 @@ test('countLinesInDiff handles files with null changes', () => {
     { path: 'b.js', changes: undefined },
     { path: 'c.js', changes: [null, { line: 1, content: 'x' }] },
   ];
-  assert.equal(countLinesInDiff(files), 2);  // reduce skips non-arrays  // only one valid change
+  assert.equal(countLinesInDiff(files), 1);
 });
 
 test('parseDiff handles diff with no trailing newline', () => {
@@ -201,6 +216,25 @@ test('parseDiff handles diff with no trailing newline', () => {
   assert.equal(result.length, 1);
   assert.equal(result[0].path, 'test.js');
   assert.equal(result[0].changes.length, 1);
+});
+
+test('parseDiff handles file paths containing "b/" folder name and quoted file paths', () => {
+  const diff = `
+diff --git a/sub/dir/b/file.js b/sub/dir/b/file.js
+--- a/sub/dir/b/file.js
++++ b/sub/dir/b/file.js
+@@ -1 +1 @@
++hello
+diff --git "a/space b/quoted.js" "b/space b/quoted.js"
+--- "a/space b/quoted.js"
++++ "b/space b/quoted.js"
+@@ -1 +1 @@
++world
+  `;
+  const { files: result } = parseDiff(diff);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].path, 'sub/dir/b/file.js');
+  assert.equal(result[1].path, 'space b/quoted.js');
 });
 
 test('parseDiff handles quoted filenames and paths containing b/', () => {

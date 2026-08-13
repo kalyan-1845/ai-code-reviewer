@@ -66,6 +66,12 @@ const sessionSchema = new mongoose.Schema({
     type: String,
     index: true,
   },
+  // The API client (cookie uid) that created this session. Used to scope
+  // cache-invalidation and other privileged operations to the caller's own repos.
+  clientId: {
+    type: String,
+    index: true,
+  },
   lastAccessedAt: {
     type: Date,
     default: Date.now,

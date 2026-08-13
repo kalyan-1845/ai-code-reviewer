@@ -233,3 +233,39 @@ test('Analytics schema defines two indexes', () => {
   assert.ok(hasAnalyzedAt, 'schema should have index on analyzedAt');
   assert.ok(hasCompound, 'schema should have compound index on repoName+analyzedAt');
 });
+
+test('Analytics schema defines a clientId path', () => {
+  // Regression for #3662: Analytics records used to be created without a
+  // clientId, so /api/review-history and the compare endpoint (which filter on
+  // { clientId: req.clientId }) always returned empty results / 404.
+  const schema = Analytics.schema;
+  const paths = schema.paths || {};
+  assert.ok('clientId' in paths, 'schema should have a clientId path');
+});
+
+test('Analytics schema indexes clientId for review-history lookups', () => {
+  const schema = Analytics.schema;
+  const indexes = schema.indexes ? schema.indexes() : [];
+  const hasClientIdIndex = indexes.some((idx) => idx[0] && idx[0].clientId);
+  assert.ok(hasClientIdIndex, 'schema should define an index on clientId');
+});
+
+test('Analytics.create persists clientId on new records', async () => {
+  const result = await Analytics.create({
+    clientId: 'client-42',
+    repoUrl: 'https://github.com/acme/project',
+    repoName: 'acme-project',
+    filesReviewedCount: 15,
+  });
+  assert.equal(result.clientId, 'client-42', 'create should persist the caller clientId');
+});
+
+test('Analytics instances accept and store clientId', () => {
+  const record = new Analytics({
+    clientId: 'client-7',
+    repoUrl: 'https://github.com/test/repo',
+    repoName: 'test-repo',
+    filesReviewedCount: 8,
+  });
+  assert.equal(record.clientId, 'client-7');
+});

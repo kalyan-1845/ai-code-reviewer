@@ -43,6 +43,7 @@ export const MetricsChart: React.FC<MetricsChartProps> = ({ theme = 'dark', sess
     if (!sessionId) {
       setChartData(null);
       setError(null);
+      setLoading(false);
       return;
     }
 

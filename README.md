@@ -191,7 +191,7 @@ The project is split into **four independent modules**:
 
 1. Go to **[console.groq.com/keys](https://console.groq.com/keys)** and sign in (or create a free account).
 2. Click **Create API Key**, give it a name (e.g., `reposage`), and copy the key.
-3. The key is used by the server-side AI Engine via the `GROQ_API_KEY` environment variable. Do not expose it through frontend `VITE_*` variables.
+3. The AI Engine requires the `GROQ_API_KEY` environment variable. It is used only by the server-side AI Engine and should **not** be exposed through frontend `VITE_*` variables. The frontend only requires `VITE_API_URL` to communicate with the backend API.
 
 ### 1. Clone the Repository
 

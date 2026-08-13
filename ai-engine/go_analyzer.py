@@ -168,12 +168,21 @@ def analyze_go_source(filename: str, content: str) -> dict:
     Convenience wrapper: writes `content` to a temp file and runs the full
     Go analysis pipeline against it, returning results keyed by the
     original `filename` regardless of the temp path used on disk.
+
+    Creates temporary files with restrictive permissions (0o600) to prevent
+    other OS users on multi-user hosts from reading sensitive code diffs
+    and LLM analysis output.
     """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".go", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
+    old_umask = os.umask(0o077)
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".go", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+    finally:
+        os.umask(old_umask)
 
     try:
+        os.chmod(tmp_path, 0o600)
         return run_go_analysis(tmp_path, display_filename=filename)
     finally:
         try:

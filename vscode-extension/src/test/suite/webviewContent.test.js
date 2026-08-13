@@ -2,8 +2,8 @@
 
 // webviewContent.test.js
 // Tests for getWebviewContent helper in vscode-extension/src/webviewProvider.ts.
-// The function is not yet exported on main, so we include it directly here
-// along with its helper dependencies (escapeHtml, renderMarkdown).
+// Keep the inline copy in sync with the production escapeHtml in
+// webviewProvider.ts (all five replacements: & < > " ').
 // These tests complement the escapeHtml/renderMarkdown tests from PR #726
 // by testing the getWebviewContent composition logic.
 
@@ -18,7 +18,8 @@ function escapeHtml(text) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function renderMarkdown(md) {
@@ -261,6 +262,14 @@ suite('webviewProvider.ts - getWebviewContent', function () {
       'raw script tag should not appear in error');
     assert.ok(html.includes('&lt;script&gt;'),
       'script tag should be escaped in error message');
+  });
+
+  test('single quotes are escaped like in the production escapeHtml', function () {
+    const html = getWebviewContent('', false, "it's broken");
+
+    assert.ok(!html.includes("it's broken"), 'raw single quote must not survive');
+    assert.ok(html.includes('it&#039;s broken'),
+      'single quote should be escaped as &#039;');
   });
 
   test('markdown content is HTML-escaped via renderMarkdown', function () {

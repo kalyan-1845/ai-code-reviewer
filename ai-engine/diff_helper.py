@@ -1,5 +1,6 @@
 import subprocess
 import re
+import os
 from typing import List, Set
 import requests
 
@@ -18,13 +19,49 @@ def sanitize_git_ref(ref: str) -> str:
     return ref
 
 
-def get_changed_files_from_git(base: str, head: str) -> Set[str]:
+def sanitize_repository_path(url: str, working_dir: str) -> str:
+    """
+    Validate repository clone path to prevent directory traversal attacks
+    from SSH-style URLs or other malicious patterns.
+
+    Args:
+        url: Git repository URL
+        working_dir: Base working directory for clones
+
+    Returns:
+        Safe path for repository clone
+
+    Raises:
+        ValueError: If path contains traversal attempts
+    """
+    repo_name = re.sub(r'.*[/:]([^/]+?)(\.git)?$', r'\1', url)
+
+    if not repo_name or '..' in repo_name:
+        raise ValueError("Invalid repository name")
+
+    if not re.match(r'^[\w\-]+$', repo_name):
+        raise ValueError("Repository name contains invalid characters")
+
+    clone_path = os.path.join(working_dir, repo_name)
+    resolved = os.path.realpath(clone_path)
+    base = os.path.realpath(working_dir)
+
+    if not resolved.startswith(base + os.sep):
+        raise ValueError("Clone path would escape working directory")
+
+    return clone_path
+
+
+def get_changed_files_from_git(base: str, head: str, cwd: str | None = None) -> Set[str]:
     """
     Get list of changed files using git diff.
 
     Args:
         base: Base branch or commit (e.g., "main", "origin/main")
         head: Head branch or commit (e.g., "feat/fix", "HEAD")
+        cwd: Working directory to run git in. When None, the engine's own
+            working directory is used (which is only correct if the engine is
+            launched from inside a checkout of the analyzed repository).
 
     Returns:
         Set of changed file paths
@@ -37,7 +74,8 @@ def get_changed_files_from_git(base: str, head: str) -> Set[str]:
             capture_output=True,
             text=True,
             check=True,
-            timeout=10
+            timeout=10,
+            cwd=cwd
         )
         changed_files = {f.strip() for f in result.stdout.splitlines() if f.strip()}
         return changed_files
@@ -128,7 +166,13 @@ def filter_files_by_changes(
     Returns:
         Tuple of (filtered_files, num_skipped)
     """
-    filtered = [f for f in files if f.name in changed_files]
+    if not files:
+        return [], 0
+    filtered = []
+    for f in files:
+        name = getattr(f, "name", None) if not isinstance(f, dict) else f.get("name")
+        if name and name in changed_files:
+            filtered.append(f)
     skipped = len(files) - len(filtered)
     return filtered, skipped
 

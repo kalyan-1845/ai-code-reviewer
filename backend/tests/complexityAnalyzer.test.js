@@ -60,3 +60,9 @@ test('analyzeComplexity should not count commented-out functions in single-line 
   const resultSql = analyzeComplexity(codeSql, 'query.sql');
   assert.equal(resultSql.functionCount, 0);
 });
+
+test('analyzeComplexity should never return negative codeLines', () => {
+  const code = `/* multi-line comment */`;
+  const result = analyzeComplexity(code, 'file.js');
+  assert.ok(result.codeLines >= 0);
+});
