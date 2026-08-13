@@ -127,22 +127,22 @@ class ReviewQueue {
   // for the same key before starting the new one. This prevents lost updates and
   // race conditions from concurrent read-modify-write on shared resources.
   async runExclusive(key, fn) {
-    const existing = this._exclusiveLocks.get(key);
-    if (existing) {
-      // Wait for the existing operation to complete before starting a new one
-      await existing;
-    }
-    const next = (async () => {
-      try {
-        return await fn();
-      } finally {
+    const prev = this._exclusiveLocks.get(key) || Promise.resolve();
+    let resolveLock;
+    const currentLock = new Promise(resolve => { resolveLock = resolve; });
+    this._exclusiveLocks.set(key, currentLock);
+    this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });
+
+    await prev.catch(() => {});
+    try {
+      return await fn();
+    } finally {
+      if (this._exclusiveLocks.get(key) === currentLock) {
         this._exclusiveLocks.delete(key);
         this._exclusiveLocksTimestamps.delete(key);
       }
-    })();
-    this._exclusiveLocks.set(key, next);
-    this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });
-    return next;
+      resolveLock();
+    }
   }
 
   cleanupStaleExclusiveLocks(maxAgeMs) {
