@@ -51,7 +51,7 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
     schema_version: SCHEMA_VERSION,
     timestamp: new Date().toISOString(),
     repository: repoName,
-    files_reviewed: files.length,
+    files_reviewed: Array.isArray(files) ? files.length : 0,
     total_findings: allFindings.length,
     by_severity: severityCount,
     by_category: categoryCount,
@@ -159,7 +159,7 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
     <div class="meta">
       <strong>Repository:</strong> ${escapeHtml(repoName)}<br>
       <strong>Generated:</strong> ${new Date().toLocaleString()}<br>
-      <strong>Files Reviewed:</strong> ${files.length}
+      <strong>Files Reviewed:</strong> ${Array.isArray(files) ? files.length : 0}
     </div>
 
     <div class="stats">
