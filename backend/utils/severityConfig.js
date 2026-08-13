@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { load as yamlLoad } from 'js-yaml';
+import { load as yamlLoad, CORE_SCHEMA } from 'js-yaml';
 
 const DEFAULT_CONFIG = {
   severity: {
@@ -17,7 +17,9 @@ function loadConfigFile(repoPath) {
   try {
     if (fs.existsSync(configPath)) {
       const fileContent = fs.readFileSync(configPath, 'utf-8');
-      const config = yamlLoad(fileContent) || {};
+      // Pin the safe CORE_SCHEMA explicitly: .codereview.yml is
+      // user-controlled, so the parser must never execute custom tags.
+      const config = yamlLoad(fileContent, { schema: CORE_SCHEMA }) || {};
       return mergeWithDefaults(config);
     }
   } catch (err) {
@@ -40,21 +42,21 @@ function mergeWithDefaults(userConfig) {
 function categorizeFinding(finding) {
   if (!finding) return 'other';
   const message = (finding.description || finding.message || '').toLowerCase();
-  const ruleId = (finding.rule || finding.rule_id || '').toLowerCase();
+  const ruleId = String(finding.rule || finding.rule_id || '');
 
-  if (message.includes('security') || ruleId.includes('security') ||
+  if (message.includes('security') || ruleId.toLowerCase().includes('security') ||
       message.includes('injection') || message.includes('credential') ||
       message.includes('vulnerability')) {
     return 'security';
   }
 
-  if (message.includes('performance') || ruleId.includes('performance') ||
+  if (message.includes('performance') || ruleId.toLowerCase().includes('performance') ||
       message.includes('n+1') || message.includes('cache') ||
       message.includes('optimization')) {
     return 'performance';
   }
 
-  if (message.includes('style') || ruleId.includes('style') ||
+  if (message.includes('style') || ruleId.toLowerCase().includes('style') ||
       message.includes('formatting') || message.includes('comma')) {
     return 'style';
   }
@@ -69,7 +71,7 @@ function applySeverityConfig(findings, config) {
   return findings
     .filter(finding => {
       const ruleId = finding.rule_id || finding.rule;
-      return !suppressedRules.has(ruleId);
+      return !ruleId || !suppressedRules.has(ruleId);
     })
     .map(finding => {
       const category = categorizeFinding(finding);
@@ -93,7 +95,9 @@ function filterByMinimumSeverity(findings, minimumSeverity = 'error') {
   const minRank = severityRank[minimumSeverity] ?? 0;
 
   return findings.filter(f => {
-    const rank = severityRank[f.severity] ?? 2;
+    // Default unknown severities (e.g. 'critical', 'high') to 0 (highest severity)
+    // so they are not filtered out when filtering for errors.
+    const rank = severityRank[f.severity] ?? 0;
     return rank <= minRank;
   });
 }

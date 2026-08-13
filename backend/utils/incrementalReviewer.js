@@ -50,11 +50,15 @@ function loadCacheFile(cachePath) {
 }
 
 function saveCacheFile(cachePath, cache) {
-  const fullPath = path.join(getCacheDir(cachePath), CACHE_FILENAME);
+  const cacheDir = getCacheDir(cachePath);
+  const fullPath = path.join(cacheDir, CACHE_FILENAME);
+  const tmpPath = path.join(cacheDir, `${CACHE_FILENAME}.${Date.now()}_${Math.random().toString(36).substring(2)}.tmp`);
   try {
-    fs.writeFileSync(fullPath, JSON.stringify(cache, null, 2), 'utf-8');
+    fs.writeFileSync(tmpPath, JSON.stringify(cache, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, fullPath);
   } catch (err) {
     console.warn(`Failed to save cache file at ${fullPath}: ${err.message}`);
+    try { fs.unlinkSync(tmpPath); } catch {}
   }
 }
 
@@ -87,6 +91,18 @@ function getFilesToReview(currentFiles, previousCache) {
     return { filesToReview: [], currentCache: {}, changedCount: 0, totalCount: 0 };
   }
   const prevCache = previousCache || {};
+  if (!previousCache) {
+    // Treat all files as changed when there is no previous cache
+    const currentCache = buildContentHashCache(currentFiles);
+    const filesToReview = currentFiles.filter(file => currentCache[file] !== null);
+    return {
+      filesToReview,
+      currentCache,
+      changedCount: filesToReview.length,
+      totalCount: currentFiles.length,
+    };
+  }
+
   const filesToReview = [];
   const currentCache = buildContentHashCache(currentFiles);
 

@@ -1,81 +1,173 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createWebhookRateLimiter, webhookRateLimiter } from '../middleware/rateLimiter.js';
 
-// ---------------------------------------------------------------------------
-// Unit tests verifying the rate limiter key extraction contract.
-//
-// After the fix for the IP-spoofing rate limit bypass, we NO LONGER have a
-// custom getRealClientIp helper. express-rate-limit now defaults to req.ip,
-// which Express correctly resolves via the `trust proxy: 1` setting.
-//
-// These tests document and verify the correct contract:
-//   - The rate limit key MUST be req.ip (the trust-proxy-resolved value)
-//   - The raw X-Forwarded-For header MUST NOT be used as the key, because
-//     its leftmost entry is client-controlled and enables IP spoofing.
-// ---------------------------------------------------------------------------
+class MockRedisClient {
+  constructor() {
+    this.data = new Map();
+    this.status = 'ready';
+    this.shouldThrow = false;
+  }
 
-// Simulate what express-rate-limit does by default: use req.ip
-function getRateLimitKey(req) {
-  return req.ip;
+  async hgetall(key) {
+    if (this.shouldThrow) {
+      throw new Error('Redis connection error');
+    }
+    return this.data.get(key) || null;
+  }
+
+  async hset(key, field1, val1, field2, val2) {
+    if (this.shouldThrow) {
+      throw new Error('Redis connection error');
+    }
+    let map = this.data.get(key) || {};
+    if (typeof field1 === 'object') {
+      map = { ...map, ...field1 };
+    } else {
+      map[field1] = val1;
+      if (field2) map[field2] = val2;
+    }
+    this.data.set(key, map);
+  }
+
+  async expire(key, seconds) {
+    if (this.shouldThrow) {
+      throw new Error('Redis connection error');
+    }
+    return 1;
+  }
+
+  pipeline() {
+    const self = this;
+    const commands = [];
+    return {
+      hset(...args) {
+        commands.push(() => self.hset(...args));
+        return this;
+      },
+      expire(...args) {
+        commands.push(() => self.expire(...args));
+        return this;
+      },
+      async exec() {
+        if (self.shouldThrow) {
+          throw new Error('Redis connection error in pipeline execution');
+        }
+        for (const cmd of commands) {
+          await cmd();
+        }
+        return [[null, 'OK'], [null, 1]];
+      }
+    };
+  }
 }
 
-test('uses req.ip as the rate limit key (direct connection, no proxy)', () => {
-  const req = { ip: '203.0.113.1', headers: {} };
-  assert.equal(getRateLimitKey(req), '203.0.113.1');
-});
-
-test('uses req.ip as the rate limit key even when X-Forwarded-For header is present', () => {
-  // With `trust proxy: 1`, Express sets req.ip to the trusted resolved IP,
-  // not the raw header value. The raw header value is client-controlled and
-  // MUST NOT be used as the rate limit key.
-  const req = {
-    // Express has already resolved this to the correct IP after trust-proxy processing
-    ip: '203.0.113.5',
-    headers: { 'x-forwarded-for': '9.9.9.9, 203.0.113.5, 10.0.0.1' },
+const mockRes = () => {
+  const res = {};
+  res.statusCode = 200;
+  res.body = null;
+  res.status = (code) => {
+    res.statusCode = code;
+    return res;
   };
-  // Key should be the trust-proxy-resolved req.ip, not '9.9.9.9' (attacker-controlled leftmost)
-  assert.equal(getRateLimitKey(req), '203.0.113.5');
-  assert.notEqual(getRateLimitKey(req), '9.9.9.9'); // must not use spoofable header value
-});
-
-test('uses req.ip for IPv6 addresses', () => {
-  const req = { ip: '2001:db8::1', headers: {} };
-  assert.equal(getRateLimitKey(req), '2001:db8::1');
-});
-
-test('uses req.ip when X-Forwarded-For header is absent', () => {
-  const req = { ip: '198.51.100.7', headers: {} };
-  assert.equal(getRateLimitKey(req), '198.51.100.7');
-});
-
-test('uses req.ip when X-Forwarded-For header is an array (some middleware behaviour)', () => {
-  // Even in this edge case, req.ip (set by Express) is the correct source of truth
-  const req = {
-    ip: '203.0.113.1',
-    headers: { 'x-forwarded-for': ['203.0.113.1', '10.0.0.2'] },
+  res.json = (payload) => {
+    res.body = payload;
+    return res;
   };
-  assert.equal(getRateLimitKey(req), '203.0.113.1');
+  return res;
+};
+
+test('createWebhookRateLimiter: allows 5 requests and blocks the 6th with 429 status', async () => {
+  const redis = new MockRedisClient();
+  const limiter = createWebhookRateLimiter({ redisClient: redis, maxTokens: 5, windowMs: 3600000 });
+
+  const req = { body: { repository: { id: 101 } } };
+
+  // First 5 requests should pass
+  for (let i = 1; i <= 5; i++) {
+    let nextCalled = false;
+    const res = mockRes();
+    await limiter(req, res, () => { nextCalled = true; });
+    assert.equal(nextCalled, true, `Request ${i} should be allowed`);
+    assert.equal(res.statusCode, 200);
+  }
+
+  // 6th request within window should return 429
+  let nextCalled6 = false;
+  const res6 = mockRes();
+  await limiter(req, res6, () => { nextCalled6 = true; });
+  assert.equal(nextCalled6, false, 'Request 6 should be rate limited');
+  assert.equal(res6.statusCode, 429);
+  assert.equal(res6.body.error, 'Rate limit exceeded. Maximum 5 PR reviews per hour per repository.');
 });
 
-// ---------------------------------------------------------------------------
-// Security regression test: verify the old spoofing vector is closed.
-//
-// The original getRealClientIp read X-Forwarded-For[0] directly, letting
-// attackers rotate fake IPs to get a fresh rate-limit counter each request.
-// This test documents that behaviour is no longer the key extraction contract.
-// ---------------------------------------------------------------------------
-test('security: rate limit key is NOT derived from the raw X-Forwarded-For header', () => {
-  // An attacker tries to bypass the rate limit by setting a fake leftmost IP
-  const req = {
-    ip: '203.0.113.99',                             // attacker's real IP (trust-proxy resolved)
-    headers: { 'x-forwarded-for': '1.2.3.4' },     // attacker-controlled fake IP
-  };
+test('createWebhookRateLimiter: fails open when Redis throws an error', async () => {
+  const redis = new MockRedisClient();
+  redis.shouldThrow = true;
+  const limiter = createWebhookRateLimiter({ redisClient: redis, maxTokens: 5, windowMs: 3600000 });
 
-  const key = getRateLimitKey(req);
+  const req = { body: { repository: { id: 202 } } };
+  const res = mockRes();
+  let nextCalled = false;
 
-  // Key must be the real IP, NOT the attacker's fake one
-  assert.equal(key, '203.0.113.99',
-    'Rate limit key must be req.ip (trust-proxy resolved), not the raw X-Forwarded-For value');
-  assert.notEqual(key, '1.2.3.4',
-    'Rate limit key must NOT be the client-controlled X-Forwarded-For leftmost entry');
+  await limiter(req, res, () => { nextCalled = true; });
+
+  assert.equal(nextCalled, true, 'Should fail open and call next() on Redis error');
+  assert.equal(res.statusCode, 200);
+});
+
+test('createWebhookRateLimiter: isolates rate limits per repository.id', async () => {
+  const redis = new MockRedisClient();
+  const limiter = createWebhookRateLimiter({ redisClient: redis, maxTokens: 5, windowMs: 3600000 });
+
+  const req1 = { body: { repository: { id: 301 } } };
+  const req2 = { body: { repository: { id: 302 } } };
+
+  // Consume 5 tokens for repo 301
+  for (let i = 0; i < 5; i++) {
+    const res = mockRes();
+    await limiter(req1, res, () => {});
+  }
+
+  // 6th request for repo 301 is blocked
+  const resBlocked = mockRes();
+  let next1 = false;
+  await limiter(req1, resBlocked, () => { next1 = true; });
+  assert.equal(next1, false);
+  assert.equal(resBlocked.statusCode, 429);
+
+  // 1st request for repo 302 is allowed
+  const resAllowed = mockRes();
+  let next2 = false;
+  await limiter(req2, resAllowed, () => { next2 = true; });
+  assert.equal(next2, true);
+  assert.equal(resAllowed.statusCode, 200);
+});
+
+test('createWebhookRateLimiter: passes through if request has no repository identifier', async () => {
+  const limiter = createWebhookRateLimiter();
+  const req = { body: {} };
+  const res = mockRes();
+  let nextCalled = false;
+
+  await limiter(req, res, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+});
+
+test('createWebhookRateLimiter: operates in-memory when Redis is not provided', async () => {
+  const limiter = createWebhookRateLimiter({ maxTokens: 5, windowMs: 3600000 });
+  const req = { body: { repository: { id: 404 } } };
+
+  for (let i = 1; i <= 5; i++) {
+    let nextCalled = false;
+    const res = mockRes();
+    await limiter(req, res, () => { nextCalled = true; });
+    assert.equal(nextCalled, true);
+  }
+
+  const res6 = mockRes();
+  let nextCalled6 = false;
+  await limiter(req, res6, () => { nextCalled6 = true; });
+  assert.equal(nextCalled6, false);
+  assert.equal(res6.statusCode, 429);
 });

@@ -80,4 +80,10 @@ test('scanFileContentForWarnings returns multiple warnings for multiple patterns
   assert.ok(warnings.length >= 2);
 });
 
+test('sanitizeHtmlEntities escapes HTML special characters while preserving forward slashes', async () => {
+  const { sanitizeHtmlEntities } = await import('../utils/sanitizeFileContent.js');
+  assert.strictEqual(sanitizeHtmlEntities('<script>alert("xss")</script>'), '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+  assert.strictEqual(sanitizeHtmlEntities('src/components/App.js'), 'src/components/App.js');
+});
+
 console.warn = originalWarn;

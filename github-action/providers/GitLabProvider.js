@@ -53,11 +53,13 @@ export class GitLabProvider extends Provider {
     // For simplicity in keeping the core logic intact, we reconstruct a unified diff.
     let diffString = '';
     for (const change of data.changes) {
+      const oldPath = change.new_file ? '/dev/null' : change.old_path;
+      const newPath = change.deleted_file ? '/dev/null' : change.new_path;
       diffString += `diff --git a/${change.old_path} b/${change.new_path}\n`;
       if (change.new_file) diffString += `new file mode 100644\n`;
       if (change.deleted_file) diffString += `deleted file mode 100644\n`;
-      diffString += `--- ${change.old_path}\n`;
-      diffString += `+++ ${change.new_path}\n`;
+      diffString += `--- ${oldPath}\n`;
+      diffString += `+++ ${newPath}\n`;
       diffString += `${change.diff}\n`;
     }
     return diffString;

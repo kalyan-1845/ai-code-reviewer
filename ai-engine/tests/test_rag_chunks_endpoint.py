@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app import app
 
 
-client = TestClient(app)
+client = TestClient(app, headers={"x-client-id": "tenant-test"})
 
 
 class TestRagChunksEndpoint:

@@ -1,5 +1,13 @@
-const API_BASE_URL = (window as any).__RUNTIME_API_URL__ || import.meta.env.VITE_API_URL || "http://localhost:5000";
-const API_KEY_STORAGE_KEY = "reposage_api_key";
+// Backend base URL is provided at runtime by config.js (__RUNTIME_API_URL__) or
+// at build time via VITE_API_URL. Defaulting to the same origin ("" => relative
+// URLs) keeps the app working when frontend and backend are served together and
+// prevents a hardcoded dev URL from leaking into production bundles.
+const API_BASE_URL = (window as any).__RUNTIME_API_URL__ || import.meta.env.VITE_API_URL || "";
+// Keep the shared backend API key in memory only, for the lifetime of the
+// page (#3675). Never persist it in sessionStorage/localStorage: a plaintext
+// copy in script-readable storage is exfiltratable by any XSS or browser
+// extension, and the shared key unlocks every /api endpoint.
+let apiKey: string | null = null;
 let sessionRequest: Promise<void> | null = null;
 let csrfToken: string | null = null;
 
@@ -74,18 +82,15 @@ function showPasswordDialog(): Promise<string> {
   });
 }
 
-const ensureApiSession = async () => {
+export const ensureApiSession = async () => {
   if (!sessionRequest) {
     sessionRequest = fetch(`${API_BASE_URL}/api/session`, {
       method: "POST",
       credentials: "include",
     }).then(async (response) => {
       if (response.status === 401) {
-        let apiKey = sessionStorage.getItem(API_KEY_STORAGE_KEY);
-
         if (!apiKey) {
           apiKey = await showPasswordDialog();
-          sessionStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
         }
 
         const loginResponse = await fetch(`${API_BASE_URL}/api/session`, {
@@ -97,7 +102,7 @@ const ensureApiSession = async () => {
         });
 
         if (!loginResponse.ok) {
-          sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+          apiKey = null;
           throw new Error("Invalid backend API key.");
         }
         const loginData = await loginResponse.json();
@@ -124,12 +129,14 @@ const ensureApiSession = async () => {
 };
 
 export const clearApiKey = () => {
-  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+  apiKey = null;
   sessionRequest = null;
   csrfToken = null;
 };
 
-const getCsrfToken = (): string | null => {
+export const getApiKey = (): string | null => apiKey;
+
+export const getCsrfToken = (): string | null => {
   if (csrfToken) return csrfToken;
   const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]*)/);
   return match ? match[1] : null;
@@ -182,7 +189,18 @@ export const apiFetch = async (
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const callerSignal = options.signal;
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -210,12 +228,13 @@ export const apiFetch = async (
     }
     return response;
   } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (timedOut && error && typeof error === "object" && "name" in error && error.name === "AbortError") {
       throw new Error(`Request timed out after ${timeoutMs / 1000} seconds. Backend might be hanging.`);
     }
     throw error;
   } finally {
     clearTimeout(timeoutId);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
   }
 };
 export const getReviewHistory = async () => {

@@ -19,7 +19,6 @@ _fallback_active = False
 _MAX_CACHE_SIZE = int(os.getenv("MAX_EMBEDDING_CACHE_SIZE", "10000"))
 _cache_enabled = os.getenv("EMBEDDING_CACHE_ENABLED", "true").lower() == "true"
 _embedding_cache = collections.OrderedDict()
-_cache_access_order = _embedding_cache
 _cache_lock = threading.Lock()
 _per_key_locks: dict[str, threading.Lock] = {}
 _per_key_locks_lock = threading.Lock()
@@ -181,10 +180,10 @@ import asyncio
 
 
 async def async_embed_text(text: str) -> list[float]:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, embed_text, text)
 
 
 async def async_embed_texts(texts: list[str]) -> list[list[float]]:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, embed_texts, texts)

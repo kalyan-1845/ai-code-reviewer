@@ -15,5 +15,5 @@ export function verifyWebhookSignature(rawBody, signature, secret) {
 
   if (received.length !== expected.length) return false;
 
-  return crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
+  return crypto.timingSafeEqual(Buffer.from(received, 'utf-8'), Buffer.from(expected, 'utf-8'));
 }

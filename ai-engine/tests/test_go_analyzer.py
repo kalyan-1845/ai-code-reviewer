@@ -232,3 +232,48 @@ class TestGoFindingsToFileReview:
         go_result = {"vet": [], "staticcheck": [], "staticcheck_available": True, "note": None}
         review = go_findings_to_file_review(go_result)
         assert review == {"bugs": [], "security": [], "optimization": [], "styling": []}
+
+
+class TestParseGoVetOutputWindowsPath:
+    """Tests for parse_go_vet_output with Windows drive letter paths."""
+
+    def test_parses_vet_output_with_windows_drive_letter(self):
+        # go vet on Windows reports paths like C:\Users\...\file.go
+        stderr = "C:/Users/builder/src/main.go:10:5: Println call has arguments but no formatting directives\n"
+        findings = parse_go_vet_output(stderr)
+        assert len(findings) == 1
+        # The regex strips the drive letter and returns the Unix-style path
+        assert findings[0]["file"] == "/Users/builder/src/main.go"
+        assert findings[0]["line"] == 10
+        assert findings[0]["column"] == 5
+        assert findings[0]["severity"] == "error"
+        assert findings[0]["rule"] == "go-vet"
+
+    def test_parses_vet_output_with_windows_drive_letter_and_display_filename(self):
+        stderr = "C:/tmp/go-build123456/main.go:5:1: some issue\n"
+        findings = parse_go_vet_output(stderr, display_filename="src/main.go")
+        assert len(findings) == 1
+        # display_filename overrides the parsed path
+        assert findings[0]["file"] == "src/main.go"
+
+
+class TestParseStaticcheckOutputWindowsPath:
+    """Tests for parse_staticcheck_output with Windows drive letter paths."""
+
+    def test_parses_staticcheck_output_with_windows_drive_letter(self):
+        # staticcheck on Windows reports paths with drive letters
+        stdout = "C:/project/main.go:8:3: error is unused (SA9003)\n"
+        findings = parse_staticcheck_output(stdout)
+        assert len(findings) == 1
+        # The regex strips the drive letter and returns the Unix-style path
+        assert findings[0]["file"] == "/project/main.go"
+        assert findings[0]["line"] == 8
+        assert findings[0]["column"] == 3
+        assert findings[0]["severity"] == "error"
+        assert findings[0]["rule"] == "staticcheck:SA9003"
+
+    def test_parses_staticcheck_windows_path_with_display_filename(self):
+        stdout = "D:/go/src/pkg/utils.go:12:7: should use constants (S1002)\n"
+        findings = parse_staticcheck_output(stdout, display_filename="pkg/utils.go")
+        assert len(findings) == 1
+        assert findings[0]["file"] == "pkg/utils.go"
