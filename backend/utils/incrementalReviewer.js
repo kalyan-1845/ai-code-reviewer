@@ -25,6 +25,7 @@ function getFileContentHash(filePath) {
 }
 
 function buildContentHashCache(files) {
+  if (!Array.isArray(files)) return {};
   const cache = {};
   for (const file of files) {
     const hash = getFileContentHash(file);
@@ -86,6 +87,10 @@ async function getChangedFiles(repoPath, baseRef = 'main') {
 }
 
 function getFilesToReview(currentFiles, previousCache) {
+  if (!Array.isArray(currentFiles)) {
+    return { filesToReview: [], currentCache: {}, changedCount: 0, totalCount: 0 };
+  }
+  const prevCache = previousCache || {};
   if (!previousCache) {
     // Treat all files as changed when there is no previous cache
     const currentCache = buildContentHashCache(currentFiles);
@@ -103,7 +108,7 @@ function getFilesToReview(currentFiles, previousCache) {
 
   for (const file of currentFiles) {
     const currentHash = currentCache[file];
-    const previousHash = previousCache[file];
+    const previousHash = prevCache[file];
 
     if (!currentHash) {
       continue;
