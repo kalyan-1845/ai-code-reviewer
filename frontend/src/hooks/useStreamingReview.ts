@@ -103,6 +103,9 @@ export const useStreamingReview = () => {
     } finally {
       if (abortRef.current === controller) {
         setIsStreaming(false);
+        // The stream ended on its own; release the controller so a later
+        // resetStream() doesn't abort a finished stream or wipe its output.
+        abortRef.current = null;
       }
     }
   }, []);
@@ -110,7 +113,6 @@ export const useStreamingReview = () => {
   const resetStream = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setReviewText('');
     setIsStreaming(false);
     setIsMock(false);
     setError(null);
