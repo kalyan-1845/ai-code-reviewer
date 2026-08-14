@@ -8,11 +8,11 @@ export function sanitizeRedisKey(input, maxLength = 128) {
     .replace(/[\r\n\x00-\x1f\x7f]/g, '')
     .replace(/\s+/g, '_')
     .replace(/[^\w\-:.]/g, '_');
-  if (sanitized.length > maxLength) {
-    sanitized = sanitized.slice(0, maxLength);
-  }
   if (sanitized.startsWith(':') || sanitized.startsWith('-')) {
     sanitized = '_' + sanitized;
+  }
+  if (sanitized.length > maxLength) {
+    sanitized = sanitized.slice(0, maxLength);
   }
   return sanitized;
 }
