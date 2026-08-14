@@ -1,4 +1,11 @@
 export function isValidGithubToken(token) {
+  if (!token || typeof token !== 'string') return false;
+  const cleanToken = token.trim();
+  if (cleanToken.length < 10 || cleanToken.length > 255) return false;
+  // Modern GitHub token formats: ghp_ (classic PAT), gho_ (org PAT),
+  // ghu_ (OAuth), ghs_ (server/app), ghr_ (refresh), github_pat_ (fine-grained), or classic 40-hex PAT.
+  const tokenRegex = /^(?:(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[a-zA-Z0-9_]+|[a-fA-F0-9]{40})$/;
+  return tokenRegex.test(cleanToken);
   if (!token || typeof token !== 'string' || token.length > 255) return false;
   // Modern GitHub token formats: ghp_ (classic PAT), gho_ (org PAT),
   // ghu_ (OAuth), ghs_ (server/app), ghr_ (refresh), github_pat_ (fine-grained).
