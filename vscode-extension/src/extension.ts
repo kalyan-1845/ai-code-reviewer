@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { reviewFileContent } from "./api";
 import { RepoSageDiagnostics } from "./diagnostics";
 import { RepoSageWebviewProvider } from "./webviewProvider";
-import { formatReviewToMarkdown } from "./utils";
+import { runReviewCommand } from "./reviewCommand";
 
 const SECRET_KEY = "reposage.apiKey";
 
@@ -110,30 +110,20 @@ export async function activate(context: vscode.ExtensionContext) {
         const fileContent = document.getText();
         const apiKey = (await context.secrets.get(SECRET_KEY)) ?? "";
 
-        provider.setLoading(true);
-        vscode.window.showInformationMessage(
-          `RepoSage: Reviewing ${fileName}...`
+        await runReviewCommand(
+          {
+            reviewFileContent,
+            provider,
+            diagnostics,
+            showInformationMessage: (message) =>
+              vscode.window.showInformationMessage(message),
+            showErrorMessage: (message) =>
+              vscode.window.showErrorMessage(message),
+          },
+          fileName,
+          fileContent,
+          apiKey
         );
-
-        const result = await reviewFileContent(fileName, fileContent, apiKey);
-
-        if (result.success) {
-          console.log("RepoSage review result:", result.response);
-          const markdown = result.data ? formatReviewToMarkdown(result.data) : (result.response || "");
-          provider.setContent(markdown);
-          if (result.data) {
-            diagnostics.updateFromResponse(result.data, fileName);
-          }
-          vscode.window.showInformationMessage(
-            "RepoSage review complete! Check the sidebar for details."
-          );
-        } else {
-          provider.setError(result.error || "Unknown error");
-          vscode.window.showErrorMessage(
-            `RepoSage review failed: ${result.error}`
-          );
-        }
-        provider.setLoading(false);
       }
     )
   );
