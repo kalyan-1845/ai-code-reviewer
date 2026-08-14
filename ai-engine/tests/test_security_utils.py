@@ -48,3 +48,17 @@ def test_detect_high_entropy_strings_deduplication():
     
     assert len(results) == 1
     assert results[0][0] == "xV9p$Lm#Q!zRt2Y&k8w@vCdE5g"
+
+def test_detect_high_entropy_strings_escaped_quotes():
+    # A secret nested inside escaped quotes must still be captured as one
+    # string literal and reported (the old non-greedy regex stopped at the
+    # escaped quote and skipped the rest of the string).
+    mock_content = 'config = "password=\\"abc123def456ghi789\\""'
+    
+    results = detect_high_entropy_strings(mock_content, threshold=4.5, min_length=16)
+    
+    assert len(results) == 1
+    string_val, entropy = results[0]
+    assert string_val == 'password=\\"abc123def456ghi789\\"'
+    assert "abc123def456ghi789" in string_val
+    assert entropy > 4.5
