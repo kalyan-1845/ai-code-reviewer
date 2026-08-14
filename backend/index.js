@@ -974,7 +974,9 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
             try {
               const errData = await aiResponse.json();
               errMsg = errData.detail || errData.error || errData.message || errMsg;
-            } catch {}
+            } catch (e) {
+              console.warn('Failed to parse AI engine error response:', e.message);
+            }
             throw new Error(errMsg);
           }
         } catch (err) {
