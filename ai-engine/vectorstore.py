@@ -20,7 +20,7 @@ def _load():
                 _vectors = json.load(f)
         else:
             _vectors = []
-    except (json.JSONDecodeError, IOError) as exc:
+    except (json.JSONDecodeError, IOError, UnicodeDecodeError) as exc:
         print(f"WARNING: Failed to load vectors from {VECTORS_FILE}: {exc}. Resetting to empty.")
         _vectors = []
 
