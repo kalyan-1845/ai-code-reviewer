@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Sparkles, FileCode, AlertTriangle, Send } from "lucide-react";
+import { Sparkles, FileCode, AlertTriangle, Send, Trash2 } from "lucide-react";
 import CopyToClipboardButton from "./CopyToClipboardButton";
 import { ChatMessage } from "../store/useStore";
 
@@ -15,11 +15,12 @@ interface ChatPanelProps {
   setUseRag: (rag: boolean) => void;
   handleSendChatMessage: (e: React.FormEvent) => void;
   renderMarkdown: (md: string) => React.ReactNode;
+  onClearHistory: () => void;
 }
 
 export default function ChatPanel({
   chatHistory, isChatLoading, chatInput, setChatInput, chatInputEmpty,
-  selectedModel, sessionId, useRag, setUseRag, handleSendChatMessage, renderMarkdown,
+  selectedModel, sessionId, useRag, setUseRag, handleSendChatMessage, renderMarkdown, onClearHistory,
 }: ChatPanelProps) {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -34,9 +35,23 @@ export default function ChatPanel({
           <span style={{ fontSize: "10px", background: "#a855f7", color: "#fae8ff", padding: "2px 8px", borderRadius: "20px", fontWeight: 600, textTransform: "uppercase" }}>Interactive Chat</span>
           <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#f3f4f6", margin: "4px 0 0 0" }}>Chat with Codebase</h3>
         </div>
-        <span style={{ fontSize: "11px", color: "#9ca3af", display: "flex", alignItems: "center", gap: "4px" }}>
-          Active: <strong style={{ color: "#c084fc" }}>{selectedModel.split("-")[0].toUpperCase()}</strong>
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "11px", color: "#9ca3af", display: "flex", alignItems: "center", gap: "4px" }}>
+            Active: <strong style={{ color: "#c084fc" }}>{selectedModel.split("-")[0].toUpperCase()}</strong>
+          </span>
+          {chatHistory.length > 0 && (
+            <button
+              type="button"
+              onClick={onClearHistory}
+              title="Clear chat history (Ctrl+L)"
+              style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: "#9ca3af", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "6px", padding: "5px 10px", cursor: "pointer", transition: "all 0.15s ease" }}
+              className="hover:bg-white/10"
+            >
+              <Trash2 size={12} />
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ flexGrow: 1, overflowY: "auto", paddingRight: "4px", marginBottom: "16px", display: "flex", flexDirection: "column", gap: "14px", maxHeight: "52vh" }}>

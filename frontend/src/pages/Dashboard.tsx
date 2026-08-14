@@ -46,6 +46,7 @@ import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../util
 import { sanitizeAuditEntry } from "../utils/sanitize";
 // Path resolves correctly: pages/ -> ../utils/api -> frontend/src/utils/api
 import { apiFetch } from "../utils/api";
+import { findChatInjectionPhrase } from "../utils/chatSafety";
 import { usePersistentReport } from '../hooks/usePersistentReport';
 import { useStreamingReview } from "../hooks/useStreamingReview";
 
@@ -672,20 +673,13 @@ export default function Dashboard() {
     e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
 
-    // Basic client-side scan of history for dangerous patterns
-    if (Array.isArray(chatHistory) && chatHistory.length > 0) {
-      const lowMsg = chatInput.toLowerCase();
-      for (const entry of chatHistory) {
-        if (entry?.content) {
-          for (const phrase of ['ignore all instructions', 'ignore previous', 'forget everything', 'you are now', 'new instructions']) {
-            if (entry.content.toLowerCase().includes(phrase) || lowMsg.includes(phrase)) {
-              setApiError('Message blocked: prohibited content detected.');
-              setIsChatLoading(false);
-              return;
-            }
-          }
-        }
-      }
+    // Client-side scan of the newly submitted message only for injection phrases.
+    // Past history (including assistant replies) must never block future messages.
+    const blockedPhrase = findChatInjectionPhrase(chatInput);
+    if (blockedPhrase) {
+      setApiError("Message blocked: prohibited content detected.");
+      setChatInput("");
+      return;
     }
 
     const userMessage = chatInput;
@@ -3242,6 +3236,7 @@ export default function Dashboard() {
                       useRag={useRag}
                       setUseRag={setUseRag}
                       handleSendChatMessage={handleSendChatMessage}
+                      onClearHistory={() => setChatHistory([])}
                       renderMarkdown={renderMarkdown}
                     />
                   </SectionErrorBoundary>
