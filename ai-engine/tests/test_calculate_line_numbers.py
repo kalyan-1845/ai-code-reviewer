@@ -8,14 +8,14 @@ class TestCalculateLineNumbers:
     def test_empty_content_with_single_empty_chunk(self):
         """Empty content with empty chunk starting at 0."""
         result = _calculate_line_numbers("", [""], [0])
-        assert result == [(0, 0)]
+        assert result == [(1, 1)]
 
     def test_single_line_no_newlines(self):
         """Single line content, one chunk starting at index 0."""
         content = "hello world"
         chunks = ["hello world"]
         result = _calculate_line_numbers(content, chunks, [0])
-        assert result == [(0, 0)]
+        assert result == [(1, 1)]
 
     def test_single_line_with_offset(self):
         """Single line chunk starting at a non-zero offset."""
@@ -23,7 +23,7 @@ class TestCalculateLineNumbers:
         chunks = ["hello world"]
         # start_idx=7 (after "prefix ")
         result = _calculate_line_numbers(content, chunks, [7])
-        assert result == [(0, 0)]  # no newlines in prefix, no newlines in chunk
+        assert result == [(1, 1)]  # no newlines in prefix, no newlines in chunk
 
     def test_multiple_newlines_in_single_chunk(self):
         """Chunk with multiple lines has correct end_line."""
@@ -31,16 +31,16 @@ class TestCalculateLineNumbers:
         chunks = ["line1\nline2\nline3"]
         result = _calculate_line_numbers(content, chunks, [0])
         # 0 newlines before index 0, 2 newlines in chunk
-        assert result == [(0, 2)]
+        assert result == [(1, 3)]
 
     def test_multiple_chunks_sequential(self):
         """Multiple chunks with sequential start indices."""
         content = "line1\nline2\nline3\nline4\nline5"
         chunks = ["line1\nline2", "line3\nline4\nline5"]
         result = _calculate_line_numbers(content, chunks, [0, 8])
-        # Chunk 1: 0 newlines before 0, 1 newline in "line1\nline2" -> (0, 1)
-        # Chunk 2: 1 newline before index 8, 2 newlines in "line3\nline4\nline5" -> (1, 3)
-        assert result == [(0, 1), (1, 3)]
+        # Chunk 1: 0 newlines before 0, 1 newline in "line1\nline2" -> (1, 2)
+        # Chunk 2: 1 newline before index 8, 2 newlines in "line3\nline4\nline5" -> (2, 4)
+        assert result == [(1, 2), (2, 4)]
 
     def test_end_line_always_gte_start_line(self):
         """End line number should always be >= start line number."""
@@ -56,12 +56,12 @@ class TestCalculateLineNumbers:
         content = "first line\nsecond line\nthird line"
         chunks = ["first line"]
         result = _calculate_line_numbers(content, chunks, [0])
-        assert result[0][0] == 0
+        assert result[0][0] == 1
 
     def test_single_character_content(self):
         """Single character content."""
         result = _calculate_line_numbers("a", ["a"], [0])
-        assert result == [(0, 0)]
+        assert result == [(1, 1)]
 
     def test_number_of_tuples_equals_number_of_chunks(self):
         """Output list length should match input chunks length."""
@@ -77,10 +77,10 @@ class TestCalculateLineNumbers:
         # Two chunks that overlap by one line
         chunks = ["line1\nline2", "line2\nline3"]
         result = _calculate_line_numbers(content, chunks, [0, 7])
-        # Chunk 1: 0 newlines before 0, 1 newline in chunk -> (0, 1)
-        # Chunk 2: 1 newline before 7 (the \n at index 5), 1 newline in chunk -> (1, 2)
-        assert result[0] == (0, 1)
-        assert result[1] == (1, 2)
+        # Chunk 1: 0 newlines before 0, 1 newline in chunk -> (1, 2)
+        # Chunk 2: 1 newline before 7 (the \n at index 5), 1 newline in chunk -> (2, 3)
+        assert result[0] == (1, 2)
+        assert result[1] == (2, 3)
 
     def test_large_file_with_many_lines(self):
         """Large file with many lines."""
@@ -94,7 +94,7 @@ class TestCalculateLineNumbers:
             content, chunks[:5], start_indices[:5]
         )
         assert len(result) == 5
-        assert result[0][0] == 0  # first chunk starts at line 0
+        assert result[0][0] == 1  # first chunk starts at line 0
         assert result[1][0] > result[0][0]  # second chunk starts later
 
     def test_preserves_chunk_count_even_with_extra_indices(self):
@@ -104,4 +104,4 @@ class TestCalculateLineNumbers:
         start_indices = [0, 10]  # one extra
         result = _calculate_line_numbers(content, chunks, start_indices)
         assert len(result) == 1  # zip truncates
-        assert result[0] == (0, 1)
+        assert result[0] == (1, 2)
