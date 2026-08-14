@@ -40,6 +40,7 @@ import { loadConfigFile, applySeverityConfig } from './utils/severityConfig.js';
 import AnalysisCache from './utils/analysisCache.js';
 import { getPriorReviewIds, storeReviewIds, clearReviewIds, supersedePriorReviews } from './utils/reviewTracker.js';
 import DedupStore from './utils/dedupStore.js';
+import { registerCrashHandlers } from './utils/crashHandlers.js';
 import mongoose from 'mongoose';
 import Analytics from './models/Analytics.js';
 import Session, { estimateSessionSize } from './models/Session.js';
@@ -438,33 +439,20 @@ function cleanupTempRepos() {
     console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
   }
 }
-async function onShutdown() {
+async function onShutdown(exitCode = 0) {
   cleanupTempRepos();
   cleanupTimers();
   if (redisClient) await redisClient.quit();
   await closeDatabase();
-  process.exit(0);
+  process.exit(exitCode);
 }
-process.on('SIGINT', onShutdown);
-process.on('SIGTERM', onShutdown);
+process.on('SIGINT', () => onShutdown(0));
+process.on('SIGTERM', () => onShutdown(0));
 process.on('exit', cleanupTempRepos);
 
-// Clean up temp_repos and timers on uncaught exceptions to prevent orphan temp folders
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
-  if (err.stack) {
-    console.error(err.stack);
-  }
-  onShutdown();
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason instanceof Error ? reason.message : reason);
-  if (reason instanceof Error && reason.stack) {
-    console.error(reason.stack);
-  }
-  onShutdown();
-});
+// Clean up temp_repos and timers on uncaught exceptions to prevent orphan temp folders.
+// Crash paths exit non-zero (via onShutdown) so orchestrators/CI detect the failure and restart.
+registerCrashHandlers((exitCode) => onShutdown(exitCode));
 
 // Repository contexts for chat are now persisted in MongoDB via the Session model.
 // The Session collection uses a TTL index on absoluteExpiry (expireAfterSeconds: 0)
