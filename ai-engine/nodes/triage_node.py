@@ -1,6 +1,31 @@
 import os
+import re
 from typing import Dict, Any, List
+
+from services.secret_scrubber import scrub_secrets
 from src.graph.state import AgentState
+
+
+def _is_pure_pin_dependency_change(raw_diff: str) -> bool:
+    """True if the diff only changes lockfile hashes/pins (no URL, version, or package-name changes)."""
+    change_lines = [
+        line[1:].strip().strip('",')
+        for line in raw_diff.splitlines()
+        if (line.startswith("+") or line.startswith("-")) and not (line.startswith("+++") or line.startswith("---"))
+    ]
+    if not change_lines:
+        return True
+
+    hash_markers = ("integrity", "sha256", "sha512", "sha384", "sha1", "md5", "hashes", "hash")
+    hex_blob = re.compile(r"[a-fA-F0-9]{32,}")
+    for line in change_lines:
+        lowered = line.lower()
+        if any(marker in lowered for marker in hash_markers):
+            continue
+        if hex_blob.search(line):
+            continue
+        return False
+    return True
 
 
 def triage_router(state: AgentState) -> Dict[str, Any]:
@@ -33,18 +58,24 @@ def triage_router(state: AgentState) -> Dict[str, Any]:
 
     # 1. DOCS: files ending with .md, .txt, or inside docs/
     docs_extensions = ('.md', '.txt', '.rst', '.adoc')
+    dep_files = {'package.json', 'package-lock.json', 'requirements.txt', 'poetry.lock', 'yarn.lock', 'pnpm-lock.yaml', 'pipfile', 'pipfile.lock'}
+
+    def is_dep_manifest(f: str) -> bool:
+        return os.path.basename(f.lower()) in dep_files
+
     is_docs = all(
-        f.lower().endswith(docs_extensions) or
-        f.lower().startswith('docs/') or
-        '/docs/' in f.lower() or
-        f.lower() == 'docs'
+        not is_dep_manifest(f) and (
+            f.lower().endswith(docs_extensions) or
+            f.lower().startswith('docs/') or
+            '/docs/' in f.lower() or
+            f.lower() == 'docs'
+        )
         for f in modified_files
     )
 
     # 2. DEPENDENCY_BUMP: changes limited to package.json, package-lock.json, requirements.txt, or poetry.lock
-    dep_files = {'package.json', 'package-lock.json', 'requirements.txt', 'poetry.lock', 'yarn.lock', 'pnpm-lock.yaml', 'pipfile', 'pipfile.lock'}
     is_dep_bump = all(
-        os.path.basename(f.lower()) in dep_files
+        is_dep_manifest(f)
         for f in modified_files
     )
 
@@ -74,7 +105,7 @@ def triage_router(state: AgentState) -> Dict[str, Any]:
         is_trivial = True
     elif is_dep_bump:
         category = "DEPENDENCY_BUMP"
-        is_trivial = True
+        is_trivial = _is_pure_pin_dependency_change(raw_diff)
     elif is_trivial_files or (is_single_line_fix and (has_typo_keyword or not has_core_file)) or (has_typo_keyword and is_single_line_fix):
         category = "TRIVIAL"
         is_trivial = True
@@ -94,7 +125,25 @@ def triage_router(state: AgentState) -> Dict[str, Any]:
 def trivial_approval_node(state: AgentState) -> Dict[str, Any]:
     """
     Short-circuit node for trivial changes.
+
+    Emits the canned LGTM only when the diff contains no secrets. If secrets
+    are detected, the security alert becomes the final review so the change
+    is never approved without secret scanning.
     """
+    raw_diff = state.get("raw_diff", "")
+    _, detected_secrets = scrub_secrets(raw_diff)
+
+    if detected_secrets:
+        secrets_str = ", ".join(detected_secrets)
+        return {
+            "final_review": (
+                f"⚠️ SECURITY ALERT: Secrets detected in PR diff ({secrets_str})! "
+                "Secrets have been scrubbed before LLM processing. Please immediately revoke and rotate these credentials."
+            ),
+            "has_leaked_secrets": True,
+            "detected_secrets": detected_secrets,
+        }
+
     return {
         "final_review": "LGTM - Trivial Change Bypassed Heavy Review"
     }

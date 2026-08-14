@@ -31,6 +31,62 @@ def test_triage_router_dependency_bump_pr():
     assert res["is_trivial"] is True
 
 
+def test_triage_router_dependency_pure_pin_change_stays_trivial():
+    state: AgentState = {
+        "modified_files": ["package-lock.json"],
+        "commit_messages": ["chore: re-pin lockfile hashes"],
+        "raw_diff": (
+            'diff --git a/package-lock.json b/package-lock.json\n'
+            '-    "integrity": "sha512-oldhash",\n'
+            '+    "integrity": "sha512-newhash",\n'
+            '-    sha256 abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\n'
+            '+    sha256 fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\n'
+        )
+    }
+    res = triage_router(state)
+    assert res["pr_category"] == "DEPENDENCY_BUMP"
+    assert res["is_trivial"] is True
+
+
+def test_triage_router_dependency_bump_version_change_not_trivial():
+    state: AgentState = {
+        "modified_files": ["requirements.txt"],
+        "commit_messages": ["chore: bump dependencies"],
+        "raw_diff": "diff --git a/requirements.txt b/requirements.txt\n-requests==2.28.0\n+requests==2.28.1"
+    }
+    res = triage_router(state)
+    assert res["pr_category"] == "DEPENDENCY_BUMP"
+    assert res["is_trivial"] is False
+
+
+def test_triage_router_dependency_resolution_url_change_not_trivial():
+    state: AgentState = {
+        "modified_files": ["package-lock.json"],
+        "commit_messages": ["chore: update dependency"],
+        "raw_diff": (
+            'diff --git a/package-lock.json b/package-lock.json\n'
+            '-  "resolved": "https://registry.npmjs.org/foo/-/foo-1.0.0.tgz",\n'
+            '+  "resolved": "https://evil.example/foo-1.0.0.tgz",\n'
+        )
+    }
+    res = triage_router(state)
+    assert res["pr_category"] == "DEPENDENCY_BUMP"
+    assert res["is_trivial"] is False
+
+
+def test_trivial_approval_node_rejects_planted_secret():
+    state: AgentState = {
+        "modified_files": ["requirements.txt"],
+        "raw_diff": "diff --git a/requirements.txt b/requirements.txt\n+API_KEY = \"abcdefghijklmnop123\""
+    }
+    result = trivial_approval_node(state)
+    assert result["final_review"] != "LGTM - Trivial Change Bypassed Heavy Review"
+    assert "SECURITY ALERT" in result["final_review"]
+    assert result["has_leaked_secrets"] is True
+    assert "API_KEY" in result["detected_secrets"]
+
+
+
 def test_triage_router_trivial_pr():
     state: AgentState = {
         "modified_files": [".gitignore"],
