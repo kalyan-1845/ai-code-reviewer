@@ -146,6 +146,22 @@ class ReviewQueue {
   // for the same key before starting the new one. This prevents lost updates and
   // race conditions from concurrent read-modify-write on shared resources.
   async runExclusive(key, fn) {
+    const prev = this._exclusiveLocks.get(key) || Promise.resolve();
+    let resolveLock;
+    const currentLock = new Promise(resolve => { resolveLock = resolve; });
+    this._exclusiveLocks.set(key, currentLock);
+    this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });
+
+    await prev.catch(() => {});
+    try {
+      return await fn();
+    } finally {
+      if (this._exclusiveLocks.get(key) === currentLock) {
+        this._exclusiveLocks.delete(key);
+        this._exclusiveLocksTimestamps.delete(key);
+      }
+      resolveLock();
+    }
     // Chain the new run onto the previous run for this key. Promise-based
     // chaining is atomic: the check-and-set happen in the same synchronous
     // block, so concurrent callers cannot both observe an absent lock and
