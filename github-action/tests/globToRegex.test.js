@@ -14,3 +14,12 @@ test('globToRegex still supports single and double star globs', () => {
   assert.equal(globToRegex('src/*.js').test('src/nested/app.js'), false);
   assert.equal(globToRegex('src/**/app.js').test('src/nested/app.js'), true);
 });
+
+test('globToRegex handles nullish and non-string patterns as empty matches', () => {
+  for (const value of [null, undefined, 42, {}, []]) {
+    const regex = globToRegex(value);
+
+    assert.equal(regex.test('src/app.js'), false);
+    assert.equal(regex.test(''), true);
+  }
+});
