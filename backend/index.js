@@ -895,27 +895,54 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
       
       const repositoryContext = buildRepositoryContext(files);
 
-      // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
-      // This is a perfect placeholder where contributors can connect the FastAPI server!
+      // 2. Prepare the scrubbed, .codereviewer.yml-filtered payload and the shared cache key.
+      //    Both the primary AI-engine path and the fallback path use these.
+      const CONFIG_FILENAME = '.codereviewer.yml';
+      const scrubbedFiles = files
+        .filter(f => f.name !== CONFIG_FILENAME)
+        .map(file => ({
+        ...file,
+        content: scrubRepositoryPayload(file.content)
+      }));
+
+      const cacheKey = analysisCache.generateKey(repoUrl, scrubbedFiles, { model, language, company, systemPrompt: validatedPrompt, temperature, maxTokens, batchSize });
+
+      // 3. Forward to FastAPI AI Engine (cache-first)
       const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
-      
-      let reviewResult;
       const baseUrl = aiEngineUrl.replace(/\/+$/, '');
-      try {
-        const aiResponse = await fetch(`${baseUrl}/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize, repositoryContext })
-        });
-        
-        if (aiResponse.ok) {
-          reviewResult = await aiResponse.json();
-          reviewResult._mock = false;
-        } else {
-          throw new Error('AI engine responded with error');
+
+      let reviewResult;
+      let cacheHit = false;
+
+      // 1.5. Check analysis cache to avoid redundant LLM calls for identical analyses
+      const cachedResult = analysisCache.get(cacheKey);
+      if (cachedResult) {
+        cacheHit = true;
+        reviewResult = cachedResult;
+        console.log(`🎯 Using cached analysis result for this repository and configuration`);
+      } else {
+        try {
+          const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+            body: JSON.stringify({ files: scrubbedFiles, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize, repositoryContext })
+          }, 120000);
+
+          if (aiResponse.ok) {
+            reviewResult = await aiResponse.json();
+            reviewResult._mock = false;
+            analysisCache.set(cacheKey, reviewResult, { repoUrl });
+          } else {
+            let errMsg = 'AI engine responded with error';
+            try {
+              const errData = await aiResponse.json();
+              errMsg = errData.detail || errData.error || errData.message || errMsg;
+            } catch {}
+            throw new Error(`AI engine responded with ${aiResponse.status}: ${errMsg}`);
+          }
+        } catch (err) {
+          console.warn(`⚠️ FastAPI engine error, falling back... ${err.message}`);
         }
-      } catch (err) {
-        console.warn('⚠️ FastAPI engine error, falling back...');
       }
 
       if (!reviewResult) {
@@ -933,17 +960,8 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
         console.warn(`ΓÜá∩╕Å Found ${fileWarnings.length} potential prompt injection patterns across ${files.length} files`);
       }
 
-      // 1.5. Check analysis cache to avoid redundant LLM calls for identical analyses
-      const CONFIG_FILENAME = '.codereviewer.yml';
-      const scrubbedFiles = files
-        .filter(f => f.name !== CONFIG_FILENAME)
-        .map(file => ({
-        ...file,
-        content: scrubRepositoryPayload(file.content)
-      }));
-
-      const cacheKey = analysisCache.generateKey(repoUrl, scrubbedFiles, { model, language, company, systemPrompt: validatedPrompt, temperature, maxTokens, batchSize });
-      let cacheHit = !!analysisCache.get(cacheKey);
+      // 1.5. Re-check the shared cache before issuing a new LLM call
+      cacheHit = !!analysisCache.get(cacheKey);
       if (cacheHit) {
         console.log(`🎯 Using cached analysis result for this repository and configuration`);
       }
