@@ -147,38 +147,20 @@ class ReviewQueue {
   // race conditions from concurrent read-modify-write on shared resources.
   async runExclusive(key, fn) {
     const prev = this._exclusiveLocks.get(key) || Promise.resolve();
-    let resolveLock;
-    const currentLock = new Promise(resolve => { resolveLock = resolve; });
-    this._exclusiveLocks.set(key, currentLock);
-    this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });
 
-    await prev.catch(() => {});
-    try {
-      return await fn();
-    } finally {
-      if (this._exclusiveLocks.get(key) === currentLock) {
-        this._exclusiveLocks.delete(key);
-        this._exclusiveLocksTimestamps.delete(key);
-      }
-      resolveLock();
-    }
-    // Chain the new run onto the previous run for this key. Promise-based
-    // chaining is atomic: the check-and-set happen in the same synchronous
-    // block, so concurrent callers cannot both observe an absent lock and
-    // start running in parallel (TOCTOU).
-    const prev = this._exclusiveLocks.get(key) || Promise.resolve();
-    const run = prev.then(async () => fn());
-    const wrapped = run.finally(() => {
-      // Only the holder that is still the current lock cleans up. If a newer
-      // run replaced us, it owns the cleanup of its own finally block.
-      if (this._exclusiveLocks.get(key) === wrapped) {
-        this._exclusiveLocks.delete(key);
-        this._exclusiveLocksTimestamps.delete(key);
-      }
-    });
-    this._exclusiveLocks.set(key, wrapped);
+    let current;
+    current = prev
+      .then(() => fn())
+      .finally(() => {
+        if (this._exclusiveLocks.get(key) === current) {
+          this._exclusiveLocks.delete(key);
+          this._exclusiveLocksTimestamps.delete(key);
+        }
+      });
+
+    this._exclusiveLocks.set(key, current);
     this._exclusiveLocksTimestamps.set(key, { createdAt: Date.now() });
-    return wrapped;
+    return current;
   }
 
   cleanupStaleExclusiveLocks(maxAgeMs) {
