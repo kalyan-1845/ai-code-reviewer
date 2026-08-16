@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TMPDIR = os.tmpdir();
 
-import { generateJSONReport, generateHTMLReport, getReportPath, SCHEMA_VERSION } from '../utils/reportGenerator.js';
+import { generateJSONReport, generateHTMLReport, generateSARIFReport, getReportPath, SCHEMA_VERSION } from '../utils/reportGenerator.js';
 
 test('reportGenerator: SCHEMA_VERSION is exported and is a non-empty string', () => {
   assert.equal(typeof SCHEMA_VERSION, 'string');
@@ -25,6 +25,12 @@ test('reportGenerator: getReportPath returns correct extension for json format',
 test('reportGenerator: getReportPath returns correct extension for html format', () => {
   const result = getReportPath('html', TMPDIR);
   assert.ok(result.endsWith('.html'), 'html format should return .html extension');
+  assert.ok(result.includes(TMPDIR));
+});
+
+test('reportGenerator: getReportPath returns correct extension for sarif format', () => {
+  const result = getReportPath('sarif', TMPDIR);
+  assert.ok(result.endsWith('.sarif'), 'sarif format should return .sarif extension');
   assert.ok(result.includes(TMPDIR));
 });
 
@@ -178,6 +184,48 @@ test('reportGenerator: generateHTMLReport handles empty reviewResult with no fin
     assert.ok(html.includes('0'), 'empty count should appear in stats');
   } finally {
     if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+  }
+});
+
+test('reportGenerator: generateSARIFReport writes SARIF 2.1.0 with CWE and OWASP metadata', () => {
+  const outputPath = path.join(TMPDIR, `test-sarif-${Date.now()}.sarif`);
+  try {
+    const reviewResult = {
+      fileReviews: {
+        'src/auth.js': {
+          security: [
+            { line: 12, description: 'Hardcoded API token', rule: 'hardcoded-token' },
+            { line: 18, description: 'Unescaped script injection', rule_id: 'xss-output', cwe: 'CWE-79', owasp: 'A03:2021' },
+          ],
+        },
+      },
+    };
+
+    const result = generateSARIFReport('repo', ['src/auth.js'], reviewResult, outputPath);
+    assert.equal(result.success, true);
+    assert.equal(result.findingCount, 2);
+
+    const sarif = JSON.parse(fs.readFileSync(outputPath, 'utf-8'));
+    assert.equal(sarif.version, '2.1.0');
+    assert.equal(sarif.runs[0].results.length, 2);
+    assert.equal(sarif.runs[0].results[0].properties.cwe, 'CWE-798');
+    assert.equal(sarif.runs[0].results[0].properties.owasp, 'A07:2021');
+    assert.deepEqual(sarif.runs[0].tool.driver.rules[1].properties.tags, ['CWE-79', 'A03:2021']);
+    assert.equal(sarif.runs[0].results[1].locations[0].physicalLocation.region.startLine, 18);
+  } finally {
+    if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+  }
+});
+
+test('reportGenerator: generateSARIFReport handles write failures', () => {
+  const filePath = path.join(TMPDIR, `test-file-dir-sarif-${Date.now()}.txt`);
+  fs.writeFileSync(filePath, 'not a directory');
+  try {
+    const result = generateSARIFReport('repo', [], null, path.join(filePath, 'fail.sarif'));
+    assert.equal(result.success, false);
+    assert.ok(result.error);
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
 });
 

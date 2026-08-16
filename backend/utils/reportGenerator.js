@@ -14,7 +14,7 @@ function escapeHtml(str) {
 
 const SCHEMA_VERSION = '1.0';
 
-function generateJSONReport(repoName, files, reviewResult, outputPath) {
+function collectFindings(reviewResult) {
   const allFindings = [];
   const severityCount = Object.create(null);
   severityCount.error = 0;
@@ -36,6 +36,8 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
               category,
               message: issue.description || issue.message || '',
               rule_id: issue.rule_id || issue.rule || 'unknown',
+              cwe: issue.cwe,
+              owasp: issue.owasp,
             };
             allFindings.push(finding);
             severityCount[finalSeverity] = (severityCount[finalSeverity] || 0) + 1;
@@ -50,6 +52,12 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
       processIssues(review.styling, 'info');
     }
   }
+
+  return { allFindings, severityCount, categoryCount };
+}
+
+function generateJSONReport(repoName, files, reviewResult, outputPath) {
+  const { allFindings, severityCount, categoryCount } = collectFindings(reviewResult);
 
   const report = {
     schema_version: SCHEMA_VERSION,
@@ -77,38 +85,7 @@ function generateJSONReport(repoName, files, reviewResult, outputPath) {
 }
 
 function generateHTMLReport(repoName, files, reviewResult, outputPath) {
-  const allFindings = [];
-  const severityCount = Object.create(null);
-  severityCount.error = 0;
-  severityCount.warning = 0;
-  severityCount.info = 0;
-
-  if (reviewResult && reviewResult.fileReviews) {
-    for (const [filePath, review] of Object.entries(reviewResult.fileReviews)) {
-      const processIssues = (issues, severity) => {
-        if (Array.isArray(issues)) {
-          issues.forEach(issue => {
-            const finalSeverity = issue.severity || severity;
-            const category = categorizeFinding(issue);
-            allFindings.push({
-              file: filePath,
-              line: issue.line || 1,
-              severity: finalSeverity,
-              category,
-              message: issue.description || issue.message || '',
-              rule_id: issue.rule_id || issue.rule || 'unknown',
-            });
-            severityCount[finalSeverity] = (severityCount[finalSeverity] || 0) + 1;
-          });
-        }
-      };
-
-      processIssues(review.bugs, 'error');
-      processIssues(review.security, 'error');
-      processIssues(review.optimization, 'warning');
-      processIssues(review.styling, 'info');
-    }
-  }
+  const { allFindings, severityCount } = collectFindings(reviewResult);
 
   const severityColors = {
     error: '#ff4444',
@@ -228,8 +205,109 @@ function generateHTMLReport(repoName, files, reviewResult, outputPath) {
   }
 }
 
+function classifySarifFinding(finding) {
+  if (finding.cwe || finding.owasp) {
+    return {
+      cwe: finding.cwe || 'CWE-Other',
+      owasp: finding.owasp || 'OWASP-Other',
+    };
+  }
+
+  const haystack = `${finding.rule_id} ${finding.category} ${finding.message}`.toLowerCase();
+  if (haystack.includes('password') || haystack.includes('secret') || haystack.includes('token')) {
+    return { cwe: 'CWE-798', owasp: 'A07:2021' };
+  }
+  if (haystack.includes('xss') || haystack.includes('script') || haystack.includes('injection')) {
+    return { cwe: 'CWE-79', owasp: 'A03:2021' };
+  }
+  if (haystack.includes('path') || haystack.includes('traversal')) {
+    return { cwe: 'CWE-22', owasp: 'A01:2021' };
+  }
+  if (finding.category === 'security') {
+    return { cwe: 'CWE-200', owasp: 'A01:2021' };
+  }
+  return { cwe: 'CWE-Other', owasp: 'OWASP-Other' };
+}
+
+function sarifLevel(severity) {
+  if (severity === 'error' || severity === 'critical') return 'error';
+  if (severity === 'warning') return 'warning';
+  return 'note';
+}
+
+function generateSARIFReport(repoName, files, reviewResult, outputPath) {
+  const { allFindings } = collectFindings(reviewResult);
+  const rules = new Map();
+
+  const results = allFindings.map(finding => {
+    const classification = classifySarifFinding(finding);
+    if (!rules.has(finding.rule_id)) {
+      rules.set(finding.rule_id, {
+        id: finding.rule_id,
+        name: finding.rule_id,
+        shortDescription: { text: finding.category || 'RepoSage finding' },
+        fullDescription: { text: `RepoSage ${finding.category || 'code review'} finding` },
+        properties: {
+          tags: [classification.cwe, classification.owasp].filter(Boolean),
+          precision: 'medium',
+        },
+      });
+    }
+
+    return {
+      ruleId: finding.rule_id,
+      level: sarifLevel(finding.severity),
+      message: { text: finding.message },
+      locations: [{
+        physicalLocation: {
+          artifactLocation: { uri: finding.file },
+          region: { startLine: Math.max(1, Number(finding.line) || 1) },
+        },
+      }],
+      properties: {
+        severity: finding.severity,
+        category: finding.category,
+        cwe: classification.cwe,
+        owasp: classification.owasp,
+      },
+    };
+  });
+
+  const sarif = {
+    version: '2.1.0',
+    $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
+    runs: [{
+      tool: {
+        driver: {
+          name: 'RepoSage AI Code Reviewer',
+          informationUri: 'https://github.com/kalyan-1845/ai-code-reviewer',
+          rules: Array.from(rules.values()),
+        },
+      },
+      automationDetails: { id: repoName },
+      artifacts: (Array.isArray(files) ? files : []).map(file => ({
+        location: { uri: typeof file === 'string' ? file : file.name || file.path || String(file) },
+      })),
+      results,
+    }],
+  };
+
+  try {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, JSON.stringify(sarif, null, 2), 'utf-8');
+    return {
+      success: true,
+      path: outputPath,
+      findingCount: allFindings.length,
+    };
+  } catch (err) {
+    console.warn(`Failed to write SARIF report: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+}
+
 function getReportPath(format = 'json', outputDir = '.') {
-  const ext = format === 'html' ? 'html' : 'json';
+  const ext = format === 'html' || format === 'sarif' ? format : 'json';
   return path.join(outputDir, `review-report.${ext}`);
 }
 
@@ -237,6 +315,7 @@ export {
   escapeHtml,
   generateJSONReport,
   generateHTMLReport,
+  generateSARIFReport,
   getReportPath,
   SCHEMA_VERSION,
 };
