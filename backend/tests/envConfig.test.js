@@ -131,3 +131,47 @@ test('parsePositiveInt default is returned when no value given', () => {
   // Empty string parseInt returns NaN, which fails Number.isFinite check
   assert.strictEqual(result, 77);
 });
+
+test('parsePositiveInt accepts scientific notation that parses to positive integer', () => {
+  // Number('1e5') === 100000, which passes isInteger and > 0
+  const result = mod.parsePositiveInt('1e5', 'TEST', 50);
+  assert.strictEqual(result, 100000);
+});
+
+test('parsePositiveInt accepts uppercase scientific notation', () => {
+  const result = mod.parsePositiveInt('2E3', 'TEST', 50);
+  assert.strictEqual(result, 2000);
+});
+
+test('parsePositiveInt returns value for float string that truncates to integer', () => {
+  // Number('300.0') === 300, which is a positive integer
+  const result = mod.parsePositiveInt('300.0', 'TEST', 50);
+  assert.strictEqual(result, 300);
+});
+
+test('parsePositiveInt returns default for negative zero string', () => {
+  // Number('-0') === -0, which fails num > 0 check
+  const result = mod.parsePositiveInt('-0', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt returns default for very large integer string', () => {
+  const result = mod.parsePositiveInt('99999999999999999999999999', 'TEST', 50);
+  // Number('99999999999999999999999999') === 1e+26, which is integer > 0
+  assert.strictEqual(result, 1e+26);
+});
+
+test('parsePositiveInt returns default for non-numeric string', () => {
+  const result = mod.parsePositiveInt('hello', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt handles boolean-like strings', () => {
+  const result = mod.parsePositiveInt('true', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
+
+test('parsePositiveInt handles array string', () => {
+  const result = mod.parsePositiveInt('[1,2,3]', 'TEST', 50);
+  assert.strictEqual(result, 50);
+});
