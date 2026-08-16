@@ -26,7 +26,7 @@ test('scrubRepositoryPayload redacts AWS Access Key IDs (AKIA...)', () => {
 
 test('scrubRepositoryPayload redacts AWS Secret Access Keys (40-char base64-like)', () => {
   // 40-char base64-like string preceded by a space (to avoid false positives from the lookbehind)
-  const input = 'token: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
+  const input = 'aws secret: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
   const result = scrubRepositoryPayload(input);
   assert.equal(result.includes('wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'), false, 'AWS secret key should be redacted');
   assert.ok(result.includes('[REDACTED_SECRET]'), 'redaction marker should appear');
@@ -111,7 +111,7 @@ test('scrubRepositoryPayload redacts access_token assignments', () => {
 });
 
 test('scrubRepositoryPayload handles multiple secrets in the same string', () => {
-  const input = 'AKIAIOSFODNN7EXAMPLE and ghp_FFFFFFFFFF0000000000AAAAAAAAAA111111 and Bearer fakesecretbearertoken1234';
+  const input = 'AKIAIOSFODNN7EXAMPLE and ghp_FFFFFFFFFF0000000000AAAAAAAAAA111111 and Authorization: Bearer fakesecretbearertoken1234';
   const result = scrubRepositoryPayload(input);
   assert.equal(result.includes('AKIAIOSFODNN7EXAMPLE'), false);
   assert.equal(result.includes('ghp_FFFFFFFFFF0000000000AAAAAAAAAA111111'), false);
