@@ -48,15 +48,11 @@ class TestPromptStrings:
 
     @pytest.mark.parametrize("name,prompt", list(PROMPTS.items()))
     def test_prompt_contains_structure_text_placeholder(self, name, prompt):
-        # TEST_GENERATION_AGENT_PROMPT does not use {structure_text} — it focuses only on file changes
-        if name == "TEST_GENERATION_AGENT_PROMPT":
-            pytest.skip(f"{name} intentionally does not use {{structure_text}}")
         assert "{structure_text}" in prompt, f"{name} missing {{structure_text}} placeholder"
 
     @pytest.mark.parametrize("name,prompt", list(PROMPTS.items()))
     def test_prompt_contains_contents_text_placeholder(self, name, prompt):
-        # TEST_GENERATION_AGENT_PROMPT and SYNTHESIZER_AGENT_PROMPT do not use {contents_text}
-        if name in ("TEST_GENERATION_AGENT_PROMPT", "SYNTHESIZER_AGENT_PROMPT"):
+        if name == "SYNTHESIZER_AGENT_PROMPT":
             pytest.skip(f"{name} intentionally does not use {{contents_text}}")
         assert "{contents_text}" in prompt, f"{name} missing {{contents_text}} placeholder"
 
@@ -115,6 +111,9 @@ class TestPromptSubstitution:
         assert isinstance(result, str)
         assert len(result) > 0
         assert "AcmeCorp" in result
+        assert "src/" in result
+        assert "print('hello')" in result
+        assert '"tests"' in result
 
     def test_architecture_prompt_substitution(self):
         result = ARCHITECTURE_AGENT_PROMPT.format(
