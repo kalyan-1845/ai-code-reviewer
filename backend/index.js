@@ -320,6 +320,19 @@ async function csrfProtection(req, res, next) {
       } catch { /* fall through to normal validation */ }
     }
 
+    // Bypass CSRF entirely if the request provides a valid API key header.
+    // API key authentication is not vulnerable to CSRF because keys are not automatically sent by the browser.
+    const providedApiKey = Array.isArray(req.headers['x-api-key']) ? req.headers['x-api-key'][0] : req.headers['x-api-key'];
+    const validApiKey = process.env.REPOSAGE_API_KEY;
+    if (providedApiKey && validApiKey) {
+      // Use timing safe comparison
+      const providedBuf = Buffer.from(String(providedApiKey));
+      const validBuf = Buffer.from(String(validApiKey));
+      if (providedBuf.length === validBuf.length && crypto.timingSafeEqual(providedBuf, validBuf)) {
+        return next();
+      }
+    }
+
     if (!headerToken || !cookieToken) {
       // Allow session creation and CSRF token endpoints to function
       if (req.path.endsWith('/api/session') || req.path.endsWith('/api/csrf-token')) {

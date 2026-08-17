@@ -117,6 +117,9 @@ export const apiFetch = async (
       headers.set("X-CSRF-Token", token);
     }
   }
+  if (apiKey) {
+    headers.set("x-api-key", apiKey);
+  }
 
   const controller = new AbortController();
   const callerSignal = options.signal;
