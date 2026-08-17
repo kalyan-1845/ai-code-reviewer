@@ -355,7 +355,7 @@ async function csrfProtection(req, res, next) {
     const newToken = await generateCsrfToken();
     res.cookie(CSRF_COOKIE_NAME, newToken, {
       httpOnly: false,
-      sameSite: 'strict',
+      sameSite: 'none',
       path: '/',
       secure: process.env.NODE_ENV === 'production',
     });
@@ -380,7 +380,7 @@ app.post('/api/session', requireApiKey, async (req, res) => {
   const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'none',
     path: '/',
     secure: process.env.NODE_ENV === 'production',
   });
@@ -404,7 +404,7 @@ app.get('/api/csrf-token', async (req, res) => {
   const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'none',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
   });
@@ -815,7 +815,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
       if (cachedResponse.sessionPersisted && cachedResponse.csrfToken) {
         res.cookie(CSRF_COOKIE_NAME, cachedResponse.csrfToken, {
           httpOnly: true,
-          sameSite: 'strict',
+          sameSite: 'none',
           path: '/',
           secure: process.env.NODE_ENV === 'production',
         });

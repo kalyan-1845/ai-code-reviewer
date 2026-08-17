@@ -126,7 +126,7 @@ export function createFrontendSessionCookie(res) {
   res.cookie(SESSION_COOKIE_NAME, `${payload}.${signature}`, {
     httpOnly: true,
     secure: secureCookie,
-    sameSite: 'strict',
+    sameSite: 'none',
     path: '/',
     maxAge: SESSION_MAX_AGE_SECONDS * 1000,
   });
