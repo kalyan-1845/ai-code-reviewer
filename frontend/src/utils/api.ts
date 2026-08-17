@@ -7,80 +7,11 @@ const API_BASE_URL = (window as any).__RUNTIME_API_URL__ || import.meta.env.VITE
 // page (#3675). Never persist it in sessionStorage/localStorage: a plaintext
 // copy in script-readable storage is exfiltratable by any XSS or browser
 // extension, and the shared key unlocks every /api endpoint.
-let apiKey: string | null = null;
+let apiKey: string | null = import.meta.env.VITE_REPOSAGE_API_KEY || null;
 let sessionRequest: Promise<void> | null = null;
 let csrfToken: string | null = null;
 
-function showPasswordDialog(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const overlay = document.createElement("div");
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:99999";
 
-    const dialog = document.createElement("div");
-    dialog.style.cssText = "background:#fff;padding:24px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);min-width:360px;font-family:sans-serif";
-
-    const heading = document.createElement("h3");
-    heading.textContent = "API Key Required";
-    heading.style.cssText = "margin:0 0 8px 0;color:#333;font-size:16px";
-
-    const desc = document.createElement("p");
-    desc.textContent = "Enter the RepoSage backend API key:";
-    desc.style.cssText = "margin:0 0 16px 0;color:#666;font-size:13px";
-
-    const input = document.createElement("input");
-    input.type = "password";
-    input.style.cssText = "width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box";
-    input.autofocus = true;
-
-    const buttonRow = document.createElement("div");
-    buttonRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:16px";
-
-    const submitBtn = document.createElement("button");
-    submitBtn.textContent = "Submit";
-    submitBtn.style.cssText = "padding:8px 20px;background:#a855f7;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px";
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.textContent = "Cancel";
-    cancelBtn.style.cssText = "padding:8px 20px;background:#f5f5f5;color:#333;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:14px";
-
-    buttonRow.appendChild(cancelBtn);
-    buttonRow.appendChild(submitBtn);
-
-    dialog.appendChild(heading);
-    dialog.appendChild(desc);
-    dialog.appendChild(input);
-    dialog.appendChild(buttonRow);
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-
-    function cleanup() {
-      document.body.removeChild(overlay);
-    }
-
-    submitBtn.onclick = () => {
-      const val = input.value.trim();
-      if (!val) {
-        input.focus();
-        input.style.borderColor = "#e53e3e";
-        return;
-      }
-      cleanup();
-      resolve(val);
-    };
-
-    cancelBtn.onclick = () => {
-      cleanup();
-      reject(new Error("Backend API key is required to continue."));
-    };
-
-    input.onkeydown = (e) => {
-      if (e.key === "Enter") submitBtn.click();
-      if (e.key === "Escape") cancelBtn.click();
-    };
-
-    setTimeout(() => input.focus(), 100);
-  });
-}
 
 export const ensureApiSession = async () => {
   if (!sessionRequest) {
@@ -90,9 +21,8 @@ export const ensureApiSession = async () => {
     }).then(async (response) => {
       if (response.status === 401) {
         if (!apiKey) {
-          apiKey = await showPasswordDialog();
+          throw new Error("Missing VITE_REPOSAGE_API_KEY in environment.");
         }
-
         const loginResponse = await fetch(`${API_BASE_URL}/api/session`, {
           method: "POST",
           credentials: "include",
