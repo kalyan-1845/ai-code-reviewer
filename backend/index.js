@@ -9,7 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { createFrontendSessionCookie, requireApiKey, SESSION_COOKIE_NAME, validateSessionSecret, isValidUuid } from './utils/authMiddleware.js';
 import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
