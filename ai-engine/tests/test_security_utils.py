@@ -62,3 +62,55 @@ def test_detect_high_entropy_strings_escaped_quotes():
     assert string_val == 'password=\\"abc123def456ghi789\\"'
     assert "abc123def456ghi789" in string_val
     assert entropy > 4.5
+
+
+def test_detect_high_entropy_strings_empty_input():
+    assert detect_high_entropy_strings("") == []
+    assert detect_high_entropy_strings(None) == []
+
+
+def test_detect_high_entropy_strings_python_triple_quoted():
+    mock_content = '''x = """xV9p$Lm#Q!zRt2Y&k8w@vCdE5g"""'''
+    results = detect_high_entropy_strings(mock_content, threshold=4.2, min_length=16)
+    assert len(results) >= 1
+
+
+def test_detect_high_entropy_strings_js_template_literal():
+    # Template literals use backticks which aren't matched by the single/double
+    # quote regex — verify the function gracefully skips them.
+    mock_content = '`xV9p$Lm#Q!zRt2Y&k8w@vCdE5g`'
+    results = detect_high_entropy_strings(mock_content, threshold=4.2, min_length=16)
+    assert len(results) == 0
+
+
+def test_detect_high_entropy_strings_escape_sequences():
+    mock_content = '"xV9p$Lm#Q!zRt\\n2Y&k8w@vCdE5g"'
+    results = detect_high_entropy_strings(mock_content, threshold=4.0, min_length=16)
+    assert len(results) >= 1
+
+
+def test_detect_high_entropy_strings_below_min_length():
+    mock_content = '"aB3$xV9"'
+    results = detect_high_entropy_strings(mock_content, threshold=4.0, min_length=16)
+    assert len(results) == 0
+
+
+def test_detect_high_entropy_strings_mixed_ascii_nonascii():
+    mock_content = '"xV9p$Lm#Q!zRt2Y&k8w@vC Über café"'
+    results = detect_high_entropy_strings(mock_content, threshold=4.0, min_length=16)
+    assert isinstance(results, list)
+
+
+def test_detect_high_entropy_strings_dedup_across_quotes():
+    content = 'a = "xV9p$Lm#Q!zRt2Y&k8w@vCdE5g"\nb = \'xV9p$Lm#Q!zRt2Y&k8w@vCdE5g\''
+    results = detect_high_entropy_strings(content, threshold=4.2, min_length=16)
+    assert len(results) == 1
+
+
+def test_detect_high_entropy_strings_multiple_matches():
+    mock_content = '''
+    key1 = "xV9p$Lm#Q!zRt2Y&k8w@vCdE5g"
+    key2 = "aB3$xV9p$Lm#Q!zRt2Y&k8"
+    '''
+    results = detect_high_entropy_strings(mock_content, threshold=4.2, min_length=16)
+    assert len(results) == 2
