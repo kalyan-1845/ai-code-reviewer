@@ -152,7 +152,7 @@ export default function Dashboard() {
   const [repoUrl, setRepoUrl] = useState("");
   const [company, setCompany] = useState("General");
   const [language, setLanguage] = useState("English");
-  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
+  const [selectedModel, setSelectedModel] = useState("llama3-70b-8192");
 
   // Loading & Flow State
   const [isLoading, setIsLoading] = useState(false);

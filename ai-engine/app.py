@@ -306,35 +306,12 @@ css_sanitizer = CSSSanitizer(allowed_css_properties=[
     'font-family', 'text-anchor', 'color', 'background', 'background-color',
 ])
 
-_KNOWN_GROQ_MODELS = {
-    "llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant": "llama-3.1-8b-instant",
-    "llama-3.1-70b-versatile": "llama-3.1-70b-versatile",
-    "deepseek-r1-distill-llama-70b": "deepseek-r1-distill-llama-70b",
-    "gemma2-9b-it": "gemma2-9b-it",
-}
-
 def get_groq_model(model_name: Optional[str]) -> str:
-    default_model = "llama-3.3-70b-versatile"
+    default_model = "llama3-70b-8192"
     if not model_name:
         return default_model
-    req_model = model_name.lower()
-    # Exact match first so valid model ids are never mis-routed by substring.
-    if req_model in _KNOWN_GROQ_MODELS:
-        return _KNOWN_GROQ_MODELS[req_model]
-    # Anchored family fallback (avoid bare substring over-matching, e.g.
-    # "llama-3.1-70b-versatile" must not be downgraded to the 8B model).
-    if "deepseek" in req_model:
-        return "deepseek-r1-distill-llama-70b"
-    if req_model.startswith("llama-3.1-70b"):
-        return "llama-3.1-70b-versatile"
-    if req_model.startswith("llama-3.1-8b") or "8b-instant" in req_model:
-        return "llama-3.1-8b-instant"
-    if req_model.startswith("llama-3.1"):
-        return "llama-3.1-8b-instant"
-    if "gemma" in req_model:
-        return "gemma2-9b-it"
-    return default_model
+    req_model = model_name.lower().strip()
+    return req_model if req_model else default_model
 
 def sanitize_mermaid_code(mermaid_text: str) -> str:
     """Sanitize mermaid diagram code to prevent XSS via prompt injection.
@@ -658,7 +635,7 @@ class AnalyzeRequest(BaseModel):
     files: List[FileItem] = Field(..., max_length=MAX_FILES_PER_REQUEST)
     company: Optional[str] = "General"
     language: Optional[str] = "English"
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "llama3-70b-8192"
     temperature: Optional[float] = Field(0.7, ge=0, le=2)
     maxTokens: Optional[int] = Field(2048, ge=1, le=32768)
     systemPrompt: Optional[str] = ""
@@ -693,7 +670,7 @@ class ChatRequest(BaseModel):
     files: List[FileItem] = Field(..., max_length=MAX_FILES_PER_REQUEST)
     message: str
     history: Optional[List[dict]] = Field(default_factory=list, max_length=MAX_CHAT_HISTORY_LENGTH)
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "llama3-70b-8192"
     temperature: Optional[float] = Field(default=0.4, ge=0, le=2)
     maxTokens: Optional[int] = Field(default=2048, ge=1, le=8192)
     useRag: Optional[bool] = False
@@ -722,7 +699,7 @@ class ChatRequest(BaseModel):
 # 🟢 Route: Root Check
 @app.get("/")
 def read_root():
-    return {"status": "online", "model": "llama-3.3-70b-versatile via Groq"}
+    return {"status": "online", "model": "llama3-70b-8192 via Groq"}
 
 # 🟢 Route: Health Check
 @app.get("/health")
@@ -1485,7 +1462,7 @@ class FileChanges(BaseModel):
 
 class ReviewDiffRequest(BaseModel):
     files: List[FileChanges] = Field(..., max_length=MAX_FILES_PER_REQUEST)
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "llama3-70b-8192"
     custom_rules: Optional[str] = None
     security_mode: Optional[bool] = False
 
@@ -1510,11 +1487,11 @@ class ChatInlineRequest(BaseModel):
     file_path: str
     diff_hunk: str
     message: str
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "llama3-70b-8192"
 
 class SummarizeRequest(BaseModel):
     diff: str
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "llama3-70b-8192"
 
 # 🟢 Route: Cleanup stale vectors (remove embeddings for deleted/modified files)
 # Destructive: requires a tenant (clientId) header so operations are scoped to
