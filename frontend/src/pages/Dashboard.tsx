@@ -152,7 +152,7 @@ export default function Dashboard() {
   const [repoUrl, setRepoUrl] = useState("");
   const [company, setCompany] = useState("General");
   const [language, setLanguage] = useState("English");
-  const [selectedModel, setSelectedModel] = useState("llama3-70b-8192");
+  const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-20b");
 
   // Loading & Flow State
   const [isLoading, setIsLoading] = useState(false);

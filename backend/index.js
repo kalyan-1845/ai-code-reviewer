@@ -63,7 +63,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = verifyPort(process.env.PORT || 5000);
 
-const ALLOWED_ANALYSIS_MODELS = ["llama3-70b-8192", "deepseek-r1-distill-llama-70b", "llama-3.1-8b-instant", "gemma2-9b-it", "gpt-3.5-turbo", "gemini-3.1-pro"];
+const ALLOWED_ANALYSIS_MODELS = ["openai/gpt-oss-20b", "deepseek-r1-distill-llama-70b", "llama-3.1-8b-instant", "gemma2-9b-it", "gpt-3.5-turbo", "gemini-3.1-pro"];
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
@@ -694,7 +694,7 @@ function requireJsonContentType(req, res, next) {
 app.get('/api/user/settings', requireApiKey, async (req, res) => {
   try {
     const user = await User.findOne({ clientId: req.clientId });
-    res.json({ preferredModel: user?.preferredModel || 'llama3-70b-8192' });
+    res.json({ preferredModel: user?.preferredModel || 'openai/gpt-oss-20b' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
@@ -733,7 +733,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
   const AI_ENGINE_MAX_TOKENS = parseInt(process.env.AI_ENGINE_MAX_TOKENS, 10) || 32768;
   maxTokens = Math.max(1, Math.min(AI_ENGINE_MAX_TOKENS, parseInt(maxTokens, 10) || 2048));
 
-  let fallbackModel = "llama3-70b-8192";
+  let fallbackModel = "openai/gpt-oss-20b";
   try {
     const user = await User.findOne({ clientId: req.clientId });
     if (user && user.preferredModel) {
@@ -1241,7 +1241,7 @@ const prSummary = {
               dependencyReport,
               repositoryHealth,
               language: language || 'General',
-              model: model || 'llama3-70b-8192',
+              model: model || 'openai/gpt-oss-20b',
               analyzedAt: new Date(),
             });
           } catch (dbErr) {
@@ -1334,7 +1334,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysis
     const AI_ENGINE_MAX_TOKENS = parseInt(process.env.AI_ENGINE_MAX_TOKENS, 10) || 32768;
     maxTokens = Math.max(1, Math.min(AI_ENGINE_MAX_TOKENS, parseInt(maxTokens, 10) || 2048));
 
-    let fallbackModel = "llama3-70b-8192";
+    let fallbackModel = "openai/gpt-oss-20b";
     try {
       const user = await User.findOne({ clientId: req.clientId });
       if (user && user.preferredModel) {
@@ -1445,7 +1445,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysis
 
 // ≡ƒƒó Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async (req, res) => {
-  let { message, history = [], model = 'llama3-70b-8192', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
+  let { message, history = [], model = 'openai/gpt-oss-20b', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
 
   if (model !== undefined && typeof model !== 'string') {
     return res.status(400).json({ error: 'model must be a string.' });
@@ -1453,7 +1453,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
 
   const chatNormalized = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
   if (!chatNormalized) {
-    model = "llama3-70b-8192";
+    model = "openai/gpt-oss-20b";
   } else {
     model = chatNormalized;
   }
