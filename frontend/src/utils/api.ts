@@ -2,7 +2,7 @@
 // at build time via VITE_API_URL. Defaulting to the same origin ("" => relative
 // URLs) keeps the app working when frontend and backend are served together and
 // prevents a hardcoded dev URL from leaking into production bundles.
-const API_BASE_URL = (window as any).__RUNTIME_API_URL__ || import.meta.env.VITE_API_URL || "";
+export const API_BASE_URL = (window as any).__RUNTIME_API_URL__ || import.meta.env.VITE_API_URL || "";
 // Keep the shared backend API key in memory only, for the lifetime of the
 // page (#3675). Never persist it in sessionStorage/localStorage: a plaintext
 // copy in script-readable storage is exfiltratable by any XSS or browser
