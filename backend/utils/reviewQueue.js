@@ -147,9 +147,9 @@ class ReviewQueue {
   // race conditions from concurrent read-modify-write on shared resources.
   async runExclusive(key, fn) {
     const prev = this._exclusiveLocks.get(key) || Promise.resolve();
-
     let current;
     current = prev
+      .catch(() => {})
       .then(() => fn())
       .finally(() => {
         if (this._exclusiveLocks.get(key) === current) {

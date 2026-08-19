@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const originalWarn = console.warn;
 console.warn = () => {};
+process.env.ENABLE_STREAM_PREVIEW = 'true';
 
 process.env.ENABLE_STREAM_PREVIEW = 'true';
 
