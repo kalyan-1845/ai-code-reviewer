@@ -123,13 +123,12 @@ async function run() {
     // Fetch existing PR review comments to avoid duplicates
     let existingComments = [];
     try {
-      const response = await octokit.rest.pulls.listReviewComments({
+      existingComments = await octokit.paginate(octokit.rest.pulls.listReviewComments, {
         owner,
         repo,
         pull_number: pullNumber,
         per_page: 100
       });
-      existingComments = response.data;
       console.log(`💬 Found ${existingComments.length} existing review comments.`);
     } catch (err) {
       console.warn(`⚠️ Could not fetch existing comments: ${err.message}`);
