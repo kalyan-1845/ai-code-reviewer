@@ -306,35 +306,12 @@ css_sanitizer = CSSSanitizer(allowed_css_properties=[
     'font-family', 'text-anchor', 'color', 'background', 'background-color',
 ])
 
-_KNOWN_GROQ_MODELS = {
-    "llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant": "llama-3.1-8b-instant",
-    "llama-3.1-70b-versatile": "llama-3.1-70b-versatile",
-    "deepseek-r1-distill-llama-70b": "deepseek-r1-distill-llama-70b",
-    "gemma2-9b-it": "gemma2-9b-it",
-}
-
 def get_groq_model(model_name: Optional[str]) -> str:
-    default_model = "llama-3.3-70b-versatile"
+    default_model = "openai/gpt-oss-20b"
     if not model_name:
         return default_model
-    req_model = model_name.lower()
-    # Exact match first so valid model ids are never mis-routed by substring.
-    if req_model in _KNOWN_GROQ_MODELS:
-        return _KNOWN_GROQ_MODELS[req_model]
-    # Anchored family fallback (avoid bare substring over-matching, e.g.
-    # "llama-3.1-70b-versatile" must not be downgraded to the 8B model).
-    if "deepseek" in req_model:
-        return "deepseek-r1-distill-llama-70b"
-    if req_model.startswith("llama-3.1-70b"):
-        return "llama-3.1-70b-versatile"
-    if req_model.startswith("llama-3.1-8b") or "8b-instant" in req_model:
-        return "llama-3.1-8b-instant"
-    if req_model.startswith("llama-3.1"):
-        return "llama-3.1-8b-instant"
-    if "gemma" in req_model:
-        return "gemma2-9b-it"
-    return default_model
+    req_model = model_name.lower().strip()
+    return req_model if req_model else default_model
 
 def sanitize_mermaid_code(mermaid_text: str) -> str:
     """Sanitize mermaid diagram code to prevent XSS via prompt injection.
@@ -658,7 +635,7 @@ class AnalyzeRequest(BaseModel):
     files: List[FileItem] = Field(..., max_length=MAX_FILES_PER_REQUEST)
     company: Optional[str] = "General"
     language: Optional[str] = "English"
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "openai/gpt-oss-20b"
     temperature: Optional[float] = Field(0.7, ge=0, le=2)
     maxTokens: Optional[int] = Field(2048, ge=1, le=32768)
     systemPrompt: Optional[str] = ""
@@ -693,7 +670,7 @@ class ChatRequest(BaseModel):
     files: List[FileItem] = Field(..., max_length=MAX_FILES_PER_REQUEST)
     message: str
     history: Optional[List[dict]] = Field(default_factory=list, max_length=MAX_CHAT_HISTORY_LENGTH)
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "openai/gpt-oss-20b"
     temperature: Optional[float] = Field(default=0.4, ge=0, le=2)
     maxTokens: Optional[int] = Field(default=2048, ge=1, le=8192)
     useRag: Optional[bool] = False
@@ -722,7 +699,7 @@ class ChatRequest(BaseModel):
 # 🟢 Route: Root Check
 @app.get("/")
 def read_root():
-    return {"status": "online", "model": "llama-3.3-70b-versatile via Groq"}
+    return {"status": "online", "model": "openai/gpt-oss-20b via Groq"}
 
 # 🟢 Route: Health Check
 @app.get("/health")
@@ -891,8 +868,7 @@ async def analyze_repository(request: AnalyzeRequest):
     max_tokens = request.maxTokens or 2048
     batch_size = request.batchSize or 5
     repository_context = request.repositoryContext
-    custom_system_prompt = validate_system_prompt(request.systemPrompt or "")
-    
+
     # 1. Prepare global repository structure
     custom_system_prompt = await asyncio.to_thread(validate_system_prompt, request.systemPrompt or "")
 
@@ -1327,13 +1303,27 @@ async def chat_with_repository(request: ChatRequest, x_client_id: str = Header(d
                 for i, c in enumerate(rag_chunks, 1):
                     meta = c.get("metadata", {})
                     source = meta.get("source_file", meta.get("fileName", "unknown"))
-                    chunk_parts.append(f"[Chunk {i} from {source}]\n{c['content']}")
+                    chunk_content = c.get("content", "")
+                    # Drop RAG chunks containing prompt-injection phrases, same as history/messages
+                    chunk_normalized = unicodedata.normalize("NFKC", chunk_content).lower()
+                    dangerous = False
+                    for phrase in DANGEROUS_PATTERNS:
+                        pattern = r"\s+".join(re.escape(w) for w in phrase.split())
+                        if re.search(pattern, chunk_normalized):
+                            dangerous = True
+                            break
+                    if dangerous:
+                        print(f"⚠️ Skipping RAG chunk {i} from {source}: prompt-injection phrase detected")
+                        continue
+                    # Sanitize chunk content the same way file contents are sanitized
+                    chunk_content = sanitize_file_content(chunk_content)
+                    chunk_parts.append(f"[Chunk {i} from {source}]\n{chunk_content}")
                     rag_sources.append({
                         "chunk_id": c.get("chunk_id"),
                         "source": source,
                         "metadata": meta,
                         "similarity_score": c.get("similarity_score"),
-                        "preview": c.get("content", "")[:300],
+                        "preview": chunk_content[:300],
                     })
                 rag_context = "\n\n".join(chunk_parts)
         except Exception as e:
@@ -1472,7 +1462,7 @@ class FileChanges(BaseModel):
 
 class ReviewDiffRequest(BaseModel):
     files: List[FileChanges] = Field(..., max_length=MAX_FILES_PER_REQUEST)
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "openai/gpt-oss-20b"
     custom_rules: Optional[str] = None
     security_mode: Optional[bool] = False
 
@@ -1497,11 +1487,11 @@ class ChatInlineRequest(BaseModel):
     file_path: str
     diff_hunk: str
     message: str
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "openai/gpt-oss-20b"
 
 class SummarizeRequest(BaseModel):
     diff: str
-    model: Optional[str] = "llama-3.3-70b-versatile"
+    model: Optional[str] = "openai/gpt-oss-20b"
 
 # 🟢 Route: Cleanup stale vectors (remove embeddings for deleted/modified files)
 # Destructive: requires a tenant (clientId) header so operations are scoped to
@@ -1995,3 +1985,11 @@ if __name__ == "__main__":
         proxy_headers=True,
         forwarded_allow_ips=trusted_proxy_ips,
     )
+@app.get('/models')
+async def get_groq_models():
+    if not groq_client: return {'error': 'no groq'}
+    try:
+        res = await asyncio.to_thread(groq_client.models.list)
+        return [m.id for m in res.data]
+    except Exception as e:
+        return {'error': str(e)}

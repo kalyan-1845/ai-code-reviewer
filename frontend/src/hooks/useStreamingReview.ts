@@ -1,9 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { getApiKey, ensureApiSession, getCsrfToken } from '../utils/api';
-
-// Backend base URL is provided at runtime by config.js (__RUNTIME_API_URL__) or
-// at build time via VITE_API_URL. Same-origin default; no hardcoded dev URL.
-const API_BASE_URL = (typeof __RUNTIME_API_URL__ !== 'undefined' ? __RUNTIME_API_URL__ : import.meta.env.VITE_API_URL) || '';
+import { getApiKey, ensureApiSession, getCsrfToken, API_BASE_URL } from '../utils/api';
 
 export const useStreamingReview = () => {
   const [reviewText, setReviewText] = useState<string>('');
@@ -103,6 +99,9 @@ export const useStreamingReview = () => {
     } finally {
       if (abortRef.current === controller) {
         setIsStreaming(false);
+        // The stream ended on its own; release the controller so a later
+        // resetStream() doesn't abort a finished stream or wipe its output.
+        abortRef.current = null;
       }
     }
   }, []);
@@ -110,7 +109,6 @@ export const useStreamingReview = () => {
   const resetStream = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setReviewText('');
     setIsStreaming(false);
     setIsMock(false);
     setError(null);

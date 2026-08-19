@@ -45,7 +45,7 @@ def is_go_file(filename: str, content: str) -> bool:
 #   ./file.go:12:5: message text here
 # On Windows the temp-file path includes a drive letter (C:\...) so the regex
 # must allow an optional drive-letter prefix before the file path.
-_GO_VET_LINE_RE = re.compile(r"^(?:\./)?(?:[A-Za-z]:)?(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s*(?P<message>.+)$")
+_GO_VET_LINE_RE = re.compile(r"^(?:\./)?(?:[A-Za-z]:)?(?P<file>[^:]+):(?P<line>\d+)(?::(?P<col>\d+))?:\s*(?P<message>.+)$")
 
 
 def parse_go_vet_output(stderr: str, display_filename: Optional[str] = None) -> list[dict]:
@@ -65,7 +65,7 @@ def parse_go_vet_output(stderr: str, display_filename: Optional[str] = None) -> 
         findings.append({
             "file": display_filename or match.group("file"),
             "line": int(match.group("line")),
-            "column": int(match.group("col")),
+            "column": int(match.group("col")) if match.group("col") else 1,
             "severity": "error",
             "rule": "go-vet",
             "message": match.group("message").strip(),

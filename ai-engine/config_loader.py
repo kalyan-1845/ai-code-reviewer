@@ -28,6 +28,9 @@ class ConfigValidationError(Exception):
     """Raised for a malformed .codereviewer.yml. The caller should halt the
     review rather than silently ignoring the invalid entry."""
 
+    def __repr__(self):
+        return f"ConfigValidationError({super().__repr__()})"
+
 
 @dataclass
 class CodeReviewerConfig:

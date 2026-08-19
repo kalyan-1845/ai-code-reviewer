@@ -41,8 +41,20 @@ export function globToRegex(pattern) {
 }
 
 /**
+ * Sentinel returned by cleanAndParseJSON when the LLM output cannot be parsed.
+ * Callers must check isParseFailed(result) before treating the result as a
+ * valid review object.
+ */
+export const PARSE_FAILED = { reviews: [], _parseFailed: true };
+
+export function isParseFailed(parsed) {
+  return parsed === null || (parsed && typeof parsed === 'object' && parsed._parseFailed === true);
+}
+
+/**
  * Safely parses JSON from an LLM response text, stripping markdown code fences.
- * Returns {reviews: []} on parse failure instead of throwing.
+ * Returns the PARSE_FAILED sentinel on parse failure instead of throwing, so
+ * callers can distinguish "could not parse" from "no issues found".
  */
 export function cleanAndParseJSON(responseText) {
   try {
@@ -54,7 +66,7 @@ export function cleanAndParseJSON(responseText) {
     }
     return JSON.parse(cleaned);
   } catch {
-    return null;
+    return PARSE_FAILED;
   }
 }
 

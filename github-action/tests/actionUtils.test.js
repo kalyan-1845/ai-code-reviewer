@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { globToRegex, cleanAndParseJSON, normalizeReviewLineNumber } from '../utils/actionUtils.js';
+import { globToRegex, cleanAndParseJSON, isParseFailed, PARSE_FAILED, normalizeReviewLineNumber } from '../utils/actionUtils.js';
 
 // ---------------------------------------------------------------------------
 // globToRegex
@@ -89,29 +89,69 @@ test('cleanAndParseJSON handles single backtick fences', () => {
   assert.deepStrictEqual(result, { x: 1 });
 });
 
-test('cleanAndParseJSON returns {reviews: []} for invalid JSON without throwing', () => {
+test('cleanAndParseJSON returns PARSE_FAILED for invalid JSON without throwing', () => {
   const result = cleanAndParseJSON('not valid json at all');
-  assert.deepStrictEqual(result, { reviews: [] });
+  assert.equal(result, PARSE_FAILED);
+  assert.equal(result._parseFailed, true);
+  assert.equal(isParseFailed(result), true);
 });
 
-test('cleanAndParseJSON returns {reviews: []} for empty string', () => {
+test('cleanAndParseJSON returns PARSE_FAILED for truncated JSON', () => {
+  const result = cleanAndParseJSON('{"reviews": [{"line": 3, "comment": "unterminated');
+  assert.equal(isParseFailed(result), true);
+});
+
+test('cleanAndParseJSON returns PARSE_FAILED for empty string', () => {
   const result = cleanAndParseJSON('');
-  assert.deepStrictEqual(result, { reviews: [] });
+  assert.equal(isParseFailed(result), true);
 });
 
 test('cleanAndParseJSON handles whitespace-only input', () => {
   const result = cleanAndParseJSON('   \n\n  ');
-  assert.deepStrictEqual(result, { reviews: [] });
+  assert.equal(isParseFailed(result), true);
 });
 
 test('cleanAndParseJSON handles null-like plain text', () => {
   const result = cleanAndParseJSON('null');
-  assert.deepStrictEqual(result, null);
+  assert.equal(result, null);
+});
+
+test('isParseFailed is false for valid parsed reviews', () => {
+  const result = cleanAndParseJSON('{"reviews": []}');
+  assert.equal(isParseFailed(result), false);
+});
+
+test('malformed LLM output counts as a failed review, not a success', () => {
+  // Mirror the review-path counting in index.js: success is only counted after
+  // the parse check passes, and unparseable output increments failedReviewsCount
+  // (and is excluded from the success summary).
+  function reviewPath(content) {
+    const parsed = cleanAndParseJSON(content);
+    let successfulReviewsCount = 0;
+    let failedReviewsCount = 0;
+    if (isParseFailed(parsed)) {
+      failedReviewsCount++;
+      return { successfulReviewsCount, failedReviewsCount, parsed };
+    }
+    successfulReviewsCount++;
+    return { successfulReviewsCount, failedReviewsCount, parsed };
+  }
+
+  const truncated = reviewPath('{"reviews": [{"line": 1, "comment": "trunc');
+  assert.equal(truncated.failedReviewsCount, 1);
+  assert.equal(truncated.successfulReviewsCount, 0);
+  assert.equal(isParseFailed(truncated.parsed), true);
+
+  const valid = reviewPath('{"reviews": [{"line": 1, "comment": "ok"}]}');
+  assert.equal(valid.failedReviewsCount, 0);
+  assert.equal(valid.successfulReviewsCount, 1);
+  assert.equal(isParseFailed(valid.parsed), false);
 });
 
 test('cleanAndParseJSON handles JSON arrays', () => {
   const result = cleanAndParseJSON('[1, 2, 3]');
   assert.deepStrictEqual(result, [1, 2, 3]);
+  assert.equal(isParseFailed(result), false);
 });
 
 test('normalizeReviewLineNumber accepts numbers and numeric strings', () => {

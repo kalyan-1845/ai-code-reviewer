@@ -404,3 +404,35 @@ test('AnalysisCache: sweeper evicts expired keys from _repoUrlIndex and cleans e
   
   cache._stopSweeper();
 });
+
+test('AnalysisCache: getOrSet properly serializes concurrent fetches for the same key (Issue #3564)', async () => {
+  const cache = new AnalysisCache();
+  const key = 'test-concurrent-key';
+  
+  let fetchCount = 0;
+  
+  const delayedFetcher = async () => {
+    fetchCount++;
+    await new Promise(resolve => setTimeout(resolve, 50));
+    return { data: 'success' };
+  };
+
+  const p1 = cache.getOrSet(key, delayedFetcher, 'repoUrl');
+  const p2 = cache.getOrSet(key, delayedFetcher, 'repoUrl');
+  const p3 = cache.getOrSet(key, delayedFetcher, 'repoUrl');
+
+  const lock = cache._locks.get(key);
+  assert.ok(lock, 'Lock should exist for in-flight request');
+  assert.equal(lock.isFree(), false, 'Lock should not be free while fetches are in flight');
+
+  const [r1, r2, r3] = await Promise.all([p1, p2, p3]);
+
+  assert.deepEqual(r1, { data: 'success' });
+  assert.deepEqual(r2, { data: 'success' });
+  assert.deepEqual(r3, { data: 'success' });
+
+  assert.equal(fetchCount, 1, 'Only exactly one fetch should have occurred due to deduplication');
+  
+  assert.equal(lock.isFree(), true, 'Lock should be free after all operations complete');
+});
+

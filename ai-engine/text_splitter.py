@@ -95,7 +95,7 @@ def _calculate_line_numbers(content: str, chunks: list[str], start_indices: list
     line_numbers = []
     for chunk, start_idx in zip(chunks, start_indices):
         pre = content[:start_idx]
-        start_line = pre.count("\n")
+        start_line = pre.count("\n") + 1
         end_line = start_line + chunk.count("\n")
         line_numbers.append((start_line, end_line))
     return line_numbers
@@ -128,7 +128,7 @@ def split_file_content(
             "fileName": file_name,
             "chunk_index": i,
             "total_chunks": min(len(chunks), _MAX_CHUNKS_PER_FILE),
-            "language": _detect_language(file_name, content),
+            "language": language,
             "start_line": line_numbers[i][0],
             "end_line": line_numbers[i][1],
         }

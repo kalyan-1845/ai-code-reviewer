@@ -3,7 +3,7 @@ import { apiFetch } from '../utils/api';
 import { Save, Cpu, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
 const ALLOWED_MODELS = [
-  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Versatile)', description: 'Fast and versatile, great for general code review.' },
+  { id: 'openai/gpt-oss-20b', name: 'Llama 3.3 70B (Versatile)', description: 'Fast and versatile, great for general code review.' },
   { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 (Llama Distill)', description: 'Optimized for complex reasoning and deep codebase analysis.' },
   { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B (Instant)', description: 'Lightweight model for extremely fast responses.' },
   { id: 'gemma2-9b-it', name: 'Gemma 2 9B IT', description: 'Google\'s Gemma architecture, excellent for concise suggestions.' },
@@ -12,7 +12,7 @@ const ALLOWED_MODELS = [
 ];
 
 export default function Settings() {
-  const [model, setModel] = useState('llama-3.3-70b-versatile');
+  const [model, setModel] = useState('openai/gpt-oss-20b');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

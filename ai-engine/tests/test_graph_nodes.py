@@ -60,6 +60,11 @@ class TestReviewerNode:
         assert result2["current_index"] == 2
 
     def test_appends_micro_review_when_chunks_remain(self):
+        from src.graph.nodes import set_reviewer_llm_caller
+
+        set_reviewer_llm_caller(
+            lambda system_prompt, user_prompt: "LLM micro-review for chunk 1/2"
+        )
         state = {
             "chunks": ["chunk0", "chunk1"],
             "current_index": 0,
@@ -67,7 +72,7 @@ class TestReviewerNode:
         }
         result = reviewer_node(state)
         assert len(result["micro_reviews"]) == 1
-        assert "chunk 1/2" in result["micro_reviews"][0]
+        assert result["micro_reviews"][0] == "LLM micro-review for chunk 1/2"
 
     def test_does_not_append_when_current_index_exceeds_chunks(self):
         state = {

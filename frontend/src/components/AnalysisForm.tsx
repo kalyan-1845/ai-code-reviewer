@@ -174,7 +174,7 @@ export default function AnalysisForm({
                 outline: "none",
               }}
             >
-              <option value="llama-3.3-70b-versatile">Llama 3.3 (70B)</option>
+              <option value="openai/gpt-oss-20b">Llama 3.3 (70B)</option>
               <option value="deepseek-r1-distill-llama-70b">DeepSeek R1 (70B)</option>
               <option value="llama-3.1-8b-instant">Llama 3.1 (8B)</option>
               <option value="gemma2-9b-it">Google Gemma 2 (9B)</option>

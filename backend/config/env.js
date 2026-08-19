@@ -1,9 +1,8 @@
 export function parsePositiveInt(value, name, defaultVal) {
-  const num = parseInt(value, 10);
-  if (Number.isFinite(num) && num > 0) return num;
-  if (value !== undefined) {
-    console.warn(`Warning: ${name} must be a positive integer, falling back to default (${defaultVal})`);
-  }
+  if (value === undefined || value === null || value === '') return defaultVal;
+  const num = Number(value);
+  if (Number.isInteger(num) && num > 0) return num;
+  console.warn(`Warning: ${name} must be a positive integer, falling back to default (${defaultVal})`);
   return defaultVal;
 }
 

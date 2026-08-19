@@ -11,7 +11,7 @@ import CopyToClipboardButton from "../components/CopyToClipboardButton";
 import SectionErrorBoundary from "../components/SectionErrorBoundary";
 import AnalysisForm from "../components/AnalysisForm";
 import AuditHistoryPanel from "../components/AuditHistoryPanel";
-import MentorshipPortal from "../components/MentorshipPortal";
+
 import HealthScoreSection from "../components/HealthScoreSection";
 import ChatPanel from "../components/ChatPanel";
 import MermaidDiagramViewer from "../components/MermaidDiagramViewer";
@@ -46,6 +46,7 @@ import { handleMarkdownExport, handleHtmlExport, handlePdfExport } from "../util
 import { sanitizeAuditEntry } from "../utils/sanitize";
 // Path resolves correctly: pages/ -> ../utils/api -> frontend/src/utils/api
 import { apiFetch } from "../utils/api";
+import { findChatInjectionPhrase } from "../utils/chatSafety";
 import { usePersistentReport } from '../hooks/usePersistentReport';
 import { useStreamingReview } from "../hooks/useStreamingReview";
 
@@ -151,7 +152,7 @@ export default function Dashboard() {
   const [repoUrl, setRepoUrl] = useState("");
   const [company, setCompany] = useState("General");
   const [language, setLanguage] = useState("English");
-  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
+  const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-20b");
 
   // Loading & Flow State
   const [isLoading, setIsLoading] = useState(false);
@@ -672,20 +673,13 @@ export default function Dashboard() {
     e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
 
-    // Basic client-side scan of history for dangerous patterns
-    if (Array.isArray(chatHistory) && chatHistory.length > 0) {
-      const lowMsg = chatInput.toLowerCase();
-      for (const entry of chatHistory) {
-        if (entry?.content) {
-          for (const phrase of ['ignore all instructions', 'ignore previous', 'forget everything', 'you are now', 'new instructions']) {
-            if (entry.content.toLowerCase().includes(phrase) || lowMsg.includes(phrase)) {
-              setApiError('Message blocked: prohibited content detected.');
-              setIsChatLoading(false);
-              return;
-            }
-          }
-        }
-      }
+    // Client-side scan of the newly submitted message only for injection phrases.
+    // Past history (including assistant replies) must never block future messages.
+    const blockedPhrase = findChatInjectionPhrase(chatInput);
+    if (blockedPhrase) {
+      setApiError("Message blocked: prohibited content detected.");
+      setChatInput("");
+      return;
     }
 
     const userMessage = chatInput;
@@ -745,69 +739,7 @@ export default function Dashboard() {
     }
   };
 
-  // GSSoC Issues State (Mentorship Panel)
-  const [assignedContributors, setAssignedContributors] = useState<
-    Record<string, string>
-  >(() => {
-    const saved = localStorage.getItem("reposage_contributor_assignments");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse saved assignments", e);
-      }
-    }
-    return {
-      "copy-code-button": "Siddharth-iang",
-      "secret-scanning-rules": "Siddharth-iang",
-      "api-documentation": "skhazi123",
-      "persist-assignments": "bhavyaxtech",
-      "theme-toggle": "Unassigned",
-      "file-filter-search": "nikita-sdev",
-      "html-report-exporter": "A-R-Narke",
-      "complexity-metrics": "Nikitasoni22",
-    };
-  });
 
-  const handleAssignContributor = (issueKey: string) => {
-    const name = prompt(
-      "Enter the contributor's GitHub username to assign this issue:",
-    );
-    if (name) {
-      const updated = {
-        ...assignedContributors,
-        [issueKey]: name,
-      };
-      setAssignedContributors(updated);
-      localStorage.setItem(
-        "reposage_contributor_assignments",
-        JSON.stringify(updated),
-      );
-    }
-  };
-
-  const handleResetAssignments = () => {
-    const confirmReset = window.confirm(
-      "Are you sure you want to reset all contributor assignments?",
-    );
-    if (confirmReset) {
-      const initial = {
-        "copy-code-button": "Unassigned",
-        "secret-scanning-rules": "Unassigned",
-        "api-documentation": "Unassigned",
-        "persist-assignments": "Unassigned",
-        "theme-toggle": "Unassigned",
-        "file-filter-search": "Unassigned",
-        "html-report-exporter": "Unassigned",
-        "complexity-metrics": "Unassigned",
-      };
-      setAssignedContributors(initial);
-      localStorage.setItem(
-        "reposage_contributor_assignments",
-        JSON.stringify(initial),
-      );
-    }
-  };
 
   const calculateTotalFindings = (result: BackendResponse) => {
     return Object.values(result.analysis?.fileReviews || {}).reduce((total, review) => {
@@ -1060,13 +992,7 @@ export default function Dashboard() {
             />
           </SectionErrorBoundary>
 
-          <SectionErrorBoundary sectionName="MentorshipPortal">
-            <MentorshipPortal
-              assignedContributors={assignedContributors}
-              handleAssignContributor={handleAssignContributor}
-              handleResetAssignments={handleResetAssignments}
-            />
-          </SectionErrorBoundary>
+
         </section>
 
         {/* RIGHT COLUMN: Loading, Dashboard Audit, or Fallback Welcome Screen */}
@@ -3242,6 +3168,7 @@ export default function Dashboard() {
                       useRag={useRag}
                       setUseRag={setUseRag}
                       handleSendChatMessage={handleSendChatMessage}
+                      onClearHistory={() => setChatHistory([])}
                       renderMarkdown={renderMarkdown}
                     />
                   </SectionErrorBoundary>

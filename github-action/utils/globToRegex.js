@@ -1,4 +1,8 @@
 export function globToRegex(pattern) {
+  if (typeof pattern !== 'string' || pattern.length === 0) {
+    return /^$/;
+  }
+
   let regexStr = '^';
   let i = 0;
   const escapeRegex = (ch) => ch.replace(/[\\^$+?.()|[\]{}]/g, '\\$&');

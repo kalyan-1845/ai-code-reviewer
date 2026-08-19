@@ -9,7 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Octokit } from '@octokit/rest';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { createFrontendSessionCookie, requireApiKey, SESSION_COOKIE_NAME, validateSessionSecret, isValidUuid } from './utils/authMiddleware.js';
 import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
@@ -40,6 +40,7 @@ import { loadConfigFile, applySeverityConfig } from './utils/severityConfig.js';
 import AnalysisCache from './utils/analysisCache.js';
 import { getPriorReviewIds, storeReviewIds, clearReviewIds, supersedePriorReviews } from './utils/reviewTracker.js';
 import DedupStore from './utils/dedupStore.js';
+import { registerCrashHandlers } from './utils/crashHandlers.js';
 import mongoose from 'mongoose';
 import Analytics from './models/Analytics.js';
 import Session, { estimateSessionSize } from './models/Session.js';
@@ -62,7 +63,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = verifyPort(process.env.PORT || 5000);
 
-const ALLOWED_ANALYSIS_MODELS = ["llama-3.3-70b-versatile", "deepseek-r1-distill-llama-70b", "llama-3.1-8b-instant", "gemma2-9b-it", "gpt-3.5-turbo", "gemini-3.1-pro"];
+const ALLOWED_ANALYSIS_MODELS = ["openai/gpt-oss-20b", "deepseek-r1-distill-llama-70b", "llama-3.1-8b-instant", "gemma2-9b-it", "gpt-3.5-turbo", "gemini-3.1-pro"];
 
 // Initialize analysis cache with configurable TTL (default: 1 hour, mock: 2 minutes)
 const ANALYSIS_CACHE_TTL_MS = ((n) => Number.isFinite(n) && n > 0 ? n : 60)(parseInt(process.env.ANALYSIS_CACHE_TTL_MINUTES || '60', 10)) * 60 * 1000;
@@ -319,6 +320,19 @@ async function csrfProtection(req, res, next) {
       } catch { /* fall through to normal validation */ }
     }
 
+    // Bypass CSRF entirely if the request provides a valid API key header.
+    // API key authentication is not vulnerable to CSRF because keys are not automatically sent by the browser.
+    const providedApiKey = Array.isArray(req.headers['x-api-key']) ? req.headers['x-api-key'][0] : req.headers['x-api-key'];
+    const validApiKey = process.env.REPOSAGE_API_KEY;
+    if (providedApiKey && validApiKey) {
+      // Use timing safe comparison
+      const providedBuf = Buffer.from(String(providedApiKey));
+      const validBuf = Buffer.from(String(validApiKey));
+      if (providedBuf.length === validBuf.length && crypto.timingSafeEqual(providedBuf, validBuf)) {
+        return next();
+      }
+    }
+
     if (!headerToken || !cookieToken) {
       // Allow session creation and CSRF token endpoints to function
       if (req.path.endsWith('/api/session') || req.path.endsWith('/api/csrf-token')) {
@@ -354,7 +368,7 @@ async function csrfProtection(req, res, next) {
     const newToken = await generateCsrfToken();
     res.cookie(CSRF_COOKIE_NAME, newToken, {
       httpOnly: false,
-      sameSite: 'strict',
+      sameSite: 'none',
       path: '/',
       secure: process.env.NODE_ENV === 'production',
     });
@@ -379,7 +393,7 @@ app.post('/api/session', requireApiKey, async (req, res) => {
   const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'none',
     path: '/',
     secure: process.env.NODE_ENV === 'production',
   });
@@ -403,7 +417,7 @@ app.get('/api/csrf-token', async (req, res) => {
   const csrfToken = await generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'none',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
   });
@@ -438,33 +452,20 @@ function cleanupTempRepos() {
     console.error(`Failed to clean up temp_repos on exit: ${error.message}`);
   }
 }
-async function onShutdown() {
+async function onShutdown(exitCode = 0) {
   cleanupTempRepos();
   cleanupTimers();
   if (redisClient) await redisClient.quit();
   await closeDatabase();
-  process.exit(0);
+  process.exit(exitCode);
 }
-process.on('SIGINT', onShutdown);
-process.on('SIGTERM', onShutdown);
+process.on('SIGINT', () => onShutdown(0));
+process.on('SIGTERM', () => onShutdown(0));
 process.on('exit', cleanupTempRepos);
 
-// Clean up temp_repos and timers on uncaught exceptions to prevent orphan temp folders
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
-  if (err.stack) {
-    console.error(err.stack);
-  }
-  onShutdown();
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason instanceof Error ? reason.message : reason);
-  if (reason instanceof Error && reason.stack) {
-    console.error(reason.stack);
-  }
-  onShutdown();
-});
+// Clean up temp_repos and timers on uncaught exceptions to prevent orphan temp folders.
+// Crash paths exit non-zero (via onShutdown) so orchestrators/CI detect the failure and restart.
+registerCrashHandlers((exitCode) => onShutdown(exitCode));
 
 // Repository contexts for chat are now persisted in MongoDB via the Session model.
 // The Session collection uses a TTL index on absoluteExpiry (expireAfterSeconds: 0)
@@ -693,7 +694,7 @@ function requireJsonContentType(req, res, next) {
 app.get('/api/user/settings', requireApiKey, async (req, res) => {
   try {
     const user = await User.findOne({ clientId: req.clientId });
-    res.json({ preferredModel: user?.preferredModel || 'llama-3.3-70b-versatile' });
+    res.json({ preferredModel: user?.preferredModel || 'openai/gpt-oss-20b' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
@@ -732,7 +733,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
   const AI_ENGINE_MAX_TOKENS = parseInt(process.env.AI_ENGINE_MAX_TOKENS, 10) || 32768;
   maxTokens = Math.max(1, Math.min(AI_ENGINE_MAX_TOKENS, parseInt(maxTokens, 10) || 2048));
 
-  let fallbackModel = "llama-3.3-70b-versatile";
+  let fallbackModel = "openai/gpt-oss-20b";
   try {
     const user = await User.findOne({ clientId: req.clientId });
     if (user && user.preferredModel) {
@@ -827,7 +828,7 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
       if (cachedResponse.sessionPersisted && cachedResponse.csrfToken) {
         res.cookie(CSRF_COOKIE_NAME, cachedResponse.csrfToken, {
           httpOnly: true,
-          sameSite: 'strict',
+          sameSite: 'none',
           path: '/',
           secure: process.env.NODE_ENV === 'production',
         });
@@ -895,27 +896,54 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
       
       const repositoryContext = buildRepositoryContext(files);
 
-      // 2. Mocking AI Response for initial setup (or forward to FastAPI AI Engine)
-      // This is a perfect placeholder where contributors can connect the FastAPI server!
+      // 2. Prepare the scrubbed, .codereviewer.yml-filtered payload and the shared cache key.
+      //    Both the primary AI-engine path and the fallback path use these.
+      const CONFIG_FILENAME = '.codereviewer.yml';
+      const scrubbedFiles = files
+        .filter(f => f.name !== CONFIG_FILENAME)
+        .map(file => ({
+        ...file,
+        content: scrubRepositoryPayload(file.content)
+      }));
+
+      const cacheKey = analysisCache.generateKey(repoUrl, scrubbedFiles, { model, language, company, systemPrompt: validatedPrompt, temperature, maxTokens, batchSize });
+
+      // 3. Forward to FastAPI AI Engine (cache-first)
       const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:8000';
-      
-      let reviewResult;
       const baseUrl = aiEngineUrl.replace(/\/+$/, '');
-      try {
-        const aiResponse = await fetch(`${baseUrl}/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize, repositoryContext })
-        });
-        
-        if (aiResponse.ok) {
-          reviewResult = await aiResponse.json();
-          reviewResult._mock = false;
-        } else {
-          throw new Error('AI engine responded with error');
+
+      let reviewResult;
+      let cacheHit = false;
+
+      // 1.5. Check analysis cache to avoid redundant LLM calls for identical analyses
+      const cachedResult = analysisCache.get(cacheKey);
+      if (cachedResult) {
+        cacheHit = true;
+        reviewResult = cachedResult;
+        console.log(`🎯 Using cached analysis result for this repository and configuration`);
+      } else {
+        try {
+          const aiResponse = await fetchWithTimeout(`${baseUrl}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.REPOSAGE_API_KEY || '' },
+            body: JSON.stringify({ files: scrubbedFiles, company, language, model, temperature, maxTokens, systemPrompt: validatedPrompt, batchSize, repositoryContext })
+          }, 120000);
+
+          if (aiResponse.ok) {
+            reviewResult = await aiResponse.json();
+            reviewResult._mock = false;
+            analysisCache.set(cacheKey, reviewResult, { repoUrl });
+          } else {
+            let errMsg = 'AI engine responded with error';
+            try {
+              const errData = await aiResponse.json();
+              errMsg = errData.detail || errData.error || errData.message || errMsg;
+            } catch {}
+            throw new Error(`AI engine responded with ${aiResponse.status}: ${errMsg}`);
+          }
+        } catch (err) {
+          console.warn(`⚠️ FastAPI engine error, falling back... ${err.message}`);
         }
-      } catch (err) {
-        console.warn('⚠️ FastAPI engine error, falling back...');
       }
 
       if (!reviewResult) {
@@ -933,17 +961,8 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
         console.warn(`ΓÜá∩╕Å Found ${fileWarnings.length} potential prompt injection patterns across ${files.length} files`);
       }
 
-      // 1.5. Check analysis cache to avoid redundant LLM calls for identical analyses
-      const CONFIG_FILENAME = '.codereviewer.yml';
-      const scrubbedFiles = files
-        .filter(f => f.name !== CONFIG_FILENAME)
-        .map(file => ({
-        ...file,
-        content: scrubRepositoryPayload(file.content)
-      }));
-
-      const cacheKey = analysisCache.generateKey(repoUrl, scrubbedFiles, { model, language, company, systemPrompt: validatedPrompt, temperature, maxTokens, batchSize });
-      let cacheHit = !!analysisCache.get(cacheKey);
+      // 1.5. Re-check the shared cache before issuing a new LLM call
+      cacheHit = !!analysisCache.get(cacheKey);
       if (cacheHit) {
         console.log(`🎯 Using cached analysis result for this repository and configuration`);
       }
@@ -968,7 +987,9 @@ app.post('/api/analyze', requireApiKey, requireJsonContentType, llmAnalysisLimit
             try {
               const errData = await aiResponse.json();
               errMsg = errData.detail || errData.error || errData.message || errMsg;
-            } catch {}
+            } catch (e) {
+              console.warn('Failed to parse AI engine error response:', e.message);
+            }
             throw new Error(errMsg);
           }
         } catch (err) {
@@ -1220,7 +1241,7 @@ const prSummary = {
               dependencyReport,
               repositoryHealth,
               language: language || 'General',
-              model: model || 'llama-3.3-70b-versatile',
+              model: model || 'openai/gpt-oss-20b',
               analyzedAt: new Date(),
             });
           } catch (dbErr) {
@@ -1313,7 +1334,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysis
     const AI_ENGINE_MAX_TOKENS = parseInt(process.env.AI_ENGINE_MAX_TOKENS, 10) || 32768;
     maxTokens = Math.max(1, Math.min(AI_ENGINE_MAX_TOKENS, parseInt(maxTokens, 10) || 2048));
 
-    let fallbackModel = "llama-3.3-70b-versatile";
+    let fallbackModel = "openai/gpt-oss-20b";
     try {
       const user = await User.findOne({ clientId: req.clientId });
       if (user && user.preferredModel) {
@@ -1424,7 +1445,7 @@ app.post('/api/analyze-file', requireApiKey, requireJsonContentType, llmAnalysis
 
 // ≡ƒƒó Route: AI Chat with Repository (session-isolated per issue #59)
 app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async (req, res) => {
-  let { message, history = [], model = 'llama-3.3-70b-versatile', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
+  let { message, history = [], model = 'openai/gpt-oss-20b', temperature = 0.7, maxTokens = 2048, systemPrompt = 'You are a helpful code reviewer.', sessionId, sessionOwnerToken, useRag, ragSources } = req.body;
 
   if (model !== undefined && typeof model !== 'string') {
     return res.status(400).json({ error: 'model must be a string.' });
@@ -1432,7 +1453,7 @@ app.post('/api/chat', requireApiKey, requireJsonContentType, chatLimiter, async 
 
   const chatNormalized = ALLOWED_ANALYSIS_MODELS.find(m => m.toLowerCase() === model.toLowerCase());
   if (!chatNormalized) {
-    model = "llama-3.3-70b-versatile";
+    model = "openai/gpt-oss-20b";
   } else {
     model = chatNormalized;
   }

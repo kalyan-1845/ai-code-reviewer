@@ -10,7 +10,7 @@ const CACHE_FILENAME = '.codereview-cache.json';
 function getCacheDir(repoPath) {
   const hash = crypto.createHash('sha256').update(repoPath).digest('hex').substring(0, 16);
   const cacheDir = path.join(os.tmpdir(), 'reposage-review-cache', hash);
-  try { fs.mkdirSync(cacheDir, { recursive: true }); } catch {}
+  try { fs.mkdirSync(cacheDir, { recursive: true }); } catch (e) { console.warn('Failed to create review cache dir:', e.message); }
   return cacheDir;
 }
 
@@ -25,6 +25,7 @@ function getFileContentHash(filePath) {
 }
 
 function buildContentHashCache(files) {
+  if (!Array.isArray(files)) return {};
   const cache = {};
   for (const file of files) {
     const hash = getFileContentHash(file);
@@ -57,7 +58,7 @@ function saveCacheFile(cachePath, cache) {
     fs.renameSync(tmpPath, fullPath);
   } catch (err) {
     console.warn(`Failed to save cache file at ${fullPath}: ${err.message}`);
-    try { fs.unlinkSync(tmpPath); } catch {}
+    try { fs.unlinkSync(tmpPath); } catch (e) { console.warn('Failed to clean up tmp cache file:', e.message); }
   }
 }
 
@@ -86,6 +87,10 @@ async function getChangedFiles(repoPath, baseRef = 'main') {
 }
 
 function getFilesToReview(currentFiles, previousCache) {
+  if (!Array.isArray(currentFiles)) {
+    return { filesToReview: [], currentCache: {}, changedCount: 0, totalCount: 0 };
+  }
+  const prevCache = previousCache || {};
   if (!previousCache) {
     // Treat all files as changed when there is no previous cache
     const currentCache = buildContentHashCache(currentFiles);
@@ -103,7 +108,7 @@ function getFilesToReview(currentFiles, previousCache) {
 
   for (const file of currentFiles) {
     const currentHash = currentCache[file];
-    const previousHash = previousCache[file];
+    const previousHash = prevCache[file];
 
     if (!currentHash) {
       continue;

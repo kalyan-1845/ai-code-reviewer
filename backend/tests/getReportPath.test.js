@@ -18,6 +18,11 @@ test('getReportPath returns review-report.html when format is html', () => {
   assert.equal(result, path.join('.', 'review-report.html'));
 });
 
+test('getReportPath returns review-report.sarif when format is sarif', () => {
+  const result = getReportPath('sarif');
+  assert.equal(result, path.join('.', 'review-report.sarif'));
+});
+
 test('getReportPath uses custom output directory', () => {
   const result = getReportPath('json', '/tmp/reports');
   assert.equal(result, path.join('/tmp/reports', 'review-report.json'));
@@ -31,7 +36,9 @@ test('getReportPath uses custom output directory with html format', () => {
 test('getReportPath uses exact string equality for format parameter', () => {
   // The function uses strict === comparison, so case matters
   assert.equal(getReportPath('html'), path.join('.', 'review-report.html'));
+  assert.equal(getReportPath('sarif'), path.join('.', 'review-report.sarif'));
   assert.equal(getReportPath('HTML'), path.join('.', 'review-report.json'));
+  assert.equal(getReportPath('SARIF'), path.join('.', 'review-report.json'));
   assert.equal(getReportPath('json'), path.join('.', 'review-report.json'));
   assert.equal(getReportPath('JSON'), path.join('.', 'review-report.json'));
 });

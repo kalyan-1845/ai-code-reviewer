@@ -118,3 +118,33 @@ test('isSafeUrl rejects domains resolving to at least one private IP (DNS round-
   assert.equal(result.valid, false);
   assert.ok(result.reason.includes('private or restricted IP'));
 });
+
+test('urlValidator: edge cases (Issue #3815)', async () => {
+  // Protocol & Scheme Variations
+  assert.equal((await isSafeUrl('http://localhost')).valid, false, 'Should reject non-https localhost');
+  assert.equal((await isSafeUrl('http://127.0.0.1')).valid, false, 'Should reject non-https 127.0.0.1');
+  assert.equal((await isSafeUrl('http://[::1]')).valid, false, 'Should reject non-https [::1]');
+  assert.equal((await isSafeUrl('file:///etc/passwd')).valid, false, 'Should reject file:// protocol');
+
+  // Port Numbers
+  assert.equal(isValidRepoUrl('https://github.com:443/owner/repo'), true, 'Should allow explicit 443 port');
+  assert.equal(isValidRepoUrl('http://github.com:80/owner/repo'), false, 'Should reject explicit 80 port on http');
+
+  // IP Address Formats (IPv6 & IPv4-mapped)
+  assert.equal((await isSafeUrl('https://[fd00:ec2::254]')).valid, false, 'Should reject private IPv6');
+  assert.equal((await isSafeUrl('https://[::ffff:192.0.2.1]')).valid, false, 'Should reject private IPv4-mapped IPv6');
+
+  // URL-encoded characters in paths
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo%20name'), false, 'Should reject URL-encoded spaces');
+
+  // Explicit checks for query strings, fragments, and auth
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo?test=1'), false, 'Should reject query string');
+  assert.equal(isValidRepoUrl('https://github.com/owner/repo#fragment'), false, 'Should reject fragment');
+  assert.equal(isValidRepoUrl('https://user:pass@github.com/owner/repo'), false, 'Should reject auth credentials');
+
+  // Edge-case Private IPs
+  assert.equal((await isSafeUrl('https://0.0.0.0')).valid, false, 'Should reject 0.0.0.0 Local/Broadcast');
+  assert.equal((await isSafeUrl('https://0.0.0.1')).valid, false, 'Should reject 0.0.0.1 Local/Broadcast');
+  assert.equal((await isSafeUrl('https://224.0.0.1')).valid, false, 'Should reject 224.0.0.1 Multicast');
+  assert.equal((await isSafeUrl('https://240.0.0.1')).valid, false, 'Should reject 240.0.0.1 Reserved');
+});

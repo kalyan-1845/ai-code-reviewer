@@ -69,7 +69,7 @@ function writeStoreAtomic(records) {
         } catch (renameErr) {
             console.warn('⚠️ renameSync failed, falling back to writeFileSync:', renameErr.message);
             fs.writeFileSync(STORE_PATH, data);
-            try { fs.unlinkSync(TMP_PATH); } catch (e) {}
+            try { fs.unlinkSync(TMP_PATH); } catch (e) { console.warn('Failed to clean up temp analytics file:', e.message); }
         }
         try {
             fs.writeFileSync(BACKUP_PATH, data);

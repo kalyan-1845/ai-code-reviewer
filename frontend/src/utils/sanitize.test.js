@@ -67,9 +67,15 @@ describe('sanitizeForStorage', () => {
 });
 
 describe('sanitizeAuditEntry', () => {
-  it('returns null/undefined entry unchanged', () => {
-    expect(sanitizeAuditEntry(null)).toBeNull();
-    expect(sanitizeAuditEntry(undefined)).toBeUndefined();
+  it('returns empty object for null or undefined entry', () => {
+    expect(sanitizeAuditEntry(null)).toEqual({});
+    expect(sanitizeAuditEntry(undefined)).toEqual({});
+  });
+
+  it('returns empty object for primitive (non-object) inputs', () => {
+    expect(sanitizeAuditEntry('string')).toEqual({});
+    expect(sanitizeAuditEntry(42)).toEqual({});
+    expect(sanitizeAuditEntry(true)).toEqual({});
   });
 
   it('preserves non-mermaidDiagram fields', () => {
