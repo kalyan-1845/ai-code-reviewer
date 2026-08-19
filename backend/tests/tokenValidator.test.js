@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isValidGithubToken } from '../utils/tokenValidator.js';
 
@@ -10,10 +10,7 @@ test('isValidGithubToken validates GitHub token prefixes and classic 40-hex PATs
   assert.equal(isValidGithubToken('invalid_token_format'), false);
   assert.equal(isValidGithubToken(''), false);
   assert.equal(isValidGithubToken(null), false);
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import { isValidGithubToken } from '../utils/tokenValidator.js';
-
+});
 describe('isValidGithubToken', () => {
   it('returns true for ghp_ classic PAT', () => {
     assert.equal(isValidGithubToken('ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'), true);

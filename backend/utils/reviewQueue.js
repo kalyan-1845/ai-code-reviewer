@@ -150,6 +150,7 @@ class ReviewQueue {
 
     let current;
     current = prev
+      .catch(() => {})
       .then(() => fn())
       .finally(() => {
         if (this._exclusiveLocks.get(key) === current) {
