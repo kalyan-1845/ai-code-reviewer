@@ -72,3 +72,22 @@ def test_ast_resolver_syntax_error_fallback():
     invalid_code = "def broken_code(: invalid syntax !!!"
     assert extract_missing_dependencies(invalid_code) == []
     assert resolve_ast_dependencies(invalid_code) == ""
+
+
+def test_ast_resolver_real_unified_diff_with_context_lines():
+    diff_code = """diff --git a/main.py b/main.py
+index 1234567..89abcdef 100644
+--- a/main.py
++++ b/main.py
+@@ -10,3 +10,4 @@ def run_pipeline():
+ def run_pipeline():
++    data = fetch_remote_data()
+     existing = transform_data(data)
++    save_to_db(existing)
+"""
+    missing = extract_missing_dependencies(diff_code)
+    assert "fetch_remote_data" in missing
+    assert "save_to_db" in missing
+    ctx = resolve_ast_dependencies(diff_code)
+    assert "Mocked context for fetched dependency: fetch_remote_data" in ctx
+    assert "Mocked context for fetched dependency: save_to_db" in ctx
