@@ -151,6 +151,116 @@ test('deleteFolderRecursive continues without throwing when unlinkSync raises EA
   }
 });
 
+test('deleteFolderRecursive skips when lstatSync throws on an entry', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lstat_error_test-'));
+  const targetFile = path.join(tempDir, 'file.txt');
+  fs.writeFileSync(targetFile, 'data');
+
+  const originalLstatSync = fs.lstatSync.bind(fs);
+  fs.lstatSync = (targetPath) => {
+    if (typeof targetPath === 'string' && targetPath.includes('file.txt')) {
+      throw new Error('EPERM: permission denied');
+    }
+    return originalLstatSync(targetPath);
+  };
+
+  try {
+    assert.doesNotThrow(() => {
+      deleteFolderRecursive(tempDir);
+    });
+  } finally {
+    fs.lstatSync = originalLstatSync;
+    if (fs.existsSync(tempDir)) {
+      deleteFolderRecursive(tempDir);
+    }
+  }
+});
+
+test('deleteFolderRecursive handles permission error when unlinking a symlink', { skip: !canCreateSymlinks }, () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'symlink_unlink_error_test-'));
+  const symlinkPath = path.join(tempDir, 'locked_symlink');
+  fs.symlinkSync('/does/not/exist', symlinkPath);
+
+  const originalUnlinkSync = fs.unlinkSync.bind(fs);
+  fs.unlinkSync = (targetPath) => {
+    if (typeof targetPath === 'string' && targetPath.includes('locked_symlink')) {
+      throw new Error('EACCES: permission denied');
+    }
+    return originalUnlinkSync(targetPath);
+  };
+
+  try {
+    assert.doesNotThrow(() => {
+      deleteFolderRecursive(tempDir);
+    });
+  } finally {
+    fs.unlinkSync = originalUnlinkSync;
+    if (fs.existsSync(tempDir)) {
+      deleteFolderRecursive(tempDir);
+    }
+  }
+});
+
+test('deleteFolderRecursive treats entry as file if statSync fails but lstatSync succeeds', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stat_error_test-'));
+  const targetFile = path.join(tempDir, 'broken_stat_file.txt');
+  fs.writeFileSync(targetFile, 'data');
+
+  const originalStatSync = fs.statSync.bind(fs);
+  fs.statSync = (targetPath) => {
+    if (typeof targetPath === 'string' && targetPath.includes('broken_stat_file.txt')) {
+      throw new Error('EACCES: permission denied');
+    }
+    return originalStatSync(targetPath);
+  };
+
+  try {
+    assert.doesNotThrow(() => {
+      deleteFolderRecursive(tempDir);
+    });
+  } finally {
+    fs.statSync = originalStatSync;
+    if (fs.existsSync(tempDir)) {
+      deleteFolderRecursive(tempDir);
+    }
+  }
+});
+
+test('deleteFolderRecursive skips file if statSync fails and unlinkSync also fails', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stat_unlink_error_test-'));
+  const targetFile = path.join(tempDir, 'broken_stat_file.txt');
+  fs.writeFileSync(targetFile, 'data');
+
+  const originalStatSync = fs.statSync.bind(fs);
+  const originalUnlinkSync = fs.unlinkSync.bind(fs);
+  
+  fs.statSync = (targetPath) => {
+    if (typeof targetPath === 'string' && targetPath.includes('broken_stat_file.txt')) {
+      throw new Error('EACCES: permission denied');
+    }
+    return originalStatSync(targetPath);
+  };
+  
+  fs.unlinkSync = (targetPath) => {
+    if (typeof targetPath === 'string' && targetPath.includes('broken_stat_file.txt')) {
+      throw new Error('EACCES: permission denied');
+    }
+    return originalUnlinkSync(targetPath);
+  };
+
+  try {
+    assert.doesNotThrow(() => {
+      deleteFolderRecursive(tempDir);
+    });
+  } finally {
+    fs.statSync = originalStatSync;
+    fs.unlinkSync = originalUnlinkSync;
+    if (fs.existsSync(tempDir)) {
+      deleteFolderRecursive(tempDir);
+    }
+  }
+});
+
 test('resolveSafePath validates paths strictly within baseDir', () => {
   const base = path.resolve('/app/dir');
   assert.equal(resolveSafePath(base, 'file.txt'), path.join(base, 'file.txt'));

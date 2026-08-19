@@ -1,8 +1,23 @@
-import test from 'node:test';
+import test, { beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 const originalWarn = console.warn;
 console.warn = () => {};
+
+let originalEnv;
+
+beforeEach(() => {
+  originalEnv = process.env.ENABLE_STREAM_PREVIEW;
+  process.env.ENABLE_STREAM_PREVIEW = 'true';
+});
+
+afterEach(() => {
+  if (originalEnv === undefined) {
+    delete process.env.ENABLE_STREAM_PREVIEW;
+  } else {
+    process.env.ENABLE_STREAM_PREVIEW = originalEnv;
+  }
+});
 
 async function createMockReq() {
   const abortSignals = [];
@@ -27,6 +42,13 @@ async function createMockRes() {
   return {
     setHeader(key, value) {
       headers[key] = value;
+    },
+    status(code) {
+      return this;
+    },
+    json(data) {
+      written.push(JSON.stringify(data));
+      return this;
     },
     write(data) {
       written.push(data);
@@ -85,6 +107,8 @@ test('streamReview sends data events for each mock token', async () => {
   const res = await createMockRes();
 
   await streamReview(req, res);
+
+  console.log("WRITTEN:", res._written);
 
   // The function writes 8 mock tokens
   const dataWrites = res._written.filter(w => w && w.startsWith('data:'));
