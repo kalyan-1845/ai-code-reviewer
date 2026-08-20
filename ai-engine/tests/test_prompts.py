@@ -56,6 +56,10 @@ class TestPromptStrings:
             pytest.skip(f"{name} intentionally does not use {{contents_text}}")
         assert "{contents_text}" in prompt, f"{name} missing {{contents_text}} placeholder"
 
+    @pytest.mark.parametrize("name,prompt", list(PROMPTS.items()))
+    def test_prompt_contains_json_output_format(self, name, prompt):
+        assert "valid JSON format" in prompt, f"{name} missing JSON output instruction"
+
 
 class TestPromptSubstitution:
     """Test that prompts.format() succeeds with valid arguments and produces non-empty output."""
