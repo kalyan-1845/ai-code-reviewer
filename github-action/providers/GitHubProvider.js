@@ -20,15 +20,26 @@ export class GitHubProvider extends Provider {
 
   async getDiff() {
     const { owner, repo, pullNumber } = this.getContext();
-    const { data: diff } = await this.octokit.rest.pulls.get({
+
+    // Use pagination to fetch all files and bypass the diff size limits of the pulls.get endpoint
+    const files = await this.octokit.paginate(this.octokit.rest.pulls.listFiles, {
       owner,
       repo,
       pull_number: pullNumber,
-      mediaType: {
-        format: 'diff'
-      }
+      per_page: 100
     });
-    return diff;
+
+    let diffStr = '';
+    for (const file of files) {
+      if (file.patch) {
+        diffStr += `diff --git a/${file.filename} b/${file.filename}\n`;
+        diffStr += `--- a/${file.filename}\n`;
+        diffStr += `+++ b/${file.filename}\n`;
+        diffStr += `${file.patch}\n`;
+      }
+    }
+
+    return diffStr;
   }
 
   async getFileContent(path, ref) {
