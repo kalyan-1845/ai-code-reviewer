@@ -120,4 +120,31 @@ test('buildDeltaReviewPrompt marks lines starting with plus for newly added code
   assert.ok(result.includes('+console.log(1)'), 'Added line should be in prompt');
 });
 
+test('buildDeltaReviewPrompt handles binary-like content without corrupting prompt', () => {
+  const binaryDiff = `GIT binary patch
+literal 10
+zcmX@|A|%G40000000000000000000000000000000000000000000000000000000`;
+  assert.doesNotThrow(() => {
+    buildDeltaReviewPrompt(binaryDiff);
+  });
+  const result = buildDeltaReviewPrompt(binaryDiff);
+  assert.ok(result.includes('expert AI Code Reviewer'));
+  assert.ok(result.includes(binaryDiff), 'Binary content should be safely embedded');
+});
+
+test('buildDeltaReviewPrompt returns a non-empty string for any valid diff input', () => {
+  const diffs = [
+    '+const x = 1;',
+    '-const y = 2;',
+    '@@ -1,3 +1,4 @@',
+    ' ',
+    'some context'
+  ];
+  for (const diff of diffs) {
+    const result = buildDeltaReviewPrompt(diff);
+    assert.strictEqual(typeof result, 'string');
+    assert.ok(result.length > 0, 'Prompt string should not be empty');
+  }
+});
+
 console.warn = originalWarn;
