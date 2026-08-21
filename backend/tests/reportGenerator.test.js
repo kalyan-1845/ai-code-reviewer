@@ -260,3 +260,20 @@ test('reportGenerator: supports both rule and rule_id properties in input findin
     if (fs.existsSync(outputPathHtml)) fs.unlinkSync(outputPathHtml);
   }
 });
+
+test('reportGenerator: getReportPath handles malicious formats gracefully against traversal', () => {
+  const result = getReportPath('../malicious', 'dir');
+  assert.equal(result, path.join('dir', 'review-report.json'));
+});
+
+test('reportGenerator: generateHTMLReport handles empty results gracefully with text', () => {
+  const outputPath = path.join(TMPDIR, `test-empty-html2-${Date.now()}.html`);
+  try {
+    const result = generateHTMLReport('empty-repo', [], null, outputPath);
+    assert.equal(result.success, true);
+    const htmlContent = fs.readFileSync(outputPath, 'utf-8');
+    assert.ok(htmlContent.includes('No findings detected!'));
+  } finally {
+    if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+  }
+});
