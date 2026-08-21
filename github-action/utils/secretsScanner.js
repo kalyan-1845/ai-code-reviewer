@@ -81,7 +81,7 @@ export const rules = [
   },
   {
     type: "Discord Bot Token",
-    regex: /\b[MNT][a-zA-Z0-9_-]{23}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}\b/g,
+    regex: /\b[a-zA-Z0-9_-]{24}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}\b/g,
     description: "Potential hardcoded Discord Bot Token detected. This allows attackers to fully control your Discord bot and access guilds/channels."
   }
 ];
@@ -115,9 +115,9 @@ export function scanSecrets(fileContent) {
     }
     for (const rule of rules) {
       if (Date.now() - startTime > scanTimeoutMs) break;
-      rule.regex.lastIndex = 0;
+      const regex = new RegExp(rule.regex.source, rule.regex.flags);
       let match;
-      while ((match = rule.regex.exec(line)) !== null) {
+      while ((match = regex.exec(line)) !== null) {
         findings.push({
           type: rule.type,
           line: idx + 1,
@@ -125,8 +125,8 @@ export function scanSecrets(fileContent) {
           description: rule.description,
           suggestion: "Move this secret immediately to a protected environment configuration file (.env) and reference it as a dynamic variable instead."
         });
-        if (rule.regex.lastIndex === match.index) {
-          rule.regex.lastIndex++;
+        if (regex.lastIndex === match.index) {
+          regex.lastIndex++;
         }
       }
     }
@@ -184,17 +184,17 @@ export function scanSecretsInChanges(changes) {
           reason = `Scan timeout of ${timeoutMs}ms exceeded.`;
           break;
         }
-        rule.regex.lastIndex = 0;
+        const regex = new RegExp(rule.regex.source, rule.regex.flags);
         let match;
-        while ((match = rule.regex.exec(lineContent)) !== null) {
+        while ((match = regex.exec(lineContent)) !== null) {
           findings.push({
             line: baseLine + lineIdx,
             column: match.index,
             type: "security",
             comment: `### 🛡️ Hardcoded Secret Warning\n\nI have detected a hardcoded **${rule.type}** on line **${baseLine + lineIdx}**.\n\n#### 💡 Actionable Suggestion\nMove this credential immediately to a protected environment variable (e.g. GitHub Secrets or \`.env\`) and load it dynamically at runtime. DO NOT commit plain secrets to public Git repositories!`
           });
-          if (rule.regex.lastIndex === match.index) {
-            rule.regex.lastIndex++;
+          if (regex.lastIndex === match.index) {
+            regex.lastIndex++;
           }
         }
       }

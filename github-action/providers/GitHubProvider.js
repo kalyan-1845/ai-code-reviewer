@@ -20,6 +20,29 @@ export class GitHubProvider extends Provider {
 
   async getDiff() {
     const { owner, repo, pullNumber } = this.getContext();
+    try {
+      const files = await this.octokit.paginate(this.octokit.rest.pulls.listFiles, {
+        owner,
+        repo,
+        pull_number: pullNumber,
+        per_page: 100
+      });
+
+      let diff = '';
+      for (const file of files) {
+        if (file.patch) {
+          diff += `diff --git a/${file.filename} b/${file.filename}\n`;
+          diff += file.patch + '\n';
+        }
+      }
+      if (diff) {
+        return diff;
+      }
+    } catch (err) {
+      console.warn("Failed to fetch paginated diff files, falling back to standard diff fetch:", err.message);
+    }
+
+    // Fallback if no files have patches or pagination fails
     const { data: diff } = await this.octokit.rest.pulls.get({
       owner,
       repo,
